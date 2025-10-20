@@ -14,6 +14,36 @@ To identify the next logical story based on project progress and epic definition
 - If the file does not exist, HALT and inform the user: "core-config.yaml not found. This file is required for story creation. You can either: 1) Copy it from GITHUB bmad-core/core-config.yaml and configure it for your project OR 2) Run the BMad installer against your project to upgrade and add the file automatically. Please add and configure core-config.yaml before proceeding."
 - Extract key configurations: `devStoryLocation`, `prd.*`, `architecture.*`, `workflow.*`
 
+### 0.5. Review Cloud-Based Memory Bank
+
+**CRITICAL:** Before proceeding with story creation, review relevant memories from the cloud-based memory bank:
+
+- **Check for project-specific patterns and preferences:**
+  - Story drafting approach (comprehensive vs. minimal)
+  - Testing requirements and coverage expectations
+  - Architecture decisions and patterns established in previous stories
+  - Technology stack preferences and constraints
+  
+- **Check for learnings from previous stories:**
+  - Implementation challenges encountered
+  - Technical decisions that impacted subsequent work
+  - Common pitfalls or gotchas specific to this project
+  - Successful patterns that should be replicated
+  
+- **Check for workflow preferences:**
+  - Just-in-time story drafting approach
+  - Story approval process (immediate vs. separate PO review)
+  - Story progression lifecycle expectations
+  - Development agent handoff requirements
+
+- **Apply relevant memories when drafting:**
+  - Use established patterns and preferences throughout story creation
+  - Reference previous story learnings in "Previous Story Context" section
+  - Ensure story format aligns with project-specific preferences
+  - Include architecture context that has proven useful in past stories
+
+**Note:** Memories are cloud-based and automatically available in agent context. Review them thoughtfully to ensure story quality and consistency with project evolution.
+
 ### 1. Identify Next Story for Preparation
 
 #### 1.1 Locate Epic Files and Review Existing Stories

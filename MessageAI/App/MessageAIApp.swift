@@ -25,14 +25,63 @@ struct MessageAIApp: App {
         WindowGroup {
             // Conditional navigation based on authentication state
             // Firebase Auth automatically restores authenticated session on app launch
-            if authViewModel.currentUser != nil {
-                // Story 1.7 will implement ConversationsListView
-                Text("Conversations List (Coming in Story 1.7)")
-                    .font(.title)
-                    .foregroundColor(.secondary)
+            if let currentUser = authViewModel.currentUser {
+                // Check if user needs profile setup
+                if needsProfileSetup(currentUser) {
+                    // Create ProfileSetupViewModel with authViewModel for navigation updates
+                    let profileViewModel = ProfileSetupViewModel(
+                        userRepository: DIContainer.shared.userRepository,
+                        authRepository: DIContainer.shared.authRepository,
+                        currentUser: currentUser,
+                        authViewModel: authViewModel
+                    )
+                    ProfileSetupView(viewModel: profileViewModel, authViewModel: authViewModel)
+                } else {
+                    // Story 1.7 will implement ConversationsListView
+                    NavigationView {
+                        VStack(spacing: 20) {
+                            Text("Conversations List")
+                                .font(.largeTitle)
+                                .fontWeight(.bold)
+                            
+                            Text("Coming in Story 1.7")
+                                .font(.title3)
+                                .foregroundColor(.secondary)
+                            
+                            Text("Signed in as: \(currentUser.displayName)")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .padding(.top, 40)
+                        }
+                        .navigationBarTitleDisplayMode(.inline)
+                        .toolbar {
+                            ToolbarItem(placement: .navigationBarTrailing) {
+                                Button("Logout") {
+                                    Task {
+                                        await authViewModel.signOut()
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             } else {
                 AuthView(viewModel: authViewModel)
             }
         }
+    }
+    
+    // MARK: - Helper Methods
+    
+    /// Determines if user needs to complete profile setup
+    /// - Parameter user: The authenticated user
+    /// - Returns: True if profile setup is needed, false otherwise
+    ///
+    /// Note: Uses UserDefaults for MVP. Production should use a `hasCompletedProfileSetup: Bool`
+    /// flag in the User entity stored in Firestore.
+    private func needsProfileSetup(_ user: User) -> Bool {
+        // Check if user has completed profile setup (persisted in UserDefaults)
+        let hasCompleted = UserDefaults.standard.bool(forKey: "hasCompletedProfileSetup_\(user.id)")
+        return !hasCompleted
     }
 }

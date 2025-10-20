@@ -123,6 +123,34 @@ class AuthViewModel: ObservableObject {
         errorMessage = nil
     }
     
+    /// Signs out the current user
+    func signOut() async {
+        do {
+            try await authRepository.signOut()
+            currentUser = nil
+            email = ""
+            password = ""
+            errorMessage = nil
+        } catch {
+            errorMessage = "Failed to sign out. Please try again."
+        }
+    }
+    
+    /// Refreshes the current user from the repository
+    /// Useful after profile updates to ensure UI reflects latest data
+    func refreshCurrentUser() async {
+        guard let userId = currentUser?.id else { return }
+        
+        do {
+            // Fetch latest user data from Firestore
+            let updatedUser = try await authRepository.getCurrentUser()
+            currentUser = updatedUser
+        } catch {
+            // Silently fail - user can retry or sign out
+            print("Failed to refresh user: \(error)")
+        }
+    }
+    
     // MARK: - Form Validation
     
     /// Validates form inputs before submission

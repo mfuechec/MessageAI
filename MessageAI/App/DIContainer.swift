@@ -43,26 +43,26 @@ class DIContainer {
     
     /// Message repository (Story 1.4)
     /// Handles message CRUD operations and real-time synchronization
-    private lazy var messageRepository: MessageRepositoryProtocol = {
+    internal lazy var messageRepository: MessageRepositoryProtocol = {
         FirebaseMessageRepository(firebaseService: firebaseService)
     }()
     
     /// User repository (Story 1.4)
     /// Manages user profile data and presence status
-    private lazy var userRepository: UserRepositoryProtocol = {
+    internal lazy var userRepository: UserRepositoryProtocol = {
         FirebaseUserRepository(firebaseService: firebaseService)
     }()
     
     /// Conversation repository (Story 1.4)
     /// Handles conversation metadata and participant management
-    private lazy var conversationRepository: ConversationRepositoryProtocol = {
+    internal lazy var conversationRepository: ConversationRepositoryProtocol = {
         FirebaseConversationRepository(firebaseService: firebaseService)
     }()
     
     /// Authentication repository (Story 1.4)
     /// Manages user authentication and session state
     /// Note: Depends on userRepository for profile data after auth
-    private lazy var authRepository: AuthRepositoryProtocol = {
+    internal lazy var authRepository: AuthRepositoryProtocol = {
         FirebaseAuthRepository(
             firebaseService: firebaseService,
             userRepository: userRepository
@@ -85,6 +85,17 @@ class DIContainer {
     /// - Returns: Configured AuthViewModel instance
     func makeAuthViewModel() -> AuthViewModel {
         AuthViewModel(authRepository: authRepository)
+    }
+    
+    /// Creates ProfileSetupViewModel for profile configuration after sign-up
+    /// - Parameter currentUser: The user who needs profile setup
+    /// - Returns: Configured ProfileSetupViewModel instance
+    func makeProfileSetupViewModel(currentUser: User) -> ProfileSetupViewModel {
+        ProfileSetupViewModel(
+            userRepository: userRepository,
+            authRepository: authRepository,
+            currentUser: currentUser
+        )
     }
     
     /// Creates ChatViewModel for a specific conversation
