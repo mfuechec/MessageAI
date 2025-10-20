@@ -26,6 +26,11 @@ Package.resolved
 # Firebase (will be added in Story 1.2)
 GoogleService-Info.plist
 
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+
 # macOS
 .DS_Store
 .AppleDouble
@@ -66,4 +71,11 @@ fastlane/test_output
 *.gcda
 *.gcno
 *.profdata
+
+# Cursor/Claude AI settings (user-specific)
+.cursor/
+.claude/
+
+# AI Debug Logs
+.ai/
 

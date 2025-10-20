@@ -1,0 +1,47 @@
+# Cursor AI Ignore File
+# Excludes files/folders from Cursor indexing and AI context
+
+# Xcode Build Artifacts
+build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+
+# Swift Package Manager
+.build/
+Packages/
+.swiftpm/
+
+# Dependencies (will be added in future stories)
+Pods/
+Carthage/
+
+# Git metadata
+.git/
+
+# Large documentation files (reference only, not needed in AI context)
+docs/prd.md
+docs/architecture.md
+MessageAI.md
+
+# AI Tools (avoid recursion)
+.cursor/
+.claude/
+.ai/
+
+# macOS system files
+.DS_Store
+._*
+
+# Test results and coverage
+*.profdata
+fastlane/test_output/
+
+# Firebase config (contains no code)
+GoogleService-Info.plist
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+
