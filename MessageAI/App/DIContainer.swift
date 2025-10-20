@@ -113,17 +113,12 @@ class DIContainer {
 // These placeholder classes allow DIContainer to compile
 // They will be replaced with real implementations in future stories
 
-/// Placeholder AuthViewModel (will be implemented in Story 1.5+)
-class AuthViewModel {
-    init(authRepository: AuthRepositoryProtocol) {}
-}
-
-/// Placeholder ChatViewModel (will be implemented in Story 1.5+)
+/// Placeholder ChatViewModel (will be implemented in Story 1.7+)
 class ChatViewModel {
     init(conversationId: String, messageRepository: MessageRepositoryProtocol, userRepository: UserRepositoryProtocol) {}
 }
 
-/// Placeholder ConversationsListViewModel (will be implemented in Story 1.5+)
+/// Placeholder ConversationsListViewModel (will be implemented in Story 1.7+)
 class ConversationsListViewModel {
     init(conversationRepository: ConversationRepositoryProtocol, userRepository: UserRepositoryProtocol) {}
 }
