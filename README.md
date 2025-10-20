@@ -186,6 +186,57 @@ Both projects have the following services configured:
 - ✅ **Cloud Messaging** - Push notifications (APNs setup in Epic 2+)
 - ✅ **Analytics** - Usage tracking (production only)
 
+### Firestore Collection Structure
+
+The app uses three main Firestore collections for data storage:
+
+```
+firestore/
+├── users/
+│   └── {userId}/              # User profile documents
+│       ├── id: String         # Firebase Auth UID
+│       ├── email: String      # User email address
+│       ├── displayName: String
+│       ├── isOnline: Bool
+│       ├── lastSeen: Timestamp
+│       └── createdAt: Timestamp
+│
+├── conversations/
+│   └── {conversationId}/      # Conversation metadata documents
+│       ├── id: String         # UUID
+│       ├── participantIds: [String]
+│       ├── unreadCounts: {userId: Int}
+│       ├── lastMessageText: String?
+│       ├── lastMessageTimestamp: Timestamp?
+│       ├── isGroup: Bool
+│       └── createdAt: Timestamp
+│
+└── messages/
+    └── {messageId}/           # Message documents
+        ├── id: String         # UUID
+        ├── conversationId: String (indexed)
+        ├── senderId: String
+        ├── text: String
+        ├── timestamp: Timestamp (indexed)
+        ├── status: String     # "sending", "sent", "delivered", "read"
+        ├── isEdited: Bool
+        ├── isDeleted: Bool
+        ├── editHistory: [MessageEdit]?
+        └── attachments: [MessageAttachment]?
+```
+
+**Key Indexes** (configured in `firestore.indexes.json`):
+- `messages`: Composite index on `conversationId` + `timestamp` (ascending)
+- `conversations`: Array-contains index on `participantIds`
+
+**Data Access Patterns**:
+- Messages queried by `conversationId` with timestamp ordering
+- Conversations queried by participant using `array-contains`
+- Real-time listeners on collections for live updates
+- Offline persistence enabled for all collections
+
+For complete schema details, see `docs/architecture/database-schema.md`
+
 ### Troubleshooting
 
 **Build error: "Failed to load Firebase configuration"**
