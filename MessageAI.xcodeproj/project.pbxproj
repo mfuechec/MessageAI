@@ -14,14 +14,30 @@
 		C12635B12EA6CC2E005442C5 /* FirebaseStorage in Frameworks */ = {isa = PBXBuildFile; productRef = C12635B02EA6CC2E005442C5 /* FirebaseStorage */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		C12635D72EA6D8A3005442C5 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = C12635672EA6BF89005442C5 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = C126356E2EA6BF89005442C5;
+			remoteInfo = MessageAI;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
 		C126356F2EA6BF89005442C5 /* MessageAI.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MessageAI.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		C12635D32EA6D8A3005442C5 /* MessageAITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MessageAITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		C12635712EA6BF89005442C5 /* MessageAI */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = MessageAI;
+			sourceTree = "<group>";
+		};
+		C12635D42EA6D8A3005442C5 /* MessageAITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = MessageAITests;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -39,6 +55,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		C12635D02EA6D8A3005442C5 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -46,6 +69,7 @@
 			isa = PBXGroup;
 			children = (
 				C12635712EA6BF89005442C5 /* MessageAI */,
+				C12635D42EA6D8A3005442C5 /* MessageAITests */,
 				C12635702EA6BF89005442C5 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -54,6 +78,7 @@
 			isa = PBXGroup;
 			children = (
 				C126356F2EA6BF89005442C5 /* MessageAI.app */,
+				C12635D32EA6D8A3005442C5 /* MessageAITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -88,6 +113,29 @@
 			productReference = C126356F2EA6BF89005442C5 /* MessageAI.app */;
 			productType = "com.apple.product-type.application";
 		};
+		C12635D22EA6D8A3005442C5 /* MessageAITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C12635D92EA6D8A3005442C5 /* Build configuration list for PBXNativeTarget "MessageAITests" */;
+			buildPhases = (
+				C12635CF2EA6D8A3005442C5 /* Sources */,
+				C12635D02EA6D8A3005442C5 /* Frameworks */,
+				C12635D12EA6D8A3005442C5 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				C12635D82EA6D8A3005442C5 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				C12635D42EA6D8A3005442C5 /* MessageAITests */,
+			);
+			name = MessageAITests;
+			packageProductDependencies = (
+			);
+			productName = MessageAITests;
+			productReference = C12635D32EA6D8A3005442C5 /* MessageAITests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -100,6 +148,10 @@
 				TargetAttributes = {
 					C126356E2EA6BF89005442C5 = {
 						CreatedOnToolsVersion = 26.0.1;
+					};
+					C12635D22EA6D8A3005442C5 = {
+						CreatedOnToolsVersion = 26.0.1;
+						TestTargetID = C126356E2EA6BF89005442C5;
 					};
 				};
 			};
@@ -121,12 +173,20 @@
 			projectRoot = "";
 			targets = (
 				C126356E2EA6BF89005442C5 /* MessageAI */,
+				C12635D22EA6D8A3005442C5 /* MessageAITests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		C126356D2EA6BF89005442C5 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C12635D12EA6D8A3005442C5 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -143,7 +203,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		C12635CF2EA6D8A3005442C5 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		C12635D82EA6D8A3005442C5 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = C126356E2EA6BF89005442C5 /* MessageAI */;
+			targetProxy = C12635D72EA6D8A3005442C5 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		C12635782EA6BF8A005442C5 /* Debug */ = {
@@ -331,6 +406,48 @@
 			};
 			name = Release;
 		};
+		C12635DA2EA6D8A3005442C5 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = F7JU7848DS;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.mfuechec.MessageAITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/MessageAI.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/MessageAI";
+			};
+			name = Debug;
+		};
+		C12635DB2EA6D8A3005442C5 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = F7JU7848DS;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.mfuechec.MessageAITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/MessageAI.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/MessageAI";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -348,6 +465,15 @@
 			buildConfigurations = (
 				C126357B2EA6BF8A005442C5 /* Debug */,
 				C126357C2EA6BF8A005442C5 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		C12635D92EA6D8A3005442C5 /* Build configuration list for PBXNativeTarget "MessageAITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C12635DA2EA6D8A3005442C5 /* Debug */,
+				C12635DB2EA6D8A3005442C5 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
