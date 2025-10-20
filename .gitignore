@@ -23,8 +23,11 @@ Package.pins
 Package.resolved
 *.swiftpm
 
-# Firebase (will be added in Story 1.2)
+# Firebase configuration files (Story 1.2)
 GoogleService-Info.plist
+GoogleService-Info-Dev.plist
+GoogleService-Info-Prod.plist
+**/GoogleService-Info*.plist
 
 # Environment variables and secrets
 .env

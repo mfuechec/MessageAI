@@ -33,11 +33,19 @@ class DIContainer {
     /// Note: For testing, you can create separate instances with mock dependencies
     static let shared = DIContainer()
     
+    // MARK: - Services
+    
+    /// Firebase service instance (Story 1.2)
+    /// Provides access to Firestore, Auth, and Storage
+    private let firebaseService: FirebaseService
+    
     // MARK: - Initialization
     
     private init() {
-        // Future stories will initialize core services here:
-        // - Firebase configuration (Story 1.2)
+        // Initialize Firebase service (Story 1.2)
+        self.firebaseService = FirebaseService.shared
+        
+        // Future stories will initialize:
         // - Repository instances (Story 1.4)
         // - Network services (Story 1.4)
     }

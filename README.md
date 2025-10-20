@@ -99,21 +99,158 @@ Presentation → Domain ← Data
    open MessageAI.xcodeproj
    ```
 
-3. **Firebase Configuration** (Story 1.2)
-   - Firebase setup will be added in Story 1.2
-   - `GoogleService-Info.plist` configuration coming soon
+3. **Firebase Configuration** ⚠️ **Required for app to run**
+   
+   MessageAI uses Firebase for backend services. You'll need to obtain Firebase configuration files:
+   
+   - **Development Project**: `messageai-dev-1f2ec`
+   - **Production Project**: `messageai-prod-4d3a8`
+   - Firebase Console: https://console.firebase.google.com/
+   
+   **See detailed Firebase setup instructions below** ↓
 
-4. **Install Dependencies** (Story 1.2+)
-   - Swift Package Manager dependencies will be added via Xcode
-   - File → Add Package Dependencies
-   - Dependencies: Firebase SDK, MessageKit, Kingfisher
+4. **Install Dependencies**
+   - Dependencies are managed via Swift Package Manager
+   - Already configured in Xcode project (Firebase SDK 12.4.0+)
+   - Xcode will automatically resolve packages on first build
 
 5. **Build and Run**
    - Select MessageAI scheme
-   - Choose simulator or physical device
+   - Choose simulator or physical device (iOS 15.0+)
    - Press `Cmd+R` to build and run
+   - Check console logs for "✅ Firebase configured for Development environment"
+
+## Firebase Setup (Required)
+
+### Prerequisites
+
+- Firebase CLI: `npm install -g firebase-tools`
+- Node.js 18+ (for Firebase CLI)
+- Access to Firebase Console: https://console.firebase.google.com/
+
+### Obtaining GoogleService-Info.plist Files
+
+The app requires environment-specific Firebase configuration files. These files are **NOT** included in the repository for security reasons.
+
+#### For Development Environment:
+
+1. Go to [Firebase Console](https://console.firebase.google.com/)
+2. Select project: **MessageAI-Dev** (`messageai-dev-1f2ec`)
+3. Click ⚙️ **Project Settings** → **General** tab
+4. Scroll to **Your apps** section
+5. If iOS app not registered:
+   - Click **Add app** → **iOS**
+   - Bundle ID: `com.mfuechec.MessageAI.dev`
+   - App nickname: `MessageAI Dev`
+6. Download `GoogleService-Info.plist`
+7. Rename to `GoogleService-Info-Dev.plist`
+8. Add to `MessageAI/Resources/` folder in Xcode
+9. **Important**: Uncheck target membership (loaded programmatically)
+
+#### For Production Environment:
+
+1. Select project: **MessageAI-Prod** (`messageai-prod-4d3a8`)
+2. Repeat steps above
+3. Bundle ID: `com.mfuechec.MessageAI` (no suffix)
+4. Rename to `GoogleService-Info-Prod.plist`
+5. Add to same `MessageAI/Resources/` folder
+
+### Environment Switching
+
+The app automatically selects the correct Firebase environment based on build configuration:
+
+- **DEBUG builds** (Cmd+R in Xcode) → Development environment
+- **RELEASE builds** (Archive/TestFlight) → Production environment
+
+No manual switching required!
+
+### Deploying Firestore Security Rules
+
+Security rules are already deployed to both projects. To update them:
+
+```bash
+# Deploy to development
+firebase deploy --only firestore:rules --project messageai-dev-1f2ec
+
+# Deploy to production
+firebase deploy --only firestore:rules --project messageai-prod-4d3a8
+```
+
+### Firebase Services Enabled
+
+Both projects have the following services configured:
+
+- ✅ **Cloud Firestore** - Real-time database with offline persistence
+- ✅ **Authentication** - Email/password provider enabled
+- ✅ **Cloud Storage** - File upload storage
+- ✅ **Cloud Messaging** - Push notifications (APNs setup in Epic 2+)
+- ✅ **Analytics** - Usage tracking (production only)
+
+### Troubleshooting
+
+**Build error: "Failed to load Firebase configuration"**
+- Ensure both `.plist` files are in `MessageAI/Resources/`
+- Verify files are named exactly: `GoogleService-Info-Dev.plist` and `GoogleService-Info-Prod.plist`
+- Check that files are added to Xcode project (should appear in Project Navigator)
+
+**App crashes on launch**
+- Check console logs for Firebase errors
+- Verify Firebase projects are active in Firebase Console
+- Ensure Firestore Database is created (not just enabled)
+
+**"Permission denied" errors**
+- Security rules are deployed and working
+- Users must be authenticated to access Firestore
+- Check that Auth service is properly configured
+
+**Firebase Console Links:**
+- [Development Project](https://console.firebase.google.com/project/messageai-dev-1f2ec/overview)
+- [Production Project](https://console.firebase.google.com/project/messageai-prod-4d3a8/overview)
+
+---
 
 ## Development Workflow
+
+### Building the Project
+
+**Using the Build Script** (Recommended):
+
+```bash
+# Build with default settings (Debug, iPhone 17 Pro)
+./scripts/build.sh
+
+# Build for Release
+./scripts/build.sh --config Release
+
+# Clean build
+./scripts/build.sh --action clean
+
+# Use specific simulator
+./scripts/build.sh --simulator "iPhone 15"
+
+# Show full xcodebuild output
+./scripts/build.sh --full-output
+
+# Show help
+./scripts/build.sh --help
+```
+
+**Using Xcode**:
+- Press `Cmd+B` to build
+- Press `Cmd+R` to build and run
+
+### Running Tests
+
+```bash
+# Run all tests (in Xcode)
+Cmd+U
+
+# Run specific test class
+Cmd+U with test file open
+
+# Run tests from terminal
+xcodebuild test -project MessageAI.xcodeproj -scheme MessageAI -destination 'platform=iOS Simulator,name=iPhone 17 Pro'
+```
 
 ### Adding Dependencies (Swift Package Manager)
 
@@ -121,16 +258,6 @@ Presentation → Domain ← Data
 2. Enter package URL
 3. Select version/branch
 4. Add to MessageAI target
-
-### Running Tests
-
-```bash
-# Run all tests
-Cmd+U in Xcode
-
-# Run specific test class
-Cmd+U with test file open
-```
 
 ### Code Standards
 
