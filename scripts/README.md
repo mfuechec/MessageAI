@@ -2,6 +2,164 @@
 
 Utility scripts for development and testing.
 
+## Table of Contents
+
+- [Test Scripts](#test-scripts) - Tiered testing with smart error detection
+- [Seed Test Data](#seed-test-data-script) - Populate Firebase with test data
+- [Cleanup Duplicates](#cleanup-duplicate-conversations) - Remove duplicate conversations
+- [Build Script](#build-script) - Simplified Xcode builds
+- [Firebase Emulator](#firebase-emulator-scripts) - Local testing with Firebase Emulator
+
+---
+
+## Test Scripts
+
+MessageAI uses a tiered testing strategy for efficient development. All test scripts now include automatic logging and smart error detection.
+
+### Features (New in Story 2.1)
+
+✅ **Automatic Log Persistence** - All test runs save to `.cursor/.agent-tools/test-logs/`  
+✅ **Smart Error Detection** - Automatically finds and displays compilation errors, missing symbols, failed tests  
+✅ **Verbose Mode** - See full xcodebuild output when needed  
+✅ **Quiet Mode** - Suppress error details for CI/automation  
+✅ **Color-Coded Output** - Errors in red, successes in green, info in blue  
+
+### test-story.sh - Story-Level Tests (5-20 seconds)
+
+Run during story development after each code change for instant feedback.
+
+**Usage:**
+```bash
+./scripts/test-story.sh <TestClassName> [--verbose|-v] [--quiet|-q]
+```
+
+**Examples:**
+```bash
+# Default mode (filtered output + saved log)
+./scripts/test-story.sh NewConversationViewModelTests
+
+# Verbose mode (see everything)
+./scripts/test-story.sh ChatViewModelTests --verbose
+
+# Quiet mode (pass/fail only)
+./scripts/test-story.sh UserTests -q
+```
+
+**Output:**
+```
+✅ Story tests passed!
+💡 Next: Review changes, then run epic tests
+
+Test Results:
+  ✓ 14 tests passed
+  ⏱ 2.1 seconds
+  💾 Log: .cursor/.agent-tools/test-logs/NewConversationViewModelTests-20251021-123456.log
+```
+
+**On Failure:**
+```
+❌ Story tests failed
+
+🔍 Error Details:
+─────────────────────────────────────────
+Missing symbols:
+  Cannot find 'mockUserRepository' in scope
+
+Failed tests:
+  Test Case 'testGetSenderName_OtherUser' failed (0.360 seconds)
+    XCTAssertEqual failed: ("Unknown") is not equal to ("Alice")
+─────────────────────────────────────────
+💾 Full log: .cursor/.agent-tools/test-logs/ChatViewModelTests-20251021-122821.log
+💡 Run with --verbose for complete output
+```
+
+### test-epic.sh - Epic-Level Tests (20-40 seconds)
+
+Run before marking story complete to catch integration issues within epic scope.
+
+**Usage:**
+```bash
+./scripts/test-epic.sh <epic-number> [--verbose|-v] [--quiet|-q]
+```
+
+**Examples:**
+```bash
+# Epic 1: Foundation & Core Messaging (7 test classes)
+./scripts/test-epic.sh 1
+
+# Epic 2: Complete MVP with Reliability (2 test classes, 39 tests)
+./scripts/test-epic.sh 2
+
+# With verbose output
+./scripts/test-epic.sh 2 --verbose
+```
+
+**Epic Test Coverage:**
+
+| Epic | Test Classes | Test Count | Features Covered |
+|------|--------------|------------|------------------|
+| 1 | 7 classes | ~100 tests | Auth, Profile, Conversations, Chat, Domain Models |
+| 2 | 2 classes | 39 tests | New Conversations, Group Chat, Multi-select |
+
+**Output:**
+```
+🎯 Running Epic 2 Tests
+💾 Log file: .cursor/.agent-tools/test-logs/epic-2-20251021-123611.log
+
+Epic 2: Complete MVP with Reliability
+Test Suite 'NewConversationViewModelTests' passed - 14 tests
+Test Suite 'ChatViewModelTests' passed - 25 tests
+
+✅ Epic 2 tests passed!
+💡 Next: Run full suite with ./scripts/quick-test.sh
+```
+
+### quick-test.sh - Full Test Suite (1-2 minutes)
+
+Run before committing. Tests all ~100 unit tests (integration tests skipped by default).
+
+**Usage:**
+```bash
+# Unit tests only (default, fast)
+./scripts/quick-test.sh
+
+# Include Firebase Emulator integration tests (requires emulator running)
+./scripts/quick-test.sh --with-integration
+```
+
+**See:** [docs/architecture/testing-strategy.md](../docs/architecture/testing-strategy.md) for complete testing documentation.
+
+### Test Logs
+
+All test runs automatically save complete logs:
+
+```
+.cursor/.agent-tools/test-logs/
+├── ChatViewModelTests-20251021-122821.log
+├── NewConversationViewModelTests-20251021-125432.log
+├── epic-2-20251021-123611.log
+└── ...
+```
+
+**Benefits:**
+- Review test output after the fact
+- Share logs with team members
+- Compare test runs over time
+- Debug CI failures
+
+**Note:** Logs are automatically `.gitignore`d (part of `.cursor/` directory).
+
+### When to Use Each Tier
+
+| Scenario | Script | Time | When |
+|----------|--------|------|------|
+| 🔨 Active development | `test-story.sh` | 5-20s | After each code change |
+| ✅ Story completion | `test-epic.sh` | 20-40s | Before marking story done |
+| 🚀 Before commit | `quick-test.sh` | 1-2m | Before git commit |
+| 🧪 Weekly/CI | `quick-test.sh --with-integration` | 2-5m | Weekly or pre-release |
+
+---
+
 ## Seed Test Data Script
 
 Creates test users, conversations, and messages in Firebase for manual testing.

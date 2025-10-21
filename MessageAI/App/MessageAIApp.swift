@@ -32,6 +32,7 @@ struct MessageAIApp: App {
                     let profileViewModel = ProfileSetupViewModel(
                         userRepository: DIContainer.shared.userRepository,
                         authRepository: DIContainer.shared.authRepository,
+                        storageRepository: DIContainer.shared.storageRepository,
                         currentUser: currentUser,
                         authViewModel: authViewModel
                     )

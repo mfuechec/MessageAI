@@ -316,11 +316,13 @@ final class ChatViewModelTests: XCTestCase {
         )
         
         // Give time for async loading
-        try await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
+        try await Task.sleep(nanoseconds: 200_000_000) // 0.2 seconds
         
         // Then
-        XCTAssertTrue(mockUserRepo.getUserCalled)
-        // User should be loaded (but may not be in users dict yet due to async nature)
+        // Story 2.1: Changed to use getUsers(ids:) instead of getUser(id:)
+        XCTAssertTrue(mockUserRepo.getUsersCalled)
+        // Users should be loaded
+        XCTAssertTrue(mockConversationRepo.getConversationCalled)
     }
     
     // MARK: - Error Handling Tests
@@ -345,6 +347,119 @@ final class ChatViewModelTests: XCTestCase {
         // Then
         // Should not crash - stub implementation
         XCTAssertTrue(true)
+    }
+    
+    // MARK: - Group Conversation Tests (Story 2.1)
+    
+    func testIsGroupConversation_TwoParticipants_ReturnsFalse() async throws {
+        // Given: One-on-one conversation - need to recreate SUT with new conversation
+        let oneOnOneConv = Conversation(
+            id: "conv-1",
+            participantIds: ["user1", "user2"],
+            lastMessage: nil,
+            lastMessageTimestamp: nil,
+            createdAt: Date(),
+            isGroup: false
+        )
+        mockConversationRepo.mockConversation = oneOnOneConv
+        mockUserRepo.mockUsers = [
+            User(id: "user1", email: "user1@test.com", displayName: "User 1"),
+            User(id: "user2", email: "user2@test.com", displayName: "User 2")
+        ]
+        
+        // When: Create new SUT with this conversation
+        sut = ChatViewModel(
+            conversationId: "conv-1",
+            currentUserId: "user1",
+            messageRepository: mockMessageRepo,
+            conversationRepository: mockConversationRepo,
+            userRepository: mockUserRepo
+        )
+        
+        // Wait for async init to complete
+        try await Task.sleep(nanoseconds: 200_000_000)
+        
+        // Then: Is not a group
+        XCTAssertFalse(sut.isGroupConversation)
+    }
+    
+    func testIsGroupConversation_ThreeParticipants_ReturnsTrue() async throws {
+        // Given: Group conversation - need to recreate SUT with new conversation
+        let groupConv = Conversation(
+            id: "conv-1",
+            participantIds: ["user1", "user2", "user3"],
+            lastMessage: nil,
+            lastMessageTimestamp: nil,
+            createdAt: Date(),
+            isGroup: true
+        )
+        mockConversationRepo.mockConversation = groupConv
+        mockUserRepo.mockUsers = [
+            User(id: "user1", email: "user1@test.com", displayName: "User 1"),
+            User(id: "user2", email: "user2@test.com", displayName: "User 2"),
+            User(id: "user3", email: "user3@test.com", displayName: "User 3")
+        ]
+        
+        // When: Create new SUT with this conversation
+        sut = ChatViewModel(
+            conversationId: "conv-1",
+            currentUserId: "user1",
+            messageRepository: mockMessageRepo,
+            conversationRepository: mockConversationRepo,
+            userRepository: mockUserRepo
+        )
+        
+        // Wait for async init to complete
+        try await Task.sleep(nanoseconds: 200_000_000)
+        
+        // Then: Is a group
+        XCTAssertTrue(sut.isGroupConversation)
+    }
+    
+    func testGetSenderName_CurrentUser_ReturnsYou() async throws {
+        // Given: Current user ID
+        let currentUserId = "user1" // Matches setUp
+        
+        // When: Get sender name for current user
+        let senderName = sut.getSenderName(for: currentUserId)
+        
+        // Then: Returns "You"
+        XCTAssertEqual(senderName, "You")
+    }
+    
+    func testGetSenderName_OtherUser_ReturnsDisplayName() async throws {
+        // Given: Group conversation with other user - recreate SUT
+        let otherUser = User(id: "other-user", email: "other@test.com", displayName: "Alice")
+        let currentUser = User(id: "user1", email: "user1@test.com", displayName: "Current")
+        mockUserRepo.mockUsers = [currentUser, otherUser]
+        
+        let groupConv = Conversation(
+            id: "conv-1",
+            participantIds: ["user1", "other-user"],
+            lastMessage: nil,
+            lastMessageTimestamp: nil,
+            createdAt: Date(),
+            isGroup: true
+        )
+        mockConversationRepo.mockConversation = groupConv
+        
+        // When: Create new SUT and wait for participants to load
+        sut = ChatViewModel(
+            conversationId: "conv-1",
+            currentUserId: "user1",
+            messageRepository: mockMessageRepo,
+            conversationRepository: mockConversationRepo,
+            userRepository: mockUserRepo
+        )
+        
+        // Wait for async participant loading
+        try await Task.sleep(nanoseconds: 300_000_000)
+        
+        // Get sender name for other user
+        let senderName = sut.getSenderName(for: "other-user")
+        
+        // Then: Returns display name
+        XCTAssertEqual(senderName, "Alice")
     }
     
     // MARK: - Helper Methods

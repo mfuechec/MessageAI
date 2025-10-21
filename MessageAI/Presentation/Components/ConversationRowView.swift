@@ -6,6 +6,7 @@ struct ConversationRowView: View {
     let displayName: String
     let unreadCount: Int
     let formattedTimestamp: String
+    let participants: [User]  // For group avatar display
     
     var body: some View {
         HStack(spacing: 12) {
@@ -45,7 +46,71 @@ struct ConversationRowView: View {
         .accessibilityLabel("\(displayName), \(conversation.lastMessage ?? "No messages"), \(formattedTimestamp), \(unreadCount) unread")
     }
     
+    @ViewBuilder
     private var profileImage: some View {
+        if conversation.isGroup {
+            // Group avatar: multi-participant display
+            GroupAvatarView(users: participants, size: 56)
+        } else {
+            // Single user avatar with profile image and online indicator
+            ZStack(alignment: .bottomTrailing) {
+                // Avatar (profile image or initials fallback)
+                if !participants.isEmpty, 
+                   let user = participants.first {
+                    if let photoURL = user.profileImageURL,
+                       !photoURL.isEmpty,
+                       let url = URL(string: photoURL) {
+                        // Load profile image from URL
+                        let _ = print("🖼️ Loading profile image for \(user.displayName): \(photoURL)")
+                        AsyncImage(url: url) { phase in
+                            Group {
+                                switch phase {
+                                case .success(let image):
+                                    let _ = print("✅ Profile image loaded for \(user.displayName)")
+                                    image
+                                        .resizable()
+                                        .scaledToFill()
+                                        .frame(width: 56, height: 56)
+                                        .clipShape(Circle())
+                                case .failure(let error):
+                                    let _ = print("❌ Profile image failed for \(user.displayName): \(error)")
+                                    initialsCircle
+                                case .empty:
+                                    let _ = print("⏳ Profile image loading for \(user.displayName)...")
+                                    initialsCircle
+                                @unknown default:
+                                    initialsCircle
+                                }
+                            }
+                        }
+                    } else {
+                        let _ = print("ℹ️ No profile image for \(user.displayName), showing initials")
+                        initialsCircle
+                    }
+                } else {
+                    initialsCircle
+                }
+                
+                // Presence indicator (3 states)
+                // Green = online, Yellow = recently offline (<15 min), Gray = offline
+                if !participants.isEmpty, let user = participants.first {
+                    let status = user.presenceStatus
+                    let rgb = status.color
+                    
+                    Circle()
+                        .fill(Color(red: rgb.red, green: rgb.green, blue: rgb.blue))
+                        .frame(width: 16, height: 16)
+                        .overlay(
+                            Circle()
+                                .stroke(Color(.systemBackground), lineWidth: 2)
+                        )
+                        .offset(x: -4, y: -4)
+                }
+            }
+        }
+    }
+    
+    private var initialsCircle: some View {
         Circle()
             .fill(Color.accentColor.opacity(0.2))
             .frame(width: 56, height: 56)
@@ -72,6 +137,9 @@ struct ConversationRowView: View {
 
 struct ConversationRowView_Previews: PreviewProvider {
     static var previews: some View {
+        let user1 = User(id: "user-1", email: "john@test.com", displayName: "John", isOnline: true, createdAt: Date())
+        let user2 = User(id: "user-2", email: "jane@test.com", displayName: "Jane", isOnline: true, createdAt: Date())
+        
         let conversation = Conversation(
             id: "conv-1",
             participantIds: ["user-1", "user-2"],
@@ -85,7 +153,8 @@ struct ConversationRowView_Previews: PreviewProvider {
             conversation: conversation,
             displayName: "John Doe",
             unreadCount: 3,
-            formattedTimestamp: "1h ago"
+            formattedTimestamp: "1h ago",
+            participants: [user1, user2]
         )
         .previewLayout(.sizeThatFits)
         .padding()

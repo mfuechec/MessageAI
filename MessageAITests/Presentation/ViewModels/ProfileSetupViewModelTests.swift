@@ -15,6 +15,7 @@ final class ProfileSetupViewModelTests: XCTestCase {
     
     var mockUserRepo: MockUserRepository!
     var mockAuthRepo: MockAuthRepository!
+    var mockStorageRepo: MockStorageRepository!
     var testUser: User!
     var sut: ProfileSetupViewModel!
     
@@ -25,6 +26,7 @@ final class ProfileSetupViewModelTests: XCTestCase {
         
         mockUserRepo = MockUserRepository()
         mockAuthRepo = MockAuthRepository()
+        mockStorageRepo = MockStorageRepository()
         
         // Create a consistent test timestamp
         let timestamp = Date()
@@ -41,6 +43,7 @@ final class ProfileSetupViewModelTests: XCTestCase {
         sut = ProfileSetupViewModel(
             userRepository: mockUserRepo,
             authRepository: mockAuthRepo,
+            storageRepository: mockStorageRepo,
             currentUser: testUser
         )
     }
@@ -83,6 +86,7 @@ final class ProfileSetupViewModelTests: XCTestCase {
         let viewModel = ProfileSetupViewModel(
             userRepository: mockUserRepo,
             authRepository: mockAuthRepo,
+            storageRepository: mockStorageRepo,
             currentUser: userWithInvalidEmail
         )
         

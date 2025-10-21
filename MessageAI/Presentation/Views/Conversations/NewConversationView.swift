@@ -14,6 +14,9 @@ struct NewConversationView: View {
     @SwiftUI.Environment(\.presentationMode) private var presentationMode
     let onConversationSelected: (Conversation) -> Void
     
+    // Multi-select state (always enabled)
+    @State private var selectedUsers: Set<User> = []
+    
     var body: some View {
         NavigationView {
             VStack(spacing: 0) {
@@ -60,17 +63,57 @@ struct NewConversationView: View {
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
-                    // User list
-                    List(viewModel.filteredUsers) { user in
-                        UserRowView(user: user)
-                            .onTapGesture {
-                                Task {
-                                    await viewModel.selectUser(user)
-                                }
+                    // User list with multi-select
+                    VStack(spacing: 0) {
+                        List(viewModel.filteredUsers) { user in
+                            HStack {
+                                Image(systemName: selectedUsers.contains(user) ? "checkmark.circle.fill" : "circle")
+                                    .foregroundColor(selectedUsers.contains(user) ? .accentColor : .gray)
+                                
+                                UserRowView(user: user)
                             }
-                            .accessibilityHint("Tap to start conversation")
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                toggleUserSelection(user)
+                            }
+                            .accessibilityHint(selectedUsers.contains(user) ? "Selected. Tap to deselect" : "Not selected. Tap to select")
+                        }
+                        .listStyle(.plain)
+                        
+                        // Create Conversation button (visible when at least 1 user selected)
+                        if selectedUsers.count >= 1 {
+                            VStack(spacing: 8) {
+                                Text("\(selectedUsers.count) user\(selectedUsers.count == 1 ? "" : "s") selected")
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                                    .accessibilityLabel("\(selectedUsers.count) users selected")
+                                
+                                Button(action: {
+                                    Task {
+                                        await createConversation()
+                                    }
+                                }) {
+                                    Text("Create Conversation")
+                                        .font(.headline)
+                                        .frame(maxWidth: .infinity)
+                                        .padding()
+                                        .background(Color.accentColor)
+                                        .foregroundColor(.white)
+                                        .cornerRadius(10)
+                                }
+                                .disabled(viewModel.isLoading)
+                                .accessibilityLabel("Create conversation")
+                                .padding(.horizontal)
+                                .padding(.bottom)
+                            }
+                            .background(Color(.systemBackground))
+                        } else {
+                            Text("Select 1 or more users to create a conversation")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                                .padding()
+                        }
                     }
-                    .listStyle(.plain)
                 }
             }
             .navigationTitle("New Message")
@@ -95,6 +138,36 @@ struct NewConversationView: View {
                     print("⚠️ Conversation is nil, not calling callback")
                 }
             }
+        }
+    }
+    
+    // MARK: - Helper Methods
+    
+    /// Toggle selection of a user
+    private func toggleUserSelection(_ user: User) {
+        if selectedUsers.contains(user) {
+            selectedUsers.remove(user)
+            print("🔘 Deselected user: \(user.displayName) (Total: \(selectedUsers.count))")
+        } else {
+            selectedUsers.insert(user)
+            print("✅ Selected user: \(user.displayName) (Total: \(selectedUsers.count))")
+        }
+    }
+    
+    /// Create a conversation with selected users
+    private func createConversation() async {
+        guard selectedUsers.count >= 1 else {
+            viewModel.errorMessage = "Please select at least one user."
+            return
+        }
+        
+        let selectedUsersList = Array(selectedUsers)
+        
+        // Use single-user method for 1 user, multi-user method for 2+ users
+        if selectedUsersList.count == 1 {
+            await viewModel.selectUser(selectedUsersList[0])
+        } else {
+            await viewModel.selectMultipleUsers(selectedUsersList)
         }
     }
 }

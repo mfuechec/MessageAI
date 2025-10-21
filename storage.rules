@@ -1,0 +1,24 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Profile images: Anyone can read, only owner can write
+    // Path: users/{userId}/profile.jpg
+    match /users/{userId}/profile.jpg {
+      allow read: if true;  // Public profile images
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Message attachments (for future stories 2.7/2.8)
+    // Path: messages/{conversationId}/{fileName}
+    match /messages/{conversationId}/{fileName} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+    }
+    
+    // Deny everything else by default
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
+

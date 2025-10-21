@@ -8,6 +8,7 @@ class ConversationsListViewModel: ObservableObject {
     
     @Published var conversations: [Conversation] = []
     @Published var users: [String: User] = [:] // userId -> User mapping for display names
+    @Published var participantsByConversation: [String: [User]] = [:] // conversationId -> [User] for group avatars
     @Published var isLoading: Bool = false
     @Published var errorMessage: String?
     @Published var isOffline: Bool = false
@@ -75,6 +76,23 @@ class ConversationsListViewModel: ObservableObject {
                         print("⚠️ Failed to load user \(userId): \(error.localizedDescription)")
                     }
                 }
+            }
+            
+            // Load participant arrays for each conversation (for group avatars)
+            await loadParticipantsForConversations(conversations)
+        }
+    }
+    
+    /// Load full participant User arrays for group avatar display
+    private func loadParticipantsForConversations(_ conversations: [Conversation]) async {
+        for conversation in conversations {
+            do {
+                let participants = try await userRepository.getUsers(ids: conversation.participantIds)
+                await MainActor.run {
+                    participantsByConversation[conversation.id] = participants
+                }
+            } catch {
+                print("❌ Failed to load participants for conversation \(conversation.id): \(error.localizedDescription)")
             }
         }
     }

@@ -16,6 +16,7 @@ class MockUserRepository: UserRepositoryProtocol {
     // MARK: - Tracking Properties
     
     var getUserCalled = false
+    var getUsersCalled = false
     var getAllUsersCalled = false
     var updateUserCalled = false
     var observeUserPresenceCalled = false
@@ -31,6 +32,7 @@ class MockUserRepository: UserRepositoryProtocol {
     // MARK: - Captured Parameters
     
     var capturedUserId: String?
+    var capturedUserIds: [String]?
     var capturedUser: User?
     var capturedIsOnline: Bool?
     
@@ -49,6 +51,18 @@ class MockUserRepository: UserRepositoryProtocol {
         }
         
         return user
+    }
+    
+    func getUsers(ids: [String]) async throws -> [User] {
+        getUsersCalled = true
+        capturedUserIds = ids
+        
+        if shouldFail {
+            throw mockError
+        }
+        
+        // Return users from mockUsers that match the requested IDs
+        return mockUsers.filter { ids.contains($0.id) }
     }
     
     func getAllUsers() async throws -> [User] {
@@ -95,6 +109,7 @@ class MockUserRepository: UserRepositoryProtocol {
     /// Resets all tracking flags and captured parameters
     func reset() {
         getUserCalled = false
+        getUsersCalled = false
         getAllUsersCalled = false
         updateUserCalled = false
         observeUserPresenceCalled = false
@@ -103,6 +118,7 @@ class MockUserRepository: UserRepositoryProtocol {
         mockUser = nil
         mockUsers = []
         capturedUserId = nil
+        capturedUserIds = nil
         capturedUser = nil
         capturedIsOnline = nil
     }

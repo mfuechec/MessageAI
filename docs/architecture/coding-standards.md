@@ -75,6 +75,61 @@ Critical rules for AI-assisted development. These standards are enforced through
     - ❌ `// Set message text to the text parameter`
     - **Why:** Code should be self-documenting; comments explain intent
 
+## Data Flow & Caching Standards
+
+**Critical Rule: Pass Cached Data Between Views**
+
+1. **Don't Refetch Data That Parent Views Already Have**
+   - ✅ ConversationsListView passes `conversation` + `participants` to ChatView
+   - ❌ ChatView refetches conversation and participants it already has
+   - **Why:** Eliminates duplicate Firebase queries (40% fewer reads), faster UX, lower costs
+
+2. **Pass Initial Data Through Initializers**
+   - ✅ `init(viewModel: ChatViewModel, initialConversation: Conversation?, initialParticipants: [User]?)`
+   - ✅ ViewModel checks for initial data: `if let conv = initialConversation { use immediately }`
+   - ❌ Always fetch asynchronously, even when data is available
+   - **Why:** Instant UI rendering, no loading overlays for cached data
+
+3. **Loading States Should Only Block When Necessary**
+   - ✅ Show loading overlay only when `initialData == nil` (creating new conversation)
+   - ✅ Show title immediately from cached data while messages load in background
+   - ❌ Show loading overlay that blocks everything, including cached data
+   - **Why:** Perceived performance matters more than actual load time
+
+**Example Pattern (Story 2.1):**
+
+```swift
+// Parent View (ConversationsListView)
+.sheet(item: $selectedConversation) { conversation in
+    let participants = viewModel.participantsByConversation[conversation.id] ?? []
+    ChatView(
+        viewModel: DIContainer.shared.makeChatViewModel(
+            conversationId: conversation.id,
+            currentUserId: currentUserId,
+            initialConversation: conversation,     // ✅ Pass cached data
+            initialParticipants: participants       // ✅ Pass cached data
+        ),
+        initialConversation: conversation,
+        initialParticipants: participants
+    )
+}
+
+// Child ViewModel (ChatViewModel)
+init(..., initialConversation: Conversation? = nil, initialParticipants: [User]? = nil) {
+    if let conv = initialConversation, let parts = initialParticipants {
+        self.conversation = conv                   // ✅ Use immediately
+        self.participants = parts                  // ✅ No async fetch
+        self.participantsLoaded = true
+    }
+    observeMessages()                              // ✅ Only fetch what's missing
+}
+```
+
+**Impact:**
+- Before: 5 database queries when opening conversation
+- After: 3 database queries (eliminated 2 duplicates)
+- UX: Title appears instantly instead of after 200-400ms delay
+
 ## Firestore Coding Standards
 
 1. **Use Server Timestamps**

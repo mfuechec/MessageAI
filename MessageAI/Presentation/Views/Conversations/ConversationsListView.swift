@@ -86,19 +86,25 @@ struct ConversationsListView: View {
                     conversation: conversation,
                     displayName: viewModel.displayName(for: conversation),
                     unreadCount: viewModel.unreadCount(for: conversation),
-                    formattedTimestamp: viewModel.formattedTimestamp(for: conversation)
+                    formattedTimestamp: viewModel.formattedTimestamp(for: conversation),
+                    participants: viewModel.participantsByConversation[conversation.id] ?? []
                 )
             }
             .buttonStyle(PlainButtonStyle())
         }
         .listStyle(PlainListStyle())
         .sheet(item: $selectedConversation) { conversation in
+            let participants = viewModel.participantsByConversation[conversation.id] ?? []
             NavigationView {
                 ChatView(
                     viewModel: DIContainer.shared.makeChatViewModel(
                         conversationId: conversation.id,
-                        currentUserId: authViewModel.currentUser?.id ?? ""
-                    )
+                        currentUserId: authViewModel.currentUser?.id ?? "",
+                        initialConversation: conversation,
+                        initialParticipants: participants
+                    ),
+                    initialConversation: conversation,
+                    initialParticipants: participants
                 )
             }
         }

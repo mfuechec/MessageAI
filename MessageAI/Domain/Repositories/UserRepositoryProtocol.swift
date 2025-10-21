@@ -8,6 +8,11 @@ protocol UserRepositoryProtocol {
     /// - Returns: The user entity
     func getUser(id: String) async throws -> User
     
+    /// Get multiple users by their IDs
+    /// - Parameter ids: Array of user IDs to fetch
+    /// - Returns: Array of User entities (skips missing users)
+    func getUsers(ids: [String]) async throws -> [User]
+    
     /// Get all users in the system (for user selection view)
     /// [Source: docs/architecture/data-models.md#user-queries]
     /// - Returns: Array of all User entities

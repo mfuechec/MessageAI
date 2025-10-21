@@ -46,18 +46,20 @@ struct Conversation: Codable, Equatable, Identifiable {
     /// - Returns: Display name (group name or other participant's name)
     func displayName(for currentUserId: String, users: [User]) -> String {
         if isGroup {
-            return groupName ?? participantNames(users: users)
+            return groupName ?? participantNames(currentUserId: currentUserId, users: users)
         } else {
             return otherParticipantName(currentUserId: currentUserId, users: users)
         }
     }
     
-    private func participantNames(users: [User]) -> String {
-        users.map { $0.displayName }.joined(separator: ", ")
+    private func participantNames(currentUserId: String, users: [User]) -> String {
+        // Exclude current user from group display name
+        let otherUsers = users.filter { $0.id != currentUserId }
+        return otherUsers.map { $0.truncatedDisplayName }.joined(separator: ", ")
     }
     
     private func otherParticipantName(currentUserId: String, users: [User]) -> String {
-        users.first { $0.id != currentUserId }?.displayName ?? "Unknown"
+        users.first { $0.id != currentUserId }?.truncatedDisplayName ?? "Unknown"
     }
     
     init(

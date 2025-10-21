@@ -13,11 +13,20 @@ class ChatViewModel: ObservableObject {
     @Published var isOffline: Bool = false
     @Published var isSending: Bool = false
     @Published var users: [String: User] = [:]
+    @Published var conversation: Conversation?
+    @Published var participants: [User] = []
+    
+    // Track loading states separately
+    private var messagesLoaded: Bool = false
+    private var participantsLoaded: Bool = false
+    
+    // MARK: - Public Properties
+    
+    let currentUserId: String  // Exposed for ChatView title filtering
     
     // MARK: - Private Properties
     
     private let conversationId: String
-    private let currentUserId: String
     private let messageRepository: MessageRepositoryProtocol
     private let conversationRepository: ConversationRepositoryProtocol
     private let userRepository: UserRepositoryProtocol
@@ -32,7 +41,9 @@ class ChatViewModel: ObservableObject {
         messageRepository: MessageRepositoryProtocol,
         conversationRepository: ConversationRepositoryProtocol,
         userRepository: UserRepositoryProtocol,
-        networkMonitor: any NetworkMonitorProtocol = NetworkMonitor()
+        networkMonitor: any NetworkMonitorProtocol = NetworkMonitor(),
+        initialConversation: Conversation? = nil,
+        initialParticipants: [User]? = nil
     ) {
         self.conversationId = conversationId
         self.currentUserId = currentUserId
@@ -41,21 +52,35 @@ class ChatViewModel: ObservableObject {
         self.userRepository = userRepository
         self.networkMonitor = networkMonitor
         
+        // If we have initial data, use it immediately (no loading needed for participants)
+        if let conv = initialConversation, let parts = initialParticipants {
+            self.conversation = conv
+            self.participants = parts
+            for user in parts {
+                self.users[user.id] = user
+            }
+            self.participantsLoaded = true
+            print("✅ ChatViewModel initialized with cached data (no fetch needed)")
+        } else {
+            // No initial data, will need to load participants
+            self.isLoading = true
+            loadParticipantUsers()
+        }
+        
+        // Always observe messages (async)
         observeMessages()
-        loadParticipantUsers()
         setupNetworkMonitoring()
     }
     
     // MARK: - Private Methods
     
     private func observeMessages() {
-        isLoading = true
-        
         messageRepository.observeMessages(conversationId: conversationId)
             .receive(on: DispatchQueue.main)
             .sink { [weak self] messages in
                 self?.messages = messages.sorted { $0.timestamp < $1.timestamp }
-                self?.isLoading = false
+                self?.messagesLoaded = true
+                self?.updateLoadingState()
             }
             .store(in: &cancellables)
     }
@@ -64,21 +89,34 @@ class ChatViewModel: ObservableObject {
         Task {
             do {
                 // Get conversation to find participant IDs
-                let conversation = try await conversationRepository.getConversation(id: conversationId)
+                let loadedConversation = try await conversationRepository.getConversation(id: conversationId)
+                conversation = loadedConversation
                 
-                // Load all participant users
-                for participantId in conversation.participantIds where participantId != currentUserId {
-                    do {
-                        let user = try await userRepository.getUser(id: participantId)
-                        users[participantId] = user
-                    } catch {
-                        print("Failed to load user \(participantId): \(error)")
-                    }
+                // Load all participant users (including current user for group display)
+                let loadedUsers = try await userRepository.getUsers(ids: loadedConversation.participantIds)
+                participants = loadedUsers
+                
+                // Also populate users dictionary for quick lookup
+                for user in loadedUsers {
+                    users[user.id] = user
                 }
+                
+                participantsLoaded = true
+                updateLoadingState()
+                
+                print("✅ Loaded \(loadedUsers.count) participants for conversation \(conversationId)")
             } catch {
-                print("Failed to load conversation participants: \(error)")
+                print("❌ Failed to load conversation participants: \(error)")
+                participantsLoaded = true // Mark as "loaded" even on error to unblock UI
+                updateLoadingState()
             }
         }
+    }
+    
+    /// Updates isLoading based on both loading states
+    private func updateLoadingState() {
+        // Only set loading to false when BOTH messages and participants are loaded
+        isLoading = !(messagesLoaded && participantsLoaded)
     }
     
     private func setupNetworkMonitoring() {
@@ -187,6 +225,32 @@ class ChatViewModel: ObservableObject {
     func loadMoreMessages() async {
         // Pagination implementation deferred to Story 2.x (Performance Optimization)
         // For MVP, all messages are loaded via the real-time listener
+    }
+    
+    // MARK: - Group Chat Helpers
+    
+    /// Computed property indicating if this is a group conversation
+    var isGroupConversation: Bool {
+        return conversation?.isGroup ?? false
+    }
+    
+    /// Returns the sender name for a message (used in group chats)
+    /// - Parameter senderId: The ID of the message sender
+    /// - Returns: "You" if current user, otherwise the user's display name
+    func getSenderName(for senderId: String) -> String {
+        if senderId == currentUserId {
+            return "You"
+        }
+        return users[senderId]?.displayName ?? "Unknown User"
+    }
+    
+    /// Returns the other participant's name (for one-on-one chats)
+    var otherParticipantName: String? {
+        guard let conversation = conversation, !conversation.isGroup else {
+            return nil
+        }
+        let otherParticipantId = conversation.participantIds.first { $0 != currentUserId }
+        return otherParticipantId.flatMap { users[$0]?.displayName }
     }
     
     // MARK: - Display Helper Methods

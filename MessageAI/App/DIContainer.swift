@@ -73,6 +73,12 @@ class DIContainer {
         )
     }()
     
+    /// Storage repository (Story 2.1)
+    /// Handles file uploads to Firebase Storage (profile images, attachments)
+    internal lazy var storageRepository: StorageRepositoryProtocol = {
+        FirebaseStorageRepository()
+    }()
+    
     // MARK: - Initialization
     
     private init() {
@@ -98,6 +104,7 @@ class DIContainer {
         ProfileSetupViewModel(
             userRepository: userRepository,
             authRepository: authRepository,
+            storageRepository: storageRepository,
             currentUser: currentUser
         )
     }
@@ -107,14 +114,21 @@ class DIContainer {
     ///   - conversationId: The conversation to display
     ///   - currentUserId: The ID of the current user
     /// - Returns: Configured ChatViewModel instance
-    func makeChatViewModel(conversationId: String, currentUserId: String) -> ChatViewModel {
+    func makeChatViewModel(
+        conversationId: String,
+        currentUserId: String,
+        initialConversation: Conversation? = nil,
+        initialParticipants: [User]? = nil
+    ) -> ChatViewModel {
         ChatViewModel(
             conversationId: conversationId,
             currentUserId: currentUserId,
             messageRepository: messageRepository,
             conversationRepository: conversationRepository,
             userRepository: userRepository,
-            networkMonitor: networkMonitor
+            networkMonitor: networkMonitor,
+            initialConversation: initialConversation,
+            initialParticipants: initialParticipants
         )
     }
     

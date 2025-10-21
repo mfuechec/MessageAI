@@ -1,7 +1,25 @@
 import Foundation
 
+/// User presence status for visual indicators
+enum PresenceStatus {
+    case online       // Green: Currently online
+    case recentlyOffline  // Yellow: Offline within last 15 minutes
+    case offline      // Gray: Offline more than 15 minutes
+    
+    var color: (red: Double, green: Double, blue: Double) {
+        switch self {
+        case .online:
+            return (0.0, 0.8, 0.0) // Green
+        case .recentlyOffline:
+            return (1.0, 0.75, 0.0) // Orange/Yellow
+        case .offline:
+            return (0.6, 0.6, 0.6) // Gray
+        }
+    }
+}
+
 /// Core domain entity representing an authenticated user
-struct User: Codable, Equatable, Identifiable {
+struct User: Codable, Equatable, Identifiable, Hashable {
     let id: String
     let email: String
     var displayName: String
@@ -15,6 +33,14 @@ struct User: Codable, Equatable, Identifiable {
     var preferredLanguage: String?
     let schemaVersion: Int
     
+    /// Computed property for truncated display name (max 15 chars)
+    var truncatedDisplayName: String {
+        if displayName.count > 15 {
+            return String(displayName.prefix(15)) + "..."
+        }
+        return displayName
+    }
+    
     /// Computed property for display initials (e.g., "John Doe" → "JD")
     var displayInitials: String {
         let words = displayName.split(separator: " ")
@@ -23,6 +49,23 @@ struct User: Codable, Equatable, Identifiable {
         } else {
             return String(displayName.prefix(2)).uppercased()
         }
+    }
+    
+    /// Computed property for presence status with 3 states:
+    /// - Online: isOnline = true
+    /// - Recently offline: offline but within last 15 minutes
+    /// - Offline: offline for more than 15 minutes
+    var presenceStatus: PresenceStatus {
+        if isOnline {
+            return .online
+        }
+        
+        let fifteenMinutesAgo = Date().addingTimeInterval(-15 * 60)
+        if lastSeen > fifteenMinutesAgo {
+            return .recentlyOffline
+        }
+        
+        return .offline
     }
     
     init(

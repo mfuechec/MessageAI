@@ -23,6 +23,7 @@ class ProfileSetupViewModel: ObservableObject {
     
     private let userRepository: UserRepositoryProtocol
     private let authRepository: AuthRepositoryProtocol
+    private let storageRepository: StorageRepositoryProtocol
     private let currentUser: User
     private let authViewModel: AuthViewModel?
     
@@ -31,11 +32,13 @@ class ProfileSetupViewModel: ObservableObject {
     init(
         userRepository: UserRepositoryProtocol,
         authRepository: AuthRepositoryProtocol,
+        storageRepository: StorageRepositoryProtocol,
         currentUser: User,
         authViewModel: AuthViewModel? = nil
     ) {
         self.userRepository = userRepository
         self.authRepository = authRepository
+        self.storageRepository = storageRepository
         self.currentUser = currentUser
         self.authViewModel = authViewModel
         
@@ -89,27 +92,38 @@ class ProfileSetupViewModel: ObservableObject {
     /// - Parameter image: The UIImage to upload
     func uploadProfileImage(_ image: UIImage) async {
         isLoading = true
+        errorMessage = nil
         
         do {
-            // Convert UIImage to Data
-            guard let imageData = image.jpegData(compressionQuality: 0.7) else {
-                errorMessage = "Failed to process image"
-                isLoading = false
-                return
-            }
-            
             // Upload to Firebase Storage
-            // Path: users/{userId}/profile.jpg
-            let storagePath = "users/\(currentUser.id)/profile.jpg"
+            let downloadURL = try await storageRepository.uploadProfileImage(image, userId: currentUser.id)
             
-            // Note: Firebase Storage integration will be needed from FirebaseService
-            // This is a placeholder for future Firebase Storage implementation
-            // After upload, set profileImageURL to the download URL
+            // Update local state
+            self.profileImageURL = downloadURL
             
-            // For MVP, we'll skip actual upload and just note the requirement
-            // profileImageURL = downloadURL
+            // Update Firestore user document with new profile image URL
+            do {
+                var updatedUser = currentUser
+                updatedUser.profileImageURL = downloadURL
+                try await userRepository.updateUser(updatedUser)
+                
+                print("✅ Profile image uploaded and saved to Firestore")
+                
+                // Refresh auth view model if available
+                await authViewModel?.refreshCurrentUser()
+            } catch {
+                // Image uploaded but Firestore update failed
+                errorMessage = "Image uploaded but couldn't save. Please try again."
+                print("❌ Firestore update failed after successful upload: \(error)")
+            }
+        } catch let error as StorageError {
+            // User-friendly storage error messages
+            errorMessage = error.localizedDescription
+            print("❌ Profile image upload failed: \(error)")
         } catch {
-            errorMessage = "Failed to upload image"
+            // Generic fallback error
+            errorMessage = "Unable to upload image. Please check your connection and try again."
+            print("❌ Profile image upload failed: \(error)")
         }
         
         isLoading = false

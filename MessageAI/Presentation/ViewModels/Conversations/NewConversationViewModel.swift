@@ -117,6 +117,58 @@ class NewConversationViewModel: ObservableObject {
         isLoading = false
     }
     
+    /// Select multiple users and create a conversation
+    /// - Parameter users: Array of users to include in the conversation (2+ users)
+    func selectMultipleUsers(_ users: [User]) async {
+        isLoading = true
+        errorMessage = nil
+        
+        do {
+            // Validate participant count
+            guard users.count >= 2 else {
+                errorMessage = "Please select at least 2 users for a conversation."
+                isLoading = false
+                return
+            }
+            
+            guard let currentUser = try await authRepository.getCurrentUser() else {
+                errorMessage = "Authentication required. Please sign in again."
+                isLoading = false
+                return
+            }
+            
+            // Prevent self-conversation check
+            guard !users.contains(where: { $0.id == currentUser.id }) else {
+                errorMessage = "Cannot include yourself in the participant list."
+                isLoading = false
+                return
+            }
+            
+            print("🔍 Creating conversation with \(users.count) users")
+            
+            // Build participant IDs (current user + selected users)
+            var participantIds = [currentUser.id]
+            participantIds.append(contentsOf: users.map { $0.id })
+            
+            let conversation = try await conversationRepository.getOrCreateConversation(
+                participantIds: participantIds
+            )
+            
+            print("✅ Conversation created: \(conversation.id), isGroup: \(conversation.isGroup)")
+            
+            // Set selected conversation (parent will observe this change)
+            await MainActor.run {
+                selectedConversation = conversation
+            }
+            
+        } catch {
+            errorMessage = "Failed to create conversation: \(error.localizedDescription)"
+            print("❌ Failed to create conversation: \(error)")
+        }
+        
+        isLoading = false
+    }
+    
     // MARK: - Private Methods
     
     /// Set up search text observer with debouncing

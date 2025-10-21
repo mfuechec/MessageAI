@@ -69,6 +69,25 @@ final class FirebaseUserRepository: UserRepositoryProtocol {
         }
     }
     
+    func getUsers(ids: [String]) async throws -> [User] {
+        var users: [User] = []
+        
+        // Fetch each user individually
+        // Note: For production, consider batch fetching with Firestore "in" queries (max 10 at a time)
+        for id in ids {
+            do {
+                let user = try await getUser(id: id)
+                users.append(user)
+            } catch {
+                print("⚠️ Failed to load user \(id): \(error.localizedDescription) - Skipping")
+                // Continue loading other users (graceful degradation)
+            }
+        }
+        
+        print("✅ Fetched \(users.count)/\(ids.count) users")
+        return users
+    }
+    
     func getAllUsers() async throws -> [User] {
         do {
             let snapshot = try await db.collection("users").getDocuments()

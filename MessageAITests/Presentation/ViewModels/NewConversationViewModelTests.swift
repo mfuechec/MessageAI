@@ -241,5 +241,135 @@ final class NewConversationViewModelTests: XCTestCase {
         XCTAssertEqual(sut.filteredUsers.count, 1)
         XCTAssertEqual(sut.filteredUsers.first?.displayName, "Alice")
     }
+    
+    // MARK: - Group Conversation Tests (Story 2.1)
+    
+    func testSelectMultipleUsers_ThreeUsers_Success() async throws {
+        // Given: Current user and 3 selected users
+        let currentUser = User(id: "current", email: "current@test.com", displayName: "Current")
+        let user1 = User(id: "user-1", email: "user1@test.com", displayName: "Alice")
+        let user2 = User(id: "user-2", email: "user2@test.com", displayName: "Bob")
+        let user3 = User(id: "user-3", email: "user3@test.com", displayName: "Charlie")
+        
+        let groupConversation = Conversation(
+            id: "group-conv-1",
+            participantIds: ["current", "user-1", "user-2", "user-3"],
+            lastMessage: nil,
+            lastMessageTimestamp: nil,
+            createdAt: Date(),
+            isGroup: true
+        )
+        
+        mockAuthRepository.mockUser = currentUser
+        mockConversationRepository.mockConversation = groupConversation
+        
+        // When: Select multiple users
+        await sut.selectMultipleUsers([user1, user2, user3])
+        
+        // Then: Group conversation created
+        XCTAssertTrue(mockConversationRepository.getOrCreateConversationCalled)
+        XCTAssertEqual(mockConversationRepository.capturedParticipantIds?.count, 4) // Current + 3 users
+        XCTAssertEqual(sut.selectedConversation?.id, groupConversation.id)
+        XCTAssertTrue(sut.selectedConversation?.isGroup ?? false)
+        XCTAssertFalse(sut.isLoading)
+    }
+    
+    func testSelectMultipleUsers_TwoUsers_Success() async throws {
+        // Given: Current user and 2 selected users (now valid)
+        let currentUser = User(id: "current", email: "current@test.com", displayName: "Current")
+        let user1 = User(id: "user-1", email: "user1@test.com", displayName: "Alice")
+        let user2 = User(id: "user-2", email: "user2@test.com", displayName: "Bob")
+        
+        let conversation = Conversation(
+            id: "conv-1",
+            participantIds: ["current", "user-1", "user-2"],
+            lastMessage: nil,
+            lastMessageTimestamp: nil,
+            createdAt: Date(),
+            isGroup: true
+        )
+        
+        mockAuthRepository.mockUser = currentUser
+        mockConversationRepository.mockConversation = conversation
+        
+        // When: Select 2 users
+        await sut.selectMultipleUsers([user1, user2])
+        
+        // Then: Conversation created successfully
+        XCTAssertTrue(mockConversationRepository.getOrCreateConversationCalled)
+        XCTAssertEqual(mockConversationRepository.capturedParticipantIds?.count, 3) // Current + 2 users
+        XCTAssertEqual(sut.selectedConversation?.id, conversation.id)
+        XCTAssertFalse(sut.isLoading)
+        XCTAssertNil(sut.errorMessage)
+    }
+    
+    func testSelectMultipleUsers_ManyUsers_Success() async throws {
+        // Given: Current user and many selected users (no max limit)
+        let currentUser = User(id: "current", email: "current@test.com", displayName: "Current")
+        let selectedUsers = (1...15).map { User(id: "user-\($0)", email: "user\($0)@test.com", displayName: "User \($0)") }
+        
+        let conversation = Conversation(
+            id: "large-group",
+            participantIds: ["current"] + selectedUsers.map { $0.id },
+            lastMessage: nil,
+            lastMessageTimestamp: nil,
+            createdAt: Date(),
+            isGroup: true
+        )
+        
+        mockAuthRepository.mockUser = currentUser
+        mockConversationRepository.mockConversation = conversation
+        
+        // When: Select many users
+        await sut.selectMultipleUsers(selectedUsers)
+        
+        // Then: Conversation created successfully
+        XCTAssertTrue(mockConversationRepository.getOrCreateConversationCalled)
+        XCTAssertEqual(mockConversationRepository.capturedParticipantIds?.count, 16) // Current + 15 users
+        XCTAssertEqual(sut.selectedConversation?.id, conversation.id)
+        XCTAssertFalse(sut.isLoading)
+        XCTAssertNil(sut.errorMessage)
+    }
+    
+    func testSelectMultipleUsers_IncludesSelf_ShowsError() async throws {
+        // Given: Selected users include current user (should be prevented)
+        let currentUser = User(id: "current", email: "current@test.com", displayName: "Current")
+        let user1 = User(id: "user-1", email: "user1@test.com", displayName: "Alice")
+        let user2 = User(id: "user-2", email: "user2@test.com", displayName: "Bob")
+        
+        mockAuthRepository.mockUser = currentUser
+        
+        // When: Try to select users including self
+        await sut.selectMultipleUsers([currentUser, user1, user2])
+        
+        // Then: Error message shown
+        XCTAssertFalse(mockConversationRepository.getOrCreateConversationCalled)
+        XCTAssertNil(sut.selectedConversation)
+        XCTAssertNotNil(sut.errorMessage)
+        XCTAssertTrue(sut.errorMessage?.contains("yourself") ?? false)
+    }
+    
+    func testSelectMultipleUsers_RepositoryError() async throws {
+        // Given: Repository will fail
+        let currentUser = User(id: "current", email: "current@test.com", displayName: "Current")
+        let user1 = User(id: "user-1", email: "user1@test.com", displayName: "Alice")
+        let user2 = User(id: "user-2", email: "user2@test.com", displayName: "Bob")
+        let user3 = User(id: "user-3", email: "user3@test.com", displayName: "Charlie")
+        
+        mockAuthRepository.mockUser = currentUser
+        mockConversationRepository.shouldFail = true
+        mockConversationRepository.mockError = RepositoryError.networkError(
+            NSError(domain: "test", code: -1)
+        )
+        
+        // When: Select multiple users
+        await sut.selectMultipleUsers([user1, user2, user3])
+        
+        // Then: Error message set
+        XCTAssertTrue(mockConversationRepository.getOrCreateConversationCalled)
+        XCTAssertNil(sut.selectedConversation)
+        XCTAssertNotNil(sut.errorMessage)
+        XCTAssertFalse(sut.isLoading)
+    }
 }
 
