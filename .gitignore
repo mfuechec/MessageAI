@@ -88,3 +88,12 @@ firebase-debug.log
 firestore-debug.log
 ui-debug.log
 
+# Firebase Admin SDK Keys (sensitive!)
+firebase-admin-key-*.json
+
+# Node.js (for scripts/)
+node_modules/
+scripts/node_modules/
+package-lock.json
+scripts/package-lock.json
+
