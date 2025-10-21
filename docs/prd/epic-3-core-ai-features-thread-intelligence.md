@@ -4,6 +4,32 @@
 
 Integrate the first three AI-powered features for remote team professionals: thread summarization, action item extraction, and smart search. These features are accessible contextually within conversations through buttons and modals, with minimal UI complexity. Cloud Functions are implemented to securely call AI services (OpenAI or Anthropic), protecting API keys from client exposure. AI quality acceptance criteria defined upfront to validate "good enough" performance. Expected timeline: 1.5 days.
 
+## Story 3.0: Organization/Workspace System
+
+As a **user**,  
+I want **to belong to an organization/workspace where I can message other members**,  
+so that **I only see relevant contacts and can participate in team-based messaging at scale**.
+
+### Acceptance Criteria
+
+1. `Organization` entity created with: id, name, memberIds, createdAt, settings
+2. User entity updated with `organizationIds: [String]` field (users can belong to multiple orgs)
+3. Update `getAllUsers()` → `getUsersInOrganization(organizationId: String)` in UserRepository
+4. Update `getOrCreateConversation()` to validate participants in same organization
+5. Organization selection UI for users in multiple organizations (simple dropdown/picker)
+6. Default organization auto-created for existing users (migration script)
+7. Admin users can invite new users to organization (email invitation)
+8. Organization settings: name, member management, permissions
+9. Firestore security rules updated: Users can only query users in their organization(s)
+10. Performance: User queries scoped to organization (< 100ms for 1000+ member orgs)
+11. Conversation list filtered to conversations within current organization
+12. Unit tests for organization-based user filtering
+13. Integration test: User A in Org 1 cannot message User B in Org 2
+14. Migration: Existing users assigned to "Default Organization"
+15. Error handling: User without organization shown onboarding flow
+
+**Note:** This story addresses the scalability limitation documented in Story 2.0 where `getAllUsers()` doesn't scale beyond small teams. Organizations enable multi-tenant usage and proper contact scoping.
+
 ## Story 3.1: Cloud Functions Infrastructure for AI Services
 
 As a **developer**,  

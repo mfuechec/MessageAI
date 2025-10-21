@@ -3,8 +3,8 @@
 **Epic Goal:** Complete MVP with Reliability  
 **Timeline:** 1.5 days (estimated)  
 **Total Stories:** 13 (2.0 through 2.12)  
-**Status:** In Progress (2/13 stories completed)  
-**Completed:** Story 2.0 ✅, Story 2.1 ✅
+**Status:** In Progress (3/13 stories completed)  
+**Completed:** Story 2.0 ✅, Story 2.1 ✅, Story 2.2 ✅
 
 ---
 
@@ -68,17 +68,18 @@ Epic 2 transforms the basic messaging foundation from Epic 1 into a **production
 ### Phase 2: Message Management (Stories 2.3-2.5)
 **Goal:** Advanced message operations
 
-#### Story 2.2: Message Editing with History
+#### Story 2.2: Message Editing with History ✅ **DONE**
 - **Complexity:** Medium
-- **Estimated Time:** 3-4 hours
+- **Actual Time:** ~3 hours
 - **Dependencies:** None (extends existing chat)
 - **Key Deliverables:**
-  - Long-press context menu
-  - Edit mode UI
-  - `editHistory` array in Message entity
-  - Edit history viewer
-  - Real-time edit sync
-- **Risks:** Conflict resolution (offline edits on multiple devices)
+  - ✅ Tap-to-edit interaction (faster than long-press)
+  - ✅ Edit mode UI with validation
+  - ✅ `editHistory` array in Message entity
+  - ✅ Edit history viewer modal
+  - ✅ Real-time edit sync with optimistic UI
+  - ✅ 12 unit tests added
+- **Performance Note:** Identified caching issue (see Story 2.11)
 
 #### Story 2.3: Message Unsend (Delete for Everyone)
 - **Complexity:** Low-Medium
@@ -209,11 +210,13 @@ Epic 2 transforms the basic messaging foundation from Epic 1 into a **production
 - **Key Deliverables:**
   - Message pagination (50 most recent)
   - Conversation list pagination
+  - User cache implementation (fixes 50+ redundant reads per update)
   - Firestore composite indexes
   - Network resilience (exponential backoff)
   - Memory profiling (< 150MB RAM)
   - Load testing (1000 message conversation)
 - **Risks:** Performance regressions from new features
+- **Known Issue:** ConversationsListViewModel refetches all participants on every update (discovered in Story 2.2)
 
 #### Story 2.12: Comprehensive Reliability Testing & Regression Suite
 - **Complexity:** Medium

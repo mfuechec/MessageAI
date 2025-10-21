@@ -10,6 +10,7 @@ class MockMessageRepository: MessageRepositoryProtocol {
     var observeMessagesCalled = false
     var getMessagesCalled = false
     var updateMessageStatusCalled = false
+    var editMessageCalled = false
     var shouldFail = false
     
     // MARK: - Configurable Properties
@@ -24,6 +25,8 @@ class MockMessageRepository: MessageRepositoryProtocol {
     var capturedLimit: Int?
     var capturedMessageId: String?
     var capturedStatus: MessageStatus?
+    var capturedEditMessageId: String?
+    var capturedEditNewText: String?
     
     // MARK: - MessageRepositoryProtocol Implementation
     
@@ -77,9 +80,21 @@ class MockMessageRepository: MessageRepositoryProtocol {
     }
     
     func editMessage(id: String, newText: String) async throws {
-        // Placeholder for future implementation
+        editMessageCalled = true
+        capturedEditMessageId = id
+        capturedEditNewText = newText
+        
         if shouldFail {
             throw mockError ?? RepositoryError.messageNotFound("Mock error")
+        }
+        
+        // Update message in mockMessages for testing
+        if let index = mockMessages.firstIndex(where: { $0.id == id }) {
+            var updatedMessage = mockMessages[index]
+            updatedMessage.text = newText
+            updatedMessage.isEdited = true
+            updatedMessage.editCount += 1
+            mockMessages[index] = updatedMessage
         }
     }
     
@@ -98,6 +113,7 @@ class MockMessageRepository: MessageRepositoryProtocol {
         observeMessagesCalled = false
         getMessagesCalled = false
         updateMessageStatusCalled = false
+        editMessageCalled = false
         shouldFail = false
         mockMessages = []
         mockError = nil
@@ -106,6 +122,8 @@ class MockMessageRepository: MessageRepositoryProtocol {
         capturedLimit = nil
         capturedMessageId = nil
         capturedStatus = nil
+        capturedEditMessageId = nil
+        capturedEditNewText = nil
     }
 }
 

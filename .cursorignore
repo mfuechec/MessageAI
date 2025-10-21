@@ -45,3 +45,6 @@ GoogleService-Info.plist
 .env.*
 !.env.example
 
+# Firebase Admin SDK Keys (sensitive!)
+firebase-admin-key-*.json
+

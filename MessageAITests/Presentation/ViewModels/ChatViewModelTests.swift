@@ -462,6 +462,201 @@ final class ChatViewModelTests: XCTestCase {
         XCTAssertEqual(senderName, "Alice")
     }
     
+    // MARK: - Message Editing Tests
+    
+    func testStartEdit_SetsEditingState() async throws {
+        // Given
+        let message = createTestMessage(id: "msg1", text: "Original text", senderId: "user1")
+        sut.messages = [message]
+        
+        // When
+        sut.startEdit(message: message)
+        
+        // Then
+        XCTAssertTrue(sut.isEditingMessage)
+        XCTAssertEqual(sut.editingMessageId, "msg1")
+        XCTAssertEqual(sut.editingMessageText, "Original text")
+    }
+    
+    func testStartEdit_OnlyForOwnMessages() async throws {
+        // Given: Message from another user
+        let message = createTestMessage(id: "msg1", text: "Other user's text", senderId: "user2")
+        sut.messages = [message]
+        
+        // When
+        sut.startEdit(message: message)
+        
+        // Then: Edit mode NOT activated
+        XCTAssertFalse(sut.isEditingMessage)
+        XCTAssertNil(sut.editingMessageId)
+        XCTAssertEqual(sut.editingMessageText, "")
+    }
+    
+    func testCancelEdit_ClearsEditingState() async throws {
+        // Given: Edit mode active
+        let message = createTestMessage(id: "msg1", text: "Original text", senderId: "user1")
+        sut.messages = [message]
+        sut.startEdit(message: message)
+        XCTAssertTrue(sut.isEditingMessage)
+        
+        // When
+        sut.cancelEdit()
+        
+        // Then
+        XCTAssertFalse(sut.isEditingMessage)
+        XCTAssertNil(sut.editingMessageId)
+        XCTAssertEqual(sut.editingMessageText, "")
+    }
+    
+    func testSaveEdit_Success_UpdatesMessage() async throws {
+        // Given
+        let message = createTestMessage(id: "msg1", text: "Original text", senderId: "user1")
+        sut.messages = [message]
+        sut.startEdit(message: message)
+        sut.editingMessageText = "Edited text"
+        
+        // When
+        await sut.saveEdit()
+        
+        // Then: Message updated optimistically
+        XCTAssertEqual(sut.messages[0].text, "Edited text")
+        XCTAssertTrue(sut.messages[0].isEdited)
+        
+        // Repository called
+        XCTAssertTrue(mockMessageRepo.editMessageCalled)
+        XCTAssertEqual(mockMessageRepo.capturedEditMessageId, "msg1")
+        XCTAssertEqual(mockMessageRepo.capturedEditNewText, "Edited text")
+        
+        // Edit mode cleared
+        XCTAssertFalse(sut.isEditingMessage)
+    }
+    
+    func testSaveEdit_EmptyText_CancelsEdit() async throws {
+        // Given
+        let message = createTestMessage(id: "msg1", text: "Original text", senderId: "user1")
+        sut.messages = [message]
+        sut.startEdit(message: message)
+        sut.editingMessageText = ""
+        
+        // When
+        await sut.saveEdit()
+        
+        // Then: Edit cancelled, no repository call
+        XCTAssertFalse(mockMessageRepo.editMessageCalled)
+        XCTAssertFalse(sut.isEditingMessage)
+        XCTAssertEqual(sut.messages[0].text, "Original text") // Unchanged
+    }
+    
+    func testSaveEdit_WhitespaceOnly_CancelsEdit() async throws {
+        // Given
+        let message = createTestMessage(id: "msg1", text: "Original text", senderId: "user1")
+        sut.messages = [message]
+        sut.startEdit(message: message)
+        sut.editingMessageText = "   \n  \t  "
+        
+        // When
+        await sut.saveEdit()
+        
+        // Then: Edit cancelled, no repository call
+        XCTAssertFalse(mockMessageRepo.editMessageCalled)
+        XCTAssertFalse(sut.isEditingMessage)
+        XCTAssertEqual(sut.messages[0].text, "Original text") // Unchanged
+    }
+    
+    func testSaveEdit_TrimWhitespace_UsesTrimmedText() async throws {
+        // Given
+        let message = createTestMessage(id: "msg1", text: "Original", senderId: "user1")
+        sut.messages = [message]
+        sut.startEdit(message: message)
+        sut.editingMessageText = "  Edited text  \n"
+        
+        // When
+        await sut.saveEdit()
+        
+        // Then: Trimmed text used
+        XCTAssertEqual(sut.messages[0].text, "Edited text")
+        XCTAssertEqual(mockMessageRepo.capturedEditNewText, "Edited text")
+    }
+    
+    func testSaveEdit_MaxLength_ShowsError() async throws {
+        // Given
+        let message = createTestMessage(id: "msg1", text: "Original", senderId: "user1")
+        sut.messages = [message]
+        sut.startEdit(message: message)
+        sut.editingMessageText = String(repeating: "a", count: 10001) // Over 10,000 limit
+        
+        // When
+        await sut.saveEdit()
+        
+        // Then: Error shown, no repository call
+        XCTAssertNotNil(sut.errorMessage)
+        XCTAssertTrue(sut.errorMessage?.contains("too long") ?? false)
+        XCTAssertFalse(mockMessageRepo.editMessageCalled)
+        XCTAssertEqual(sut.messages[0].text, "Original") // Unchanged
+    }
+    
+    func testSaveEdit_OptimisticUI_UpdatesImmediately() async throws {
+        // Given
+        let message = createTestMessage(id: "msg1", text: "Original", senderId: "user1")
+        sut.messages = [message]
+        sut.startEdit(message: message)
+        sut.editingMessageText = "Edited"
+        
+        // When
+        await sut.saveEdit()
+        
+        // Then: Message updated immediately (before repository completes)
+        XCTAssertEqual(sut.messages[0].text, "Edited")
+        XCTAssertTrue(sut.messages[0].isEdited)
+    }
+    
+    func testSaveEdit_NetworkFailure_RevertsToOriginal() async throws {
+        // Given
+        let message = createTestMessage(id: "msg1", text: "Original", senderId: "user1")
+        sut.messages = [message]
+        sut.startEdit(message: message)
+        sut.editingMessageText = "Edited"
+        
+        // Simulate network failure
+        mockMessageRepo.shouldFail = true
+        
+        // When
+        await sut.saveEdit()
+        
+        // Then: Reverted to original
+        XCTAssertEqual(sut.messages[0].text, "Original")
+        XCTAssertFalse(sut.messages[0].isEdited)
+        XCTAssertNotNil(sut.errorMessage)
+        XCTAssertTrue(sut.errorMessage?.contains("Failed to edit") ?? false)
+    }
+    
+    func testShowEditHistory_OpensModal() async throws {
+        // Given
+        let message = createTestMessage(id: "msg1", text: "Current text", senderId: "user1")
+        
+        // When
+        sut.showEditHistory(for: message)
+        
+        // Then
+        XCTAssertTrue(sut.showEditHistoryModal)
+        XCTAssertNotNil(sut.editHistoryMessage)
+        XCTAssertEqual(sut.editHistoryMessage?.id, "msg1")
+    }
+    
+    func testCloseEditHistory_ClosesModal() async throws {
+        // Given: Modal open
+        let message = createTestMessage(id: "msg1", text: "Current text", senderId: "user1")
+        sut.showEditHistory(for: message)
+        XCTAssertTrue(sut.showEditHistoryModal)
+        
+        // When
+        sut.closeEditHistory()
+        
+        // Then
+        XCTAssertFalse(sut.showEditHistoryModal)
+        XCTAssertNil(sut.editHistoryMessage)
+    }
+    
     // MARK: - Helper Methods
     
     private func createTestMessage(id: String, text: String, senderId: String) -> Message {

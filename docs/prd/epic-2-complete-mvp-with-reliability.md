@@ -73,7 +73,7 @@ so that **I can coordinate with my entire team in one place**.
 15. Integration test: 3 users in group, User A sends message, verify Users B and C receive it
 16. Regression test: Verify one-on-one chat still works after group chat implementation
 
-## Story 2.3: Message Editing with History
+## Story 2.2: Message Editing with History
 
 As a **user**,  
 I want **to edit messages I've already sent**,  
@@ -97,7 +97,7 @@ so that **I can correct typos or clarify my meaning**.
 14. Integration test: User A edits message, User B sees update in real-time
 15. Regression test: Message sending still works after edit implementation
 
-## Story 2.4: Message Unsend (Delete for Everyone)
+## Story 2.3: Message Unsend (Delete for Everyone)
 
 As a **user**,  
 I want **to delete messages I've sent from everyone's view**,  
@@ -120,7 +120,7 @@ so that **I can remove messages sent by mistake**.
 13. Integration test: User A deletes message, User B sees "[Message deleted]"
 14. Regression test: Edit and send functionality still work after unsend implementation
 
-## Story 2.5: Message Send Retry on Failure
+## Story 2.4: Message Send Retry on Failure
 
 As a **user**,  
 I want **to manually retry sending messages that failed**,  
@@ -142,7 +142,7 @@ so that **I have control over when failed messages are resent**.
 12. Integration test: Force network failure, send message, verify failure state, restore network, retry, verify success
 13. Regression test: Normal message sending still works reliably
 
-## Story 2.6: Read Receipts
+## Story 2.5: Read Receipts
 
 As a **user**,  
 I want **to see when my messages have been read by others**,  
@@ -164,7 +164,7 @@ so that **I know if my message has been seen**.
 12. Integration test: User A sends message to User B, User B opens chat, User A sees read receipt
 13. Regression test: Message delivery and editing still work with read receipts active
 
-## Story 2.7: Typing Indicators
+## Story 2.6: Typing Indicators
 
 As a **user**,  
 I want **to see when someone is typing in a conversation**,  
@@ -186,7 +186,7 @@ so that **I know to wait for their response**.
 12. Performance test: Typing updates don't cause lag in message composition
 13. Regression test: Message sending, editing, and real-time updates still performant
 
-## Story 2.8: Image Attachments
+## Story 2.7: Image Attachments
 
 As a **user**,  
 I want **to send and receive images in conversations**,  
@@ -211,7 +211,7 @@ so that **I can share visual information with my team**.
 15. Integration test: User A sends image, User B receives and views it
 16. Regression test: Text messaging still works reliably with image support added
 
-## Story 2.9: Document Attachments (PDF)
+## Story 2.8: Document Attachments (PDF)
 
 As a **user**,  
 I want **to send and receive PDF documents in conversations**,  
@@ -238,7 +238,7 @@ so that **I can share reports, contracts, and other important documents with my 
 17. Regression test: Image attachments and text messaging still work with document support added
 18. Edge case: Handle documents with special characters or very long file names (truncate display)
 
-## Story 2.10: Offline Message Queue with Manual Send
+## Story 2.9: Offline Message Queue with Manual Send
 
 As a **user**,  
 I want **to see messages I've composed offline and manually send them when connected**,  
@@ -263,7 +263,7 @@ so that **I have control over what gets sent when connectivity returns**.
 15. Integration test: Compose 5 messages offline, go online, send all, verify delivery
 16. Regression test: Real-time messaging still works when always online
 
-## Story 2.11: Push Notifications (Foreground & Background)
+## Story 2.10: Push Notifications (Foreground & Background)
 
 As a **user**,  
 I want **to receive push notifications for new messages**,  
@@ -291,7 +291,7 @@ so that **I'm alerted even when not actively using the app**.
 18. Security: Cloud Function validates sender is participant in conversation before sending
 19. Regression test: Real-time messaging in-app still works with push notifications enabled
 
-## Story 2.12: Performance Optimization & Network Resilience
+## Story 2.11: Performance Optimization & Network Resilience
 
 As a **developer**,  
 I want **the app to handle poor network conditions and high message volume gracefully**,  
@@ -312,10 +312,26 @@ so that **users experience reliable messaging even under adverse conditions**.
 11. Memory profiling: App uses < 150MB RAM with 10 conversations loaded
 12. Battery usage acceptable (no background processing runaway)
 13. Offline → Online transition smooth (no crashes, queued messages process)
-14. Integration test: Toggle airplane mode repeatedly during active messaging, verify no data loss
-15. Load testing: 1000 message conversation loads and scrolls smoothly
+14. **Relative Timestamp Updates:** Conversation list timestamps update periodically
+    - "2 minutes ago" becomes "3 minutes ago" automatically
+    - Timer updates every 60 seconds for active conversations
+    - Pauses when app backgrounded (battery optimization)
+    - Uses SwiftUI `.onReceive(timer)` pattern
+    - No flicker or visual disruption during updates
+15. Integration test: Toggle airplane mode repeatedly during active messaging, verify no data loss
+16. Load testing: 1000 message conversation loads and scrolls smoothly
+17. **User Cache Optimization (Discovered in Story 2.2):**
+    - ConversationsListViewModel implements user caching to prevent redundant Firebase reads
+    - Cache fetched users with 5-minute TTL (time-to-live)
+    - Online status uses separate 30-second TTL
+    - LRU eviction strategy (max 100 users)
+    - Message edit triggers 0-1 participant fetches (vs 50+ without cache)
+    - Profile changes appear within 5 minutes
+    - Firebase read count reduced by 90%+ on conversation list updates
+    - **Impact:** Fixes performance issue where editing 1 message triggers ~50+ redundant user reads
+    - **Reference:** See Story 2.2 Dev Agent Record for console logs and detailed analysis
 
-## Story 2.13: Comprehensive Reliability Testing & Regression Suite
+## Story 2.12: Comprehensive Reliability Testing & Regression Suite
 
 As a **QA engineer**,  
 I want **a comprehensive test suite covering all MVP functionality and reliability scenarios**,  

@@ -40,6 +40,11 @@ struct ChatView: View {
                     Spacer()
                 }
             }
+            
+            // Edit mode overlay
+            if viewModel.isEditingMessage {
+                editModeOverlay
+            }
         }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -64,6 +69,22 @@ struct ChatView: View {
         }
         .sheet(isPresented: $showGroupMemberList) {
             GroupMemberListView(participants: viewModel.participants)
+        }
+        .sheet(isPresented: $viewModel.showEditHistoryModal) {
+            if let message = viewModel.editHistoryMessage {
+                EditHistoryView(message: message)
+            }
+        }
+        // Error Alert
+        .alert("Error", isPresented: Binding(
+            get: { viewModel.errorMessage != nil },
+            set: { if !$0 { viewModel.errorMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) {
+                viewModel.errorMessage = nil
+            }
+        } message: {
+            Text(viewModel.errorMessage ?? "An error occurred")
         }
         .onAppear {
             // Set title immediately from initial data if available
@@ -92,6 +113,51 @@ struct ChatView: View {
         .frame(maxWidth: .infinity)
         .background(Color.orange)
         .accessibilityLabel("You are offline. Messages will send when connected.")
+    }
+    
+    private var editModeOverlay: some View {
+        VStack {
+            Spacer()
+            
+            VStack(spacing: 12) {
+                HStack {
+                    Text("Edit Message")
+                        .font(.headline)
+                    Spacer()
+                    Button("Cancel") {
+                        viewModel.cancelEdit()
+                    }
+                    .accessibilityLabel("Cancel editing")
+                }
+                
+                TextEditor(text: $viewModel.editingMessageText)
+                    .frame(minHeight: 100, maxHeight: 200)
+                    .padding(8)
+                    .background(Color(.systemGray6))
+                    .cornerRadius(8)
+                    .accessibilityLabel("Edit message text")
+                
+                HStack {
+                    Spacer()
+                    Button("Save") {
+                        Task {
+                            await viewModel.saveEdit()
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(viewModel.editingMessageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .accessibilityLabel("Save edited message")
+                }
+            }
+            .padding()
+            .background(Color(.systemBackground))
+            .cornerRadius(16)
+            .shadow(radius: 10)
+            .padding()
+        }
+        .background(Color.black.opacity(0.3))
+        .transition(.move(edge: .bottom))
+        .animation(.spring(), value: viewModel.isEditingMessage)
     }
     
     private func updateConversationTitle() {
@@ -140,35 +206,82 @@ struct MessageKitWrapper: UIViewControllerRepresentable {
         vc.messagesCollectionView.messagesLayoutDelegate = context.coordinator
         vc.messagesCollectionView.messagesDisplayDelegate = context.coordinator
         vc.messageInputBar.delegate = context.coordinator
+        
+        // Initialize messageCount to current count to prevent 0 -> N flash
+        vc.messageCount = viewModel.messages.count
+        print("🏗️ [ChatView] Created with \(vc.messageCount) messages")
+        
         return vc
     }
     
     func updateUIViewController(_ uiViewController: CustomMessagesViewController, context: Context) {
-        // Only reload if message count changed or last message changed
+        // SwiftUI calls this MANY times (on any @Published change in viewModel)
+        // Only act if message count actually changed OR messages were edited
         let currentCount = uiViewController.messageCount
         let newCount = viewModel.messages.count
         
-        if currentCount != newCount {
-            uiViewController.messageCount = newCount
+        // Check if we need to force refresh (e.g., message edited, count unchanged)
+        if viewModel.messagesNeedRefresh {
+            print("📱 [ChatView] Forcing reload due to message edit")
             uiViewController.messagesCollectionView.reloadData()
             
-            // Update empty state visibility
-            if newCount > 0 {
-                uiViewController.hideEmptyState()
-            } else {
-                uiViewController.showEmptyState()
+            // Reset flag OUTSIDE view update context to avoid SwiftUI warning
+            DispatchQueue.main.async {
+                viewModel.messagesNeedRefresh = false
             }
+            return
+        }
+        
+        // Skip if count hasn't changed (prevents flickering from redundant updates)
+        guard currentCount != newCount else {
+            // Silent skip - don't log spam
+            return
+        }
+        
+        print("📱 [ChatView] Message count changed: \(currentCount) -> \(newCount)")
+        
+        let oldCount = currentCount
+        uiViewController.messageCount = newCount
+        
+        // Handle empty state transition ONCE
+        let wasEmpty = oldCount == 0
+        let isEmpty = newCount == 0
+        
+        if wasEmpty && !isEmpty {
+            // Transitioning from empty to first message
+            print("  ➡️ Empty -> Has messages: hiding empty state")
+            uiViewController.hideEmptyState()
+            uiViewController.messagesCollectionView.reloadData()
             
-            // Auto-scroll to bottom if user was near bottom or new message is from current user
-            if newCount > currentCount {
-                let shouldScroll = context.coordinator.isNearBottom || 
-                                  (viewModel.messages.last?.senderId == viewModel.displayName(for: viewModel.messages.last?.senderId ?? ""))
-                if shouldScroll {
-                    DispatchQueue.main.async {
-                        uiViewController.messagesCollectionView.scrollToLastItem(animated: true)
-                    }
+            // Scroll to bottom to show latest messages on initial load
+            DispatchQueue.main.async {
+                print("  ⬇️ Scrolling to latest message (initial load)")
+                uiViewController.messagesCollectionView.scrollToLastItem(animated: false)
+            }
+        } else if !wasEmpty && isEmpty {
+            // Transitioning from messages to empty
+            print("  ➡️ Has messages -> Empty: showing empty state")
+            uiViewController.messagesCollectionView.reloadData()
+            uiViewController.showEmptyState()
+        } else if newCount > oldCount {
+            // New messages added - use performBatchUpdates for smooth animation
+            print("  ➕ Adding \(newCount - oldCount) new message(s)")
+            uiViewController.messagesCollectionView.performBatchUpdates({
+                uiViewController.messagesCollectionView.insertSections(IndexSet(oldCount..<newCount))
+            }, completion: nil)
+            
+            // Auto-scroll to bottom if appropriate
+            let shouldScroll = context.coordinator.isNearBottom || 
+                              (viewModel.messages.last?.senderId == viewModel.currentUserId)
+            if shouldScroll {
+                DispatchQueue.main.async {
+                    uiViewController.messagesCollectionView.scrollToLastItem(animated: true)
                 }
             }
+        } else {
+            // Messages modified or removed - full reload
+            print("  🔄 Messages modified/removed: full reload")
+            uiViewController.messagesCollectionView.reloadData()
         }
     }
     
@@ -384,41 +497,49 @@ struct MessageKitWrapper: UIViewControllerRepresentable {
             let timestamp = viewModel.formattedTimestamp(for: actualMessage)
             let isCurrentUser = actualMessage.senderId == viewModel.currentUserId
             
-            // Only show read receipts for current user's messages
-            if isCurrentUser {
-                // Get status icon and color
-                let (statusText, statusColor) = statusIconAndColor(for: actualMessage.status)
-                
-                // Create attributed string with timestamp
-                let timestampString = NSMutableAttributedString(
-                    string: timestamp + " ",
+            // Create the attributed string starting with edited indicator if applicable
+            let result = NSMutableAttributedString()
+            
+            // Add "(edited)" indicator if message was edited
+            if actualMessage.isEdited {
+                let editedString = NSAttributedString(
+                    string: "(edited) ",
                     attributes: [
                         .font: UIFont.preferredFont(forTextStyle: .caption2),
                         .foregroundColor: UIColor.secondaryLabel
                     ]
                 )
+                result.append(editedString)
+            }
+            
+            // Add timestamp
+            let timestampString = NSAttributedString(
+                string: timestamp,
+                attributes: [
+                    .font: UIFont.preferredFont(forTextStyle: .caption2),
+                    .foregroundColor: UIColor.secondaryLabel
+                ]
+            )
+            result.append(timestampString)
+            
+            // Only show read receipts for current user's messages
+            if isCurrentUser {
+                // Get status icon and color
+                let (statusText, statusColor) = statusIconAndColor(for: actualMessage.status)
                 
                 // Add status icon with appropriate color
                 let statusString = NSAttributedString(
-                    string: statusText,
+                    string: " " + statusText,
                     attributes: [
                         .font: UIFont.preferredFont(forTextStyle: .caption2),
                         .foregroundColor: statusColor
                     ]
                 )
                 
-                timestampString.append(statusString)
-                return timestampString
-            } else {
-                // For incoming messages, just show timestamp (no status)
-                return NSAttributedString(
-                    string: timestamp,
-                    attributes: [
-                        .font: UIFont.preferredFont(forTextStyle: .caption2),
-                        .foregroundColor: UIColor.secondaryLabel
-                    ]
-                )
+                result.append(statusString)
             }
+            
+            return result
         }
         
         // MARK: - MessagesLayoutDelegate
@@ -513,9 +634,23 @@ class CustomMessagesViewController: MessagesViewController {
         configureMessageCollectionView()
         configureMessageInputBar()
         
-        // Show empty state if no messages
+        // Show empty state ONLY if truly empty at load time
         if viewModel?.messages.isEmpty == true {
+            print("📭 [CustomMessagesViewController] No messages, showing empty state")
             showEmptyState()
+        } else {
+            print("💬 [CustomMessagesViewController] \(viewModel?.messages.count ?? 0) messages, hiding empty state")
+            hideEmptyState()
+        }
+    }
+    
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        
+        // Scroll to bottom on initial load to show latest messages
+        if let viewModel = viewModel, !viewModel.messages.isEmpty {
+            print("⬇️ [CustomMessagesViewController] Scrolling to latest message")
+            messagesCollectionView.scrollToLastItem(animated: false)
         }
     }
     
@@ -534,9 +669,37 @@ class CustomMessagesViewController: MessagesViewController {
             layout.setMessageIncomingMessageTopLabelAlignment(LabelAlignment(textAlignment: .left, textInsets: UIEdgeInsets(top: 0, left: 12, bottom: 0, right: 0)))
         }
         
+        // Enable tap gesture for message selection (needed for didTapMessage to work)
+        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(handleMessageTap(_:)))
+        messagesCollectionView.addGestureRecognizer(tapGesture)
+        
         // Accessibility
         messagesCollectionView.isAccessibilityElement = false
         messagesCollectionView.shouldGroupAccessibilityChildren = true
+    }
+    
+    @objc private func handleMessageTap(_ gesture: UITapGestureRecognizer) {
+        let touchPoint = gesture.location(in: messagesCollectionView)
+        
+        // Find which cell was tapped
+        guard let indexPath = messagesCollectionView.indexPathForItem(at: touchPoint),
+              let viewModel = viewModel else {
+            return
+        }
+        
+        let message = viewModel.messages[indexPath.section]
+        
+        // Only allow editing own messages
+        guard message.senderId == viewModel.currentUserId else {
+            return
+        }
+        
+        print("👆 Tapped own message to edit: \(message.id)")
+        
+        // Open edit mode
+        Task { @MainActor in
+            viewModel.startEdit(message: message)
+        }
     }
     
     private func configureMessageInputBar() {
@@ -567,6 +730,9 @@ class CustomMessagesViewController: MessagesViewController {
     func hideEmptyState() {
         messagesCollectionView.backgroundView = nil
     }
+    
+    // Note: MessageKit handles taps via didTapMessage delegate method in Coordinator
+    // Custom tap handling is done there
 }
 
 // MARK: - Sender Helper

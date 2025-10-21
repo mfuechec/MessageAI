@@ -8,6 +8,9 @@ struct ConversationsListView: View {
     @StateObject private var newConversationViewModel: NewConversationViewModel
     @EnvironmentObject private var authViewModel: AuthViewModel
     
+    // Store ChatViewModel to prevent recreation on sheet re-evaluation
+    @State private var chatViewModel: ChatViewModel?
+    
     init(viewModel: ConversationsListViewModel) {
         _viewModel = StateObject(wrappedValue: viewModel)
         _newConversationViewModel = StateObject(wrappedValue: DIContainer.shared.makeNewConversationViewModel())
@@ -80,6 +83,14 @@ struct ConversationsListView: View {
     private var conversationsList: some View {
         List(viewModel.conversations) { conversation in
             Button(action: {
+                // Create ChatViewModel ONCE before presenting
+                let participants = viewModel.participantsByConversation[conversation.id] ?? []
+                chatViewModel = DIContainer.shared.makeChatViewModel(
+                    conversationId: conversation.id,
+                    currentUserId: authViewModel.currentUser?.id ?? "",
+                    initialConversation: conversation,
+                    initialParticipants: participants
+                )
                 selectedConversation = conversation
             }) {
                 ConversationRowView(
@@ -94,18 +105,16 @@ struct ConversationsListView: View {
         }
         .listStyle(PlainListStyle())
         .sheet(item: $selectedConversation) { conversation in
-            let participants = viewModel.participantsByConversation[conversation.id] ?? []
-            NavigationView {
-                ChatView(
-                    viewModel: DIContainer.shared.makeChatViewModel(
-                        conversationId: conversation.id,
-                        currentUserId: authViewModel.currentUser?.id ?? "",
+            // Use the stored ChatViewModel instead of creating a new one
+            if let chatVM = chatViewModel {
+                let participants = viewModel.participantsByConversation[conversation.id] ?? []
+                NavigationView {
+                    ChatView(
+                        viewModel: chatVM,
                         initialConversation: conversation,
                         initialParticipants: participants
-                    ),
-                    initialConversation: conversation,
-                    initialParticipants: participants
-                )
+                    )
+                }
             }
         }
     }
