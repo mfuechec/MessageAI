@@ -1,5 +1,6 @@
 import Foundation
 import FirebaseFirestore
+import FirebaseAuth
 import Combine
 
 /*
@@ -156,10 +157,20 @@ final class FirebaseMessageRepository: MessageRepositoryProtocol {
     
     func deleteMessage(id: String) async throws {
         do {
+            // Get current user ID for deletedBy field
+            guard let currentUserId = Auth.auth().currentUser?.uid else {
+                throw RepositoryError.unauthorized
+            }
+            
             try await db.collection("messages").document(id).updateData([
-                "isDeleted": true
+                "isDeleted": true,
+                "text": "", // Remove text for privacy compliance
+                "deletedAt": FieldValue.serverTimestamp(),
+                "deletedBy": currentUserId
             ])
             print("✅ Message deleted: \(id)")
+        } catch let error as RepositoryError {
+            throw error
         } catch {
             print("❌ Delete message failed: \(error.localizedDescription)")
             throw RepositoryError.networkError(error)

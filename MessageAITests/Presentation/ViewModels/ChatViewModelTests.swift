@@ -657,6 +657,259 @@ final class ChatViewModelTests: XCTestCase {
         XCTAssertNil(sut.editHistoryMessage)
     }
     
+    // MARK: - Message Deletion Tests
+    
+    func testCanDelete_OwnMessage_Within24Hours_ReturnsTrue() async {
+        // Given
+        let message = Message(
+            id: "msg1",
+            conversationId: "test-conv",
+            senderId: "user1",
+            text: "Delete me",
+            timestamp: Date().addingTimeInterval(-3600), // 1 hour ago
+            status: .sent,
+            statusUpdatedAt: Date(),
+            attachments: [],
+            editHistory: nil,
+            editCount: 0,
+            isEdited: false,
+            isDeleted: false,
+            deletedAt: nil,
+            deletedBy: nil,
+            readBy: ["user1"],
+            readCount: 1,
+            isPriority: false,
+            priorityReason: nil,
+            schemaVersion: 1
+        )
+        
+        // When
+        let canDelete = sut.canDelete(message: message)
+        
+        // Then
+        XCTAssertTrue(canDelete)
+    }
+    
+    func testCanDelete_OtherUsersMessage_ReturnsFalse() async {
+        // Given
+        let message = createTestMessage(id: "msg1", text: "Someone else's message", senderId: "user2")
+        
+        // When
+        let canDelete = sut.canDelete(message: message)
+        
+        // Then
+        XCTAssertFalse(canDelete)
+    }
+    
+    func testCanDelete_OwnMessage_After24Hours_ReturnsFalse() async {
+        // Given
+        let message = Message(
+            id: "msg1",
+            conversationId: "test-conv",
+            senderId: "user1",
+            text: "Old message",
+            timestamp: Date().addingTimeInterval(-25 * 3600), // 25 hours ago
+            status: .sent,
+            statusUpdatedAt: Date(),
+            attachments: [],
+            editHistory: nil,
+            editCount: 0,
+            isEdited: false,
+            isDeleted: false,
+            deletedAt: nil,
+            deletedBy: nil,
+            readBy: ["user1"],
+            readCount: 1,
+            isPriority: false,
+            priorityReason: nil,
+            schemaVersion: 1
+        )
+        
+        // When
+        let canDelete = sut.canDelete(message: message)
+        
+        // Then
+        XCTAssertFalse(canDelete)
+    }
+    
+    func testCanDelete_AlreadyDeleted_ReturnsFalse() async {
+        // Given
+        let message = Message(
+            id: "msg1",
+            conversationId: "test-conv",
+            senderId: "user1",
+            text: "",
+            timestamp: Date(),
+            status: .sent,
+            statusUpdatedAt: Date(),
+            attachments: [],
+            editHistory: nil,
+            editCount: 0,
+            isEdited: false,
+            isDeleted: true,
+            deletedAt: Date(),
+            deletedBy: "user1",
+            readBy: ["user1"],
+            readCount: 1,
+            isPriority: false,
+            priorityReason: nil,
+            schemaVersion: 1
+        )
+        
+        // When
+        let canDelete = sut.canDelete(message: message)
+        
+        // Then
+        XCTAssertFalse(canDelete)
+    }
+    
+    func testShowDeleteConfirmation_ValidMessage_ShowsAlert() async {
+        // Given
+        let message = createTestMessage(id: "msg1", text: "Delete me", senderId: "user1")
+        sut.messages = [message]
+        
+        // When
+        sut.showDeleteConfirmation(for: message)
+        
+        // Then
+        XCTAssertTrue(sut.showDeleteConfirmation)
+        XCTAssertEqual(sut.messageToDelete?.id, "msg1")
+    }
+    
+    func testShowDeleteConfirmation_OtherUsersMessage_ShowsError() async {
+        // Given
+        let message = createTestMessage(id: "msg1", text: "Someone else's message", senderId: "user2")
+        
+        // When
+        sut.showDeleteConfirmation(for: message)
+        
+        // Then
+        XCTAssertFalse(sut.showDeleteConfirmation)
+        XCTAssertNotNil(sut.errorMessage)
+        XCTAssertTrue(sut.errorMessage?.contains("your own") ?? false)
+    }
+    
+    func testShowDeleteConfirmation_MessageOver24Hours_ShowsError() async {
+        // Given
+        let message = Message(
+            id: "msg1",
+            conversationId: "test-conv",
+            senderId: "user1",
+            text: "Old message",
+            timestamp: Date().addingTimeInterval(-25 * 3600), // 25 hours ago
+            status: .sent,
+            statusUpdatedAt: Date(),
+            attachments: [],
+            editHistory: nil,
+            editCount: 0,
+            isEdited: false,
+            isDeleted: false,
+            deletedAt: nil,
+            deletedBy: nil,
+            readBy: ["user1"],
+            readCount: 1,
+            isPriority: false,
+            priorityReason: nil,
+            schemaVersion: 1
+        )
+        
+        // When
+        sut.showDeleteConfirmation(for: message)
+        
+        // Then
+        XCTAssertFalse(sut.showDeleteConfirmation)
+        XCTAssertNotNil(sut.errorMessage)
+        XCTAssertTrue(sut.errorMessage?.contains("24 hours") ?? false)
+    }
+    
+    func testConfirmDelete_Success_MarksDeleted() async {
+        // Given
+        let message = createTestMessage(id: "msg1", text: "Delete me", senderId: "user1")
+        sut.messages = [message]
+        sut.messageToDelete = message
+        sut.showDeleteConfirmation = true
+        
+        mockMessageRepo.deleteMessageCalled = false
+        mockMessageRepo.shouldFail = false
+        
+        // When
+        await sut.confirmDelete()
+        
+        // Then
+        XCTAssertTrue(mockMessageRepo.deleteMessageCalled)
+        XCTAssertEqual(mockMessageRepo.capturedDeleteMessageId, "msg1")
+        XCTAssertFalse(sut.showDeleteConfirmation) // Confirmation cleared
+        
+        // Optimistic update
+        XCTAssertTrue(sut.messages[0].isDeleted)
+        XCTAssertEqual(sut.messages[0].text, "") // Text cleared
+    }
+    
+    func testConfirmDelete_OptimisticUI_ShowsPlaceholderImmediately() async {
+        // Given
+        let message = createTestMessage(id: "msg1", text: "Delete me", senderId: "user1")
+        sut.messages = [message]
+        sut.messageToDelete = message
+        
+        // When
+        await sut.confirmDelete()
+        
+        // Then - Message marked deleted immediately (before repository returns)
+        XCTAssertTrue(sut.messages[0].isDeleted)
+        XCTAssertEqual(sut.messages[0].text, "")
+        XCTAssertNotNil(sut.messages[0].deletedAt)
+        XCTAssertEqual(sut.messages[0].deletedBy, "user1")
+    }
+    
+    func testConfirmDelete_NetworkFailure_RevertsToOriginal() async {
+        // Given
+        let message = createTestMessage(id: "msg1", text: "Delete me", senderId: "user1")
+        sut.messages = [message]
+        sut.messageToDelete = message
+        
+        mockMessageRepo.shouldFail = true
+        mockMessageRepo.mockError = RepositoryError.networkError(NSError(domain: "test", code: -1))
+        
+        // When
+        await sut.confirmDelete()
+        
+        // Then - Reverted to original
+        XCTAssertFalse(sut.messages[0].isDeleted)
+        XCTAssertEqual(sut.messages[0].text, "Delete me")
+        XCTAssertNotNil(sut.errorMessage)
+    }
+    
+    func testConfirmDelete_LastMessage_UpdatesConversationPreview() async {
+        // Given
+        let message = createTestMessage(id: "msg1", text: "Delete me", senderId: "user1")
+        sut.messages = [message]
+        sut.messageToDelete = message
+        
+        let conversation = Conversation(
+            id: "test-conv",
+            participantIds: ["user1", "user2"],
+            lastMessage: "Delete me",
+            lastMessageTimestamp: Date(),
+            lastMessageSenderId: "user1",
+            lastMessageId: "msg1", // This is the message being deleted
+            unreadCounts: [:],
+            typingUsers: [],
+            createdAt: Date(),
+            isGroup: false
+        )
+        sut.conversation = conversation
+        
+        mockConversationRepo.updateConversationCalled = false
+        
+        // When
+        await sut.confirmDelete()
+        
+        // Then
+        XCTAssertTrue(mockConversationRepo.updateConversationCalled)
+        let updates = mockConversationRepo.capturedUpdates
+        XCTAssertEqual(updates?["lastMessage"] as? String, "[Message deleted]")
+    }
+    
     // MARK: - Helper Methods
     
     private func createTestMessage(id: String, text: String, senderId: String) -> Message {

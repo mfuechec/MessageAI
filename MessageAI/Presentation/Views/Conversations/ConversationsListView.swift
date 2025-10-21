@@ -1,15 +1,38 @@
 import SwiftUI
 
+/// Wrapper to keep ChatViewModel and Conversation in sync
+struct ChatContext: Identifiable {
+    let id: String
+    let conversation: Conversation
+    let chatViewModel: ChatViewModel
+    let participants: [User]
+    
+    init(conversation: Conversation, chatViewModel: ChatViewModel, participants: [User]) {
+        self.id = conversation.id
+        self.conversation = conversation
+        self.chatViewModel = chatViewModel
+        self.participants = participants
+    }
+}
+
 /// Main view for displaying user's conversations list
 struct ConversationsListView: View {
     @StateObject var viewModel: ConversationsListViewModel
-    @State private var selectedConversation: Conversation?
     @State private var showNewConversation = false
     @StateObject private var newConversationViewModel: NewConversationViewModel
     @EnvironmentObject private var authViewModel: AuthViewModel
     
-    // Store ChatViewModel to prevent recreation on sheet re-evaluation
-    @State private var chatViewModel: ChatViewModel?
+    // CRITICAL: Use single state object to prevent desynchronization
+    @State private var chatContext: ChatContext? {
+        didSet {
+            if let context = chatContext {
+                print("🟢 [State] chatContext set for conversation: \(context.id)")
+                print("  📊 ChatViewModel has \(context.chatViewModel.messages.count) messages")
+            } else {
+                print("🔴 [State] chatContext cleared")
+            }
+        }
+    }
     
     init(viewModel: ConversationsListViewModel) {
         _viewModel = StateObject(wrappedValue: viewModel)
@@ -66,12 +89,31 @@ struct ConversationsListView: View {
                 // Parent observes the ViewModel directly (more reliable than child onChange)
                 if let conversation = conversation {
                     print("📱 Parent detected conversation selection: \(conversation.id)")
-                    // Dismiss sheet
+                    
+                    // Get participants from users dictionary (single source of truth)
+                    let participants = viewModel.getParticipants(for: conversation)
+                    print("✅ Found \(participants.count)/\(conversation.participantIds.count) participants")
+                    
+                    // Create ChatViewModel with participant data
+                    let chatVM = DIContainer.shared.makeChatViewModel(
+                        conversationId: conversation.id,
+                        currentUserId: authViewModel.currentUser?.id ?? "",
+                        initialConversation: conversation,
+                        initialParticipants: participants
+                    )
+                    print("✅ ChatViewModel created for new conversation")
+                    
+                    // Dismiss new conversation sheet
                     showNewConversation = false
-                    // Wait for dismissal then open chat
+                    
+                    // Wait for dismissal animation, then open chat
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                        print("🚀 Opening chat for conversation: \(conversation.id)")
-                        selectedConversation = conversation
+                        print("🚀 Opening chat sheet for conversation: \(conversation.id)")
+                        chatContext = ChatContext(
+                            conversation: conversation,
+                            chatViewModel: chatVM,
+                            participants: participants
+                        )
                         // Reset for next time
                         newConversationViewModel.selectedConversation = nil
                     }
@@ -83,38 +125,50 @@ struct ConversationsListView: View {
     private var conversationsList: some View {
         List(viewModel.conversations) { conversation in
             Button(action: {
-                // Create ChatViewModel ONCE before presenting
-                let participants = viewModel.participantsByConversation[conversation.id] ?? []
-                chatViewModel = DIContainer.shared.makeChatViewModel(
+                print("🔴 [Button Tap] User tapped conversation: \(conversation.id)")
+                
+                // Get participants from users dictionary (single source of truth)
+                let participants = viewModel.getParticipants(for: conversation)
+                print("  📊 Found \(participants.count) participants")
+                
+                // Create ChatViewModel
+                let chatVM = DIContainer.shared.makeChatViewModel(
                     conversationId: conversation.id,
                     currentUserId: authViewModel.currentUser?.id ?? "",
                     initialConversation: conversation,
                     initialParticipants: participants
                 )
-                selectedConversation = conversation
+                
+                // Set single state object - keeps everything in sync
+                chatContext = ChatContext(
+                    conversation: conversation,
+                    chatViewModel: chatVM,
+                    participants: participants
+                )
+                print("✅ [Button] chatContext created and assigned")
             }) {
                 ConversationRowView(
                     conversation: conversation,
                     displayName: viewModel.displayName(for: conversation),
                     unreadCount: viewModel.unreadCount(for: conversation),
                     formattedTimestamp: viewModel.formattedTimestamp(for: conversation),
-                    participants: viewModel.participantsByConversation[conversation.id] ?? []
+                    participants: viewModel.getParticipants(for: conversation)
                 )
             }
             .buttonStyle(PlainButtonStyle())
         }
         .listStyle(PlainListStyle())
-        .sheet(item: $selectedConversation) { conversation in
-            // Use the stored ChatViewModel instead of creating a new one
-            if let chatVM = chatViewModel {
-                let participants = viewModel.participantsByConversation[conversation.id] ?? []
-                NavigationView {
-                    ChatView(
-                        viewModel: chatVM,
-                        initialConversation: conversation,
-                        initialParticipants: participants
-                    )
-                }
+        .sheet(item: $chatContext) { context in
+            let _ = print("🔷 [Sheet Evaluation] Sheet closure called for: \(context.id)")
+            let _ = print("  📊 ChatViewModel has \(context.chatViewModel.messages.count) messages")
+            let _ = print("  👥 \(context.participants.count) participants")
+            
+            NavigationView {
+                ChatView(
+                    viewModel: context.chatViewModel,
+                    initialConversation: context.conversation,
+                    initialParticipants: context.participants
+                )
             }
         }
     }

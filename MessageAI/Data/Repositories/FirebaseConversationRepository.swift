@@ -209,10 +209,15 @@ final class FirebaseConversationRepository: ConversationRepositoryProtocol {
     
     func updateConversation(id: String, updates: [String: Any]) async throws {
         do {
+            print("🔄 [FirebaseConversationRepository] Updating conversation: \(id)")
+            print("  📝 Updates: \(updates)")
+            
             try await db.collection("conversations").document(id).updateData(updates)
-            print("✅ Conversation updated: \(id) with \(updates.keys.count) fields")
+            
+            print("✅ [FirebaseConversationRepository] Firestore updateData() completed")
+            print("  💡 Snapshot listener should trigger for all participants...")
         } catch {
-            print("❌ Update conversation failed: \(error.localizedDescription)")
+            print("❌ [FirebaseConversationRepository] Update conversation failed: \(error.localizedDescription)")
             throw RepositoryError.networkError(error)
         }
     }

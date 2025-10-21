@@ -11,6 +11,7 @@ class MockMessageRepository: MessageRepositoryProtocol {
     var getMessagesCalled = false
     var updateMessageStatusCalled = false
     var editMessageCalled = false
+    var deleteMessageCalled = false
     var shouldFail = false
     
     // MARK: - Configurable Properties
@@ -27,6 +28,7 @@ class MockMessageRepository: MessageRepositoryProtocol {
     var capturedStatus: MessageStatus?
     var capturedEditMessageId: String?
     var capturedEditNewText: String?
+    var capturedDeleteMessageId: String?
     
     // MARK: - MessageRepositoryProtocol Implementation
     
@@ -99,9 +101,20 @@ class MockMessageRepository: MessageRepositoryProtocol {
     }
     
     func deleteMessage(id: String) async throws {
-        // Placeholder for future implementation
+        deleteMessageCalled = true
+        capturedDeleteMessageId = id
+        
         if shouldFail {
             throw mockError ?? RepositoryError.messageNotFound("Mock error")
+        }
+        
+        // Mark message as deleted in mockMessages for testing
+        if let index = mockMessages.firstIndex(where: { $0.id == id }) {
+            var deletedMessage = mockMessages[index]
+            deletedMessage.isDeleted = true
+            deletedMessage.deletedAt = Date()
+            deletedMessage.text = ""
+            mockMessages[index] = deletedMessage
         }
     }
     
@@ -114,6 +127,7 @@ class MockMessageRepository: MessageRepositoryProtocol {
         getMessagesCalled = false
         updateMessageStatusCalled = false
         editMessageCalled = false
+        deleteMessageCalled = false
         shouldFail = false
         mockMessages = []
         mockError = nil
@@ -124,6 +138,7 @@ class MockMessageRepository: MessageRepositoryProtocol {
         capturedStatus = nil
         capturedEditMessageId = nil
         capturedEditNewText = nil
+        capturedDeleteMessageId = nil
     }
 }
 

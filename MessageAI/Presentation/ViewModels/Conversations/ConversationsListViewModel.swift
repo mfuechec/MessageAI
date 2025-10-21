@@ -7,8 +7,7 @@ class ConversationsListViewModel: ObservableObject {
     // MARK: - Published Properties
     
     @Published var conversations: [Conversation] = []
-    @Published var users: [String: User] = [:] // userId -> User mapping for display names
-    @Published var participantsByConversation: [String: [User]] = [:] // conversationId -> [User] for group avatars
+    @Published var users: [String: User] = [:] // userId -> User mapping (single source of truth)
     @Published var isLoading: Bool = false
     @Published var errorMessage: String?
     @Published var isOffline: Bool = false
@@ -44,8 +43,24 @@ class ConversationsListViewModel: ObservableObject {
         conversationRepository.observeConversations(userId: currentUserId)
             .receive(on: DispatchQueue.main)
             .sink { [weak self] conversations in
-                self?.conversations = self?.sortConversations(conversations) ?? []
-                self?.loadParticipantUsers(from: conversations)
+                guard let self = self else { return }
+                
+                print("🔄 [ConversationsListViewModel] Conversations updated: \(conversations.count) conversations")
+                
+                // CRITICAL: Force array reassignment to trigger SwiftUI update
+                // Even if sorting produces same order, create new array instance
+                let sortedConversations = self.sortConversations(conversations)
+                
+                // Log any changed conversations (for debugging)
+                for newConv in sortedConversations {
+                    if let oldConv = self.conversations.first(where: { $0.id == newConv.id }),
+                       oldConv != newConv {
+                        print("📝 [ConversationsListViewModel] Conversation \(newConv.id) changed: '\(oldConv.lastMessage ?? "nil")' → '\(newConv.lastMessage ?? "nil")'")
+                    }
+                }
+                
+                self.conversations = sortedConversations
+                self.loadParticipantUsers(from: conversations)
             }
             .store(in: &cancellables)
     }
@@ -62,7 +77,7 @@ class ConversationsListViewModel: ObservableObject {
         // Collect all unique participant IDs
         let participantIds = Set(conversations.flatMap { $0.participantIds })
         
-        // Load users for display names
+        // Load users into single source of truth dictionary
         Task {
             for userId in participantIds {
                 if users[userId] == nil {
@@ -77,24 +92,12 @@ class ConversationsListViewModel: ObservableObject {
                     }
                 }
             }
-            
-            // Load participant arrays for each conversation (for group avatars)
-            await loadParticipantsForConversations(conversations)
         }
     }
     
-    /// Load full participant User arrays for group avatar display
-    private func loadParticipantsForConversations(_ conversations: [Conversation]) async {
-        for conversation in conversations {
-            do {
-                let participants = try await userRepository.getUsers(ids: conversation.participantIds)
-                await MainActor.run {
-                    participantsByConversation[conversation.id] = participants
-                }
-            } catch {
-                print("❌ Failed to load participants for conversation \(conversation.id): \(error.localizedDescription)")
-            }
-        }
+    /// Helper to get participants array for a conversation from users dictionary
+    func getParticipants(for conversation: Conversation) -> [User] {
+        return conversation.participantIds.compactMap { users[$0] }
     }
     
     private func observeNetworkStatus() {

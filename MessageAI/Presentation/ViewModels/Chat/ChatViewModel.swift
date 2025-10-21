@@ -25,6 +25,10 @@ class ChatViewModel: ObservableObject {
     @Published var showEditHistoryModal: Bool = false
     @Published var editHistoryMessage: Message? = nil
     
+    // Delete confirmation state
+    @Published var showDeleteConfirmation: Bool = false
+    @Published var messageToDelete: Message? = nil
+    
     // Force UI refresh for message edits (when count doesn't change)
     @Published var messagesNeedRefresh: Bool = false
     
@@ -91,10 +95,28 @@ class ChatViewModel: ObservableObject {
             .debounce(for: .milliseconds(100), scheduler: DispatchQueue.main)  // Batch rapid-fire updates
             .receive(on: DispatchQueue.main)
             .sink { [weak self] messages in
+                guard let self = self else { return }
                 print("🔄 [ChatViewModel] Messages updated: \(messages.count) messages")
-                self?.messages = messages.sorted { $0.timestamp < $1.timestamp }
-                self?.messagesLoaded = true
-                self?.updateLoadingState()
+                
+                let sortedMessages = messages.sorted { $0.timestamp < $1.timestamp }
+                
+                // CRITICAL: Detect if message content changed but count stayed same
+                // This happens when messages are edited or deleted
+                if self.messages.count == sortedMessages.count && self.messages.count > 0 {
+                    // Check if any message content changed (edited or deleted)
+                    let contentChanged = zip(self.messages, sortedMessages).contains { old, new in
+                        old.text != new.text || old.isEdited != new.isEdited || old.isDeleted != new.isDeleted
+                    }
+                    
+                    if contentChanged {
+                        print("📝 [ChatViewModel] Message content changed (edit/delete), forcing UI refresh")
+                        self.messagesNeedRefresh = true
+                    }
+                }
+                
+                self.messages = sortedMessages
+                self.messagesLoaded = true
+                self.updateLoadingState()
             }
             .store(in: &cancellables)
     }
@@ -450,6 +472,125 @@ class ChatViewModel: ObservableObject {
         showEditHistoryModal = false
         editHistoryMessage = nil
         print("📜 Closed edit history")
+    }
+    
+    // MARK: - Message Deletion
+    
+    /// Checks if a message can be deleted (own message, within 24 hours, not already deleted)
+    func canDelete(message: Message) -> Bool {
+        guard message.senderId == currentUserId else { return false }
+        guard !message.isDeleted else { return false }
+        
+        let hoursSinceSent = Date().timeIntervalSince(message.timestamp) / 3600
+        return hoursSinceSent < 24
+    }
+    
+    /// Shows delete confirmation alert
+    func showDeleteConfirmation(for message: Message) {
+        guard canDelete(message: message) else {
+            if message.senderId != currentUserId {
+                errorMessage = "You can only delete your own messages"
+            } else if message.isDeleted {
+                errorMessage = "This message has already been deleted"
+            } else {
+                errorMessage = "Messages can only be deleted within 24 hours"
+            }
+            return
+        }
+        
+        messageToDelete = message
+        showDeleteConfirmation = true
+    }
+    
+    /// Cancels delete action
+    func cancelDelete() {
+        showDeleteConfirmation = false
+        messageToDelete = nil
+    }
+    
+    /// Deletes message with optimistic UI
+    func confirmDelete() async {
+        guard let message = messageToDelete else { return }
+        
+        // Find message in local array
+        guard let index = messages.firstIndex(where: { $0.id == message.id }) else {
+            errorMessage = "Message not found"
+            cancelDelete()
+            return
+        }
+        
+        // Store original message for rollback on error
+        let originalMessage = messages[index]
+        
+        // Optimistic UI: Mark as deleted immediately
+        var deletedMessage = originalMessage
+        deletedMessage.isDeleted = true
+        deletedMessage.deletedAt = Date()
+        deletedMessage.deletedBy = currentUserId
+        deletedMessage.text = "" // Clear text locally
+        
+        // CRITICAL: Reassign entire array to trigger @Published change detection
+        var updatedMessages = messages
+        updatedMessages[index] = deletedMessage
+        messages = updatedMessages
+        messagesNeedRefresh = true  // Force UI reload
+        
+        print("🗑️ Optimistic delete: message \(message.id) marked as deleted locally")
+        
+        // Clear confirmation state immediately for instant UX
+        cancelDelete()
+        
+        // Call repository
+        do {
+            try await messageRepository.deleteMessage(id: message.id)
+            print("✅ Message deleted successfully: \(message.id)")
+            
+            // Update conversation preview with most recent message
+            // Check if deleted message is the most recent by comparing with current messages array
+            let sortedMessages = messages.sorted { $0.timestamp > $1.timestamp }
+            if let mostRecentMessage = sortedMessages.first, mostRecentMessage.id == message.id {
+                print("🔄 Deleted message was most recent, updating conversation preview")
+                try await updateConversationAfterDelete()
+            }
+            
+        } catch {
+            // Rollback optimistic update on failure
+            var rollbackMessages = messages
+            rollbackMessages[index] = originalMessage
+            messages = rollbackMessages
+            
+            // Show user-friendly error message
+            if let repoError = error as? RepositoryError {
+                switch repoError {
+                case .networkError:
+                    errorMessage = "No internet connection. Please check your network and try again."
+                case .unauthorized:
+                    errorMessage = "You don't have permission to delete this message."
+                case .messageNotFound:
+                    errorMessage = "Message not found. It may have already been deleted."
+                default:
+                    errorMessage = "Unable to delete message. Please try again."
+                }
+            } else {
+                errorMessage = "Unable to delete message. Please try again."
+            }
+            print("❌ Delete message error: \(error)")
+        }
+    }
+    
+    /// Updates conversation last message after deleting the most recent message
+    private func updateConversationAfterDelete() async throws {
+        print("🔄 [updateConversationAfterDelete] Starting update for conversation: \(conversationId)")
+        print("  📝 Setting lastMessage to: [Message deleted]")
+        
+        try await conversationRepository.updateConversation(
+            id: conversationId,
+            updates: [
+                "lastMessage": "[Message deleted]"
+            ]
+        )
+        print("✅ [updateConversationAfterDelete] Firestore update completed")
+        print("  💡 ConversationsListViewModel listener should fire now...")
     }
 }
 

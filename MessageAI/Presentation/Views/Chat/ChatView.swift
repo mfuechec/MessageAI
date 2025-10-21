@@ -75,6 +75,22 @@ struct ChatView: View {
                 EditHistoryView(message: message)
             }
         }
+        // Delete Confirmation Alert
+        .alert("Delete this message for everyone?", isPresented: $viewModel.showDeleteConfirmation) {
+            Button("Cancel", role: .cancel) {
+                viewModel.cancelDelete()
+            }
+            .accessibilityLabel("Cancel deletion")
+            
+            Button("Delete for Everyone", role: .destructive) {
+                Task {
+                    await viewModel.confirmDelete()
+                }
+            }
+            .accessibilityLabel("Delete message for everyone")
+        } message: {
+            Text("This message will be deleted for all participants. This action cannot be undone.")
+        }
         // Error Alert
         .alert("Error", isPresented: Binding(
             get: { viewModel.errorMessage != nil },
@@ -329,7 +345,21 @@ struct MessageKitWrapper: UIViewControllerRepresentable {
         }
         
         func textColor(for message: MessageType, at indexPath: IndexPath, in messagesCollectionView: MessagesCollectionView) -> UIColor {
+            // Check if message is deleted
+            if let messageKitMessage = message as? MessageKitMessage, messageKitMessage.isDeleted {
+                return .secondaryLabel // Gray color for deleted messages
+            }
+            
             return isFromCurrentSender(message: message) ? .white : .label
+        }
+        
+        func configureMessageLabel(_ label: UILabel, for message: MessageType, at indexPath: IndexPath, in messagesCollectionView: MessagesCollectionView) {
+            // Apply italic font for deleted messages
+            if let messageKitMessage = message as? MessageKitMessage, messageKitMessage.isDeleted {
+                label.font = UIFont.italicSystemFont(ofSize: 15)
+            } else {
+                label.font = UIFont.systemFont(ofSize: 15)
+            }
         }
         
         func configureAvatarView(_ avatarView: AvatarView, for message: MessageType, at indexPath: IndexPath, in messagesCollectionView: MessagesCollectionView) {
@@ -669,9 +699,14 @@ class CustomMessagesViewController: MessagesViewController {
             layout.setMessageIncomingMessageTopLabelAlignment(LabelAlignment(textAlignment: .left, textInsets: UIEdgeInsets(top: 0, left: 12, bottom: 0, right: 0)))
         }
         
-        // Enable tap gesture for message selection (needed for didTapMessage to work)
+        // Enable tap gesture for quick edit (tap to edit)
         let tapGesture = UITapGestureRecognizer(target: self, action: #selector(handleMessageTap(_:)))
         messagesCollectionView.addGestureRecognizer(tapGesture)
+        
+        // Enable swipe actions for delete
+        let swipeGesture = UISwipeGestureRecognizer(target: self, action: #selector(handleMessageSwipe(_:)))
+        swipeGesture.direction = .left
+        messagesCollectionView.addGestureRecognizer(swipeGesture)
         
         // Accessibility
         messagesCollectionView.isAccessibilityElement = false
@@ -699,6 +734,33 @@ class CustomMessagesViewController: MessagesViewController {
         // Open edit mode
         Task { @MainActor in
             viewModel.startEdit(message: message)
+        }
+    }
+    
+    @objc private func handleMessageSwipe(_ gesture: UISwipeGestureRecognizer) {
+        let touchPoint = gesture.location(in: messagesCollectionView)
+        
+        // Find which cell was swiped
+        guard let indexPath = messagesCollectionView.indexPathForItem(at: touchPoint),
+              let viewModel = viewModel else {
+            return
+        }
+        
+        print("👈 Swiped message at section: \(indexPath.section)")
+        
+        // Get the domain message
+        guard indexPath.section < viewModel.messages.count else { return }
+        let domainMessage = viewModel.messages[indexPath.section]
+        
+        // Check if message can be deleted
+        guard viewModel.canDelete(message: domainMessage) else {
+            print("⚠️ Cannot delete this message")
+            return
+        }
+        
+        // Show delete confirmation immediately
+        Task { @MainActor in
+            viewModel.showDeleteConfirmation(for: domainMessage)
         }
     }
     

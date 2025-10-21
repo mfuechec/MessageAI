@@ -8,13 +8,21 @@ struct MessageKitMessage: MessageType {
     var sentDate: Date
     var kind: MessageKind
     var status: MessageStatus
+    var isDeleted: Bool
     
     init(message: Message, displayName: String) {
         self.sender = MessageKitSender(senderId: message.senderId, displayName: displayName)
         self.messageId = message.id
         self.sentDate = message.timestamp
-        self.kind = .text(message.text)
         self.status = message.status
+        self.isDeleted = message.isDeleted
+        
+        // Show "[Message deleted]" placeholder for deleted messages
+        if message.isDeleted {
+            self.kind = .text("[Message deleted]")
+        } else {
+            self.kind = .text(message.text)
+        }
     }
 }
 

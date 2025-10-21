@@ -2,8 +2,8 @@
 
 **Epic Goal:** Complete MVP with Reliability  
 **Timeline:** 1.5 days (estimated)  
-**Total Stories:** 13 (2.0 through 2.12)  
-**Status:** In Progress (3/13 stories completed)  
+**Total Stories:** 15 (2.0 through 2.12, with 2.11 split into 2.11a/b/c)  
+**Status:** In Progress (3/15 stories completed)  
 **Completed:** Story 2.0 ✅, Story 2.1 ✅, Story 2.2 ✅
 
 ---
@@ -200,23 +200,44 @@ Epic 2 transforms the basic messaging foundation from Epic 1 into a **production
 
 ---
 
-### Phase 6: Performance & Testing (Stories 2.11-2.12)
+### Phase 6: Performance & Testing (Stories 2.11a/b/c-2.12)
 **Goal:** Production-ready quality
 
-#### Story 2.11: Performance Optimization & Network Resilience
-- **Complexity:** Medium-High
-- **Estimated Time:** 4-5 hours
-- **Dependencies:** All previous stories (optimizes entire app)
+#### Story 2.11a: Message & Conversation Pagination
+- **Complexity:** Medium
+- **Estimated Time:** 2-3 hours
+- **Dependencies:** All previous stories (optimizes query performance)
 - **Key Deliverables:**
-  - Message pagination (50 most recent)
+  - Message pagination (50 most recent, load older on scroll)
   - Conversation list pagination
-  - User cache implementation (fixes 50+ redundant reads per update)
   - Firestore composite indexes
-  - Network resilience (exponential backoff)
-  - Memory profiling (< 150MB RAM)
   - Load testing (1000 message conversation)
 - **Risks:** Performance regressions from new features
+
+#### Story 2.11b: Caching Layer (User & ChatViewModel)
+- **Complexity:** Medium
+- **Estimated Time:** 2-3 hours
+- **Dependencies:** Story 2.11a (pagination complete)
+- **Key Deliverables:**
+  - User cache with staleness detection (fixes 50+ redundant reads)
+  - ChatViewModel lifecycle management & caching
+  - Preserve scroll position & draft state across conversation re-opens
+  - Memory-efficient cache eviction (LRU, 100 users max)
+- **Risks:** Memory leaks if cache not properly managed
 - **Known Issue:** ConversationsListViewModel refetches all participants on every update (discovered in Story 2.2)
+- **New Enhancement:** ChatContext pattern needs ViewModel caching to preserve state
+
+#### Story 2.11c: Network Resilience & Performance Profiling
+- **Complexity:** Medium
+- **Estimated Time:** 2-3 hours
+- **Dependencies:** Stories 2.11a, 2.11b (full app optimized)
+- **Key Deliverables:**
+  - Exponential backoff for failed operations
+  - Network quality detection & adaptive behavior
+  - Memory profiling (< 150MB RAM target)
+  - Timestamp auto-updates (conversation list updates every 60s)
+  - Performance regression testing suite
+- **Risks:** Profiling may reveal unexpected bottlenecks
 
 #### Story 2.12: Comprehensive Reliability Testing & Regression Suite
 - **Complexity:** Medium
@@ -255,8 +276,10 @@ Epic 2 transforms the basic messaging foundation from Epic 1 into a **production
 
 10. **Story 2.9** (Offline Queue)
 11. **Story 2.10** (Push Notifications) ⚠️ *Complex, allow extra time*
-12. **Story 2.11** (Performance Optimization)
-13. **Story 2.12** (Testing & Deployment)
+12. **Story 2.11a** (Message & Conversation Pagination)
+13. **Story 2.11b** (Caching Layer - User & ChatViewModel)
+14. **Story 2.11c** (Network Resilience & Performance Profiling)
+15. **Story 2.12** (Testing & Deployment)
 
 ### Parallel Implementation Opportunities
 
@@ -264,7 +287,10 @@ Stories that can be implemented simultaneously (no dependencies):
 
 - **Parallel Set 1:** Stories 2.2, 2.3, 2.4 (message operations)
 - **Parallel Set 2:** Stories 2.5, 2.6 (real-time indicators)
-- **Sequential:** Story 2.7 must complete before 2.8 (shared infrastructure)
+- **Parallel Set 3:** Stories 2.11a, 2.11b (pagination & caching can be done simultaneously)
+- **Sequential:** 
+  - Story 2.7 must complete before 2.8 (shared infrastructure)
+  - Story 2.11c must wait for 2.11a & 2.11b (profiling needs full optimizations in place)
 
 ---
 
@@ -276,27 +302,29 @@ Stories that can be implemented simultaneously (no dependencies):
 |-------|-----------|-----------|------------|
 | 2.0 | Medium | 3-4h | Medium (query performance) |
 | 2.1 | Medium-High | 4-5h | Medium (MessageKit customization) |
-| 2.3 | Medium | 3-4h | Low |
-| 2.4 | Low-Medium | 2-3h | Low |
-| 2.5 | Medium | 3-4h | Medium (offline queue interaction) |
-| 2.6 | Medium | 3-4h | Low |
-| 2.7 | Medium | 2-3h | Low |
-| 2.8 | High | 5-6h | High (storage, compression, offline) |
+| 2.2 | Medium | 3h | Low (completed) |
+| 2.3 | Low-Medium | 2-3h | Low |
+| 2.4 | Medium | 3-4h | Medium (offline queue interaction) |
+| 2.5 | Medium | 3-4h | Low |
+| 2.6 | Medium | 2-3h | Low |
+| 2.7 | High | 5-6h | High (storage, compression, offline) |
 | 2.8 | Medium | 3-4h | Low (builds on 2.7) |
 | 2.9 | Medium-High | 4-5h | Medium (sync complexity) |
 | 2.10 | High | 6-8h | High (external dependencies) |
-| 2.11 | Medium-High | 4-5h | Medium (performance testing) |
+| 2.11a | Medium | 2-3h | Medium (pagination complexity) |
+| 2.11b | Medium | 2-3h | Medium (cache management) |
+| 2.11c | Medium | 2-3h | Low (profiling & monitoring) |
 | 2.12 | Medium | 4-6h | Low (mostly testing) |
 
-**Total Estimated Time:** 46-59 hours
+**Total Estimated Time:** 48-63 hours
 
 ### Realistic Timeline
 
 - **Best Case:** 6 work days (8 hours/day)
-- **Expected Case:** 7-8 work days (with breaks, debugging)
-- **Worst Case:** 10 work days (if blockers or external dependencies delay)
+- **Expected Case:** 8-9 work days (with breaks, debugging)
+- **Worst Case:** 11 work days (if blockers or external dependencies delay)
 
-**Note:** Original PRD estimate of "1.5 days" is unrealistic for 13 comprehensive stories with 200+ acceptance criteria.
+**Note:** Original PRD estimate of "1.5 days" is unrealistic for 15 comprehensive stories with 200+ acceptance criteria.
 
 ---
 
@@ -447,15 +475,17 @@ Implement highest-value stories first, defer lower-priority.
 ## Summary
 
 Epic 2 is **ambitious but achievable** with:
-- 13 well-defined stories
+- 15 well-defined stories (including 2.11a/b/c split for manageability)
 - Clear dependencies mapped
-- Realistic 7-8 day timeline
+- Realistic 8-9 day timeline
 - Comprehensive testing plan
 - Production-ready quality standards
 
 **Critical Path:** Story 2.0 must be completed first (blocks all conversation-related features).
 
-**High-Risk Items:** Push notifications (Story 2.11) requires external setup and extra time.
+**High-Risk Items:** Push notifications (Story 2.10) requires external setup and extra time.
+
+**Performance Stories Split:** Story 2.11 split into three focused stories (pagination, caching, profiling) for better dev handoffs and testability.
 
 **Ready to proceed?** Let me know if you want to:
 1. Start drafting Story 2.0
