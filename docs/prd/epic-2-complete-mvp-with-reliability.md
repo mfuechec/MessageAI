@@ -4,7 +4,45 @@
 
 Complete all Gauntlet MVP Phase 1 and Phase 2 requirements including group chat, advanced message features (edit/unsend/retry), read receipts, typing indicators, image attachments, offline message management, and push notifications. Each feature is built with reliability and performance criteria ensuring zero message loss and optimized delivery under various network conditions. Regression test suite established to validate stability as features are added. Expected timeline: 1.5 days.
 
+## Story 2.0: Start New Conversation with Duplicate Prevention
+
+As a **user**,  
+I want **to start a new conversation by selecting a contact**,  
+so that **I can message anyone in the system without creating duplicate conversations**.
+
+### Acceptance Criteria
+
+1. "New Message" button (+ icon) displayed in navigation bar of conversations list
+2. Tap "New Message" opens user selection view showing all available users (excluding current user)
+3. User selection view displays: avatar, display name, and email for each user
+4. Search/filter functionality to find users by name or email
+5. Tap user initiates `getOrCreateConversation()` repository method
+6. **Duplicate Prevention Logic:**
+   - Query Firestore for existing conversation with exact participant match
+   - Sort participant IDs for consistent comparison (alphabetical order)
+   - If conversation exists, navigate to existing conversation (no duplicate created)
+   - If no conversation exists, create new conversation and navigate to it
+7. **Repository Method:** `ConversationRepositoryProtocol.getOrCreateConversation(participantIds: [String]) async throws -> Conversation`
+8. Loading indicator shown during conversation lookup/creation
+9. Error handling: Network failures show retry option
+10. **Race Condition Handling:** If two users simultaneously try to create same conversation, Firestore query detects existing conversation created by other user
+11. New conversation appears immediately in conversations list for both participants
+12. Performance: Conversation lookup/creation completes within 2 seconds
+13. Reliability: Works offline - queued for creation when connection restored
+14. **Unit Tests:**
+    - Test `getOrCreateConversation` returns existing conversation when found
+    - Test `getOrCreateConversation` creates new conversation when not found
+    - Test participant ID sorting (ensure [A,B] matches [B,A])
+    - Test duplicate detection with 2+ users
+15. **Integration Test:** User A creates conversation with User B, User B tries to create conversation with User A, verify same conversation returned
+16. **Edge Cases:**
+    - Self-conversation prevention (can't create conversation with self)
+    - Conversation with deleted/non-existent user ID shows error
+    - Multiple rapid taps on "New Message" don't create duplicates
+
 ## Story 2.1: Group Chat Functionality
+
+**Dependencies:** Story 2.0 (uses same user selection and `getOrCreateConversation` logic)
 
 As a **user**,  
 I want **to create and participate in group conversations with 3 or more people**,  
@@ -12,22 +50,30 @@ so that **I can coordinate with my entire team in one place**.
 
 ### Acceptance Criteria
 
-1. "New Conversation" flow supports selecting multiple participants (3-10 users)
+1. User selection view (from Story 2.0) enhanced to support multi-select (3-10 users)
 2. Group conversation created in Firestore with all participant IDs
 3. Group chat view displays all participants' names in navigation bar
 4. Messages in group chat show sender name for all messages (not just "You" vs "Them")
 5. All participants receive real-time message updates via Firestore listeners
-6. Group conversation appears in conversations list for all participants
-7. Unread counts tracked per participant in group
-8. Tap participant names in nav bar to view group member list
-9. Message delivery works reliably for all group sizes (tested up to 10 participants)
-10. Performance: Messages appear within 2 seconds for all online participants
-11. Reliability: Messages delivered to all participants even if some are offline (queued for delivery)
-12. Unit tests for group conversation creation and message distribution logic
-13. Integration test: 3 users in group, User A sends message, verify Users B and C receive it
-14. Regression test: Verify one-on-one chat still works after group chat implementation
+6. **Group Avatar UI:** Group conversations display multi-participant avatar in conversations list:
+   - 2 participants: Two circular avatars arranged side-by-side within circle space
+   - 3 participants: Three avatars in triangular arrangement (2 top, 1 bottom)
+   - 4+ participants: Four avatars in 2x2 grid arrangement (top-left, top-right, bottom-left, bottom-right)
+   - Each mini-avatar shows participant's profile photo or initials
+   - All contained within same circular avatar space as one-on-one chats
+   - Provides instant visual differentiation: group vs one-on-one
+7. Group conversation appears in conversations list for all participants
+8. Unread counts tracked per participant in group
+9. Tap participant names in nav bar to view group member list
+10. Message delivery works reliably for all group sizes (tested up to 10 participants)
+11. Performance: Messages appear within 2 seconds for all online participants
+12. Reliability: Messages delivered to all participants even if some are offline (queued for delivery)
+13. **Component:** Create `GroupAvatarView` SwiftUI component for reusable multi-avatar display
+14. Unit tests for group conversation creation and message distribution logic
+15. Integration test: 3 users in group, User A sends message, verify Users B and C receive it
+16. Regression test: Verify one-on-one chat still works after group chat implementation
 
-## Story 2.2: Message Editing with History
+## Story 2.3: Message Editing with History
 
 As a **user**,  
 I want **to edit messages I've already sent**,  
@@ -51,7 +97,7 @@ so that **I can correct typos or clarify my meaning**.
 14. Integration test: User A edits message, User B sees update in real-time
 15. Regression test: Message sending still works after edit implementation
 
-## Story 2.3: Message Unsend (Delete for Everyone)
+## Story 2.4: Message Unsend (Delete for Everyone)
 
 As a **user**,  
 I want **to delete messages I've sent from everyone's view**,  
@@ -74,7 +120,7 @@ so that **I can remove messages sent by mistake**.
 13. Integration test: User A deletes message, User B sees "[Message deleted]"
 14. Regression test: Edit and send functionality still work after unsend implementation
 
-## Story 2.4: Message Send Retry on Failure
+## Story 2.5: Message Send Retry on Failure
 
 As a **user**,  
 I want **to manually retry sending messages that failed**,  
@@ -96,7 +142,7 @@ so that **I have control over when failed messages are resent**.
 12. Integration test: Force network failure, send message, verify failure state, restore network, retry, verify success
 13. Regression test: Normal message sending still works reliably
 
-## Story 2.5: Read Receipts
+## Story 2.6: Read Receipts
 
 As a **user**,  
 I want **to see when my messages have been read by others**,  
@@ -118,7 +164,7 @@ so that **I know if my message has been seen**.
 12. Integration test: User A sends message to User B, User B opens chat, User A sees read receipt
 13. Regression test: Message delivery and editing still work with read receipts active
 
-## Story 2.6: Typing Indicators
+## Story 2.7: Typing Indicators
 
 As a **user**,  
 I want **to see when someone is typing in a conversation**,  
@@ -140,7 +186,7 @@ so that **I know to wait for their response**.
 12. Performance test: Typing updates don't cause lag in message composition
 13. Regression test: Message sending, editing, and real-time updates still performant
 
-## Story 2.7: Image Attachments
+## Story 2.8: Image Attachments
 
 As a **user**,  
 I want **to send and receive images in conversations**,  
@@ -165,7 +211,34 @@ so that **I can share visual information with my team**.
 15. Integration test: User A sends image, User B receives and views it
 16. Regression test: Text messaging still works reliably with image support added
 
-## Story 2.8: Offline Message Queue with Manual Send
+## Story 2.9: Document Attachments (PDF)
+
+As a **user**,  
+I want **to send and receive PDF documents in conversations**,  
+so that **I can share reports, contracts, and other important documents with my team**.
+
+### Acceptance Criteria
+
+1. Attachment button in message input bar provides option to select "Document" (in addition to "Photo")
+2. Document picker opens (UIDocumentPickerViewController) filtered to PDF file types
+3. Selected PDF uploads to Firebase Storage in dedicated `/documents/` path
+4. Message entity `attachments` array supports type: "document" with { type, url, fileName, fileSize, mimeType }
+5. PDF attachment displayed in message bubble as document card showing: file icon, file name, file size
+6. Tap PDF attachment opens in native iOS document viewer (QuickLook framework)
+7. Document upload shows progress indicator with percentage (0-100%)
+8. Failed uploads show error state with retry option
+9. PDF file size limited to 10MB maximum (enforced before upload with user-friendly error)
+10. Document messages work offline: Upload queued until connection restored
+11. Performance: PDF upload completes within 30 seconds on reasonable connection (proportional to file size)
+12. Reliability: Document uploads never lost, queued and retried on failure
+13. Security: Firebase Storage rules restrict document access to conversation participants only
+14. Document preview in conversation list shows file icon + "[Document]" label
+15. Unit tests for document upload logic, file size validation, and MIME type validation
+16. Integration test: User A sends PDF, User B receives and opens it in QuickLook viewer
+17. Regression test: Image attachments and text messaging still work with document support added
+18. Edge case: Handle documents with special characters or very long file names (truncate display)
+
+## Story 2.10: Offline Message Queue with Manual Send
 
 As a **user**,  
 I want **to see messages I've composed offline and manually send them when connected**,  
@@ -190,7 +263,7 @@ so that **I have control over what gets sent when connectivity returns**.
 15. Integration test: Compose 5 messages offline, go online, send all, verify delivery
 16. Regression test: Real-time messaging still works when always online
 
-## Story 2.9: Push Notifications (Foreground & Background)
+## Story 2.11: Push Notifications (Foreground & Background)
 
 As a **user**,  
 I want **to receive push notifications for new messages**,  
@@ -218,7 +291,7 @@ so that **I'm alerted even when not actively using the app**.
 18. Security: Cloud Function validates sender is participant in conversation before sending
 19. Regression test: Real-time messaging in-app still works with push notifications enabled
 
-## Story 2.10: Performance Optimization & Network Resilience
+## Story 2.12: Performance Optimization & Network Resilience
 
 As a **developer**,  
 I want **the app to handle poor network conditions and high message volume gracefully**,  
@@ -242,7 +315,7 @@ so that **users experience reliable messaging even under adverse conditions**.
 14. Integration test: Toggle airplane mode repeatedly during active messaging, verify no data loss
 15. Load testing: 1000 message conversation loads and scrolls smoothly
 
-## Story 2.11: Comprehensive Reliability Testing & Regression Suite
+## Story 2.13: Comprehensive Reliability Testing & Regression Suite
 
 As a **QA engineer**,  
 I want **a comprehensive test suite covering all MVP functionality and reliability scenarios**,  
@@ -252,11 +325,11 @@ so that **we can confidently validate the app meets production-quality standards
 
 1. **Regression Test Suite Created** covering all Epic 1 and Epic 2 functionality:
    - Authentication flows
-   - One-on-one messaging
+   - One-on-one messaging (with duplicate conversation prevention)
    - Group chat
    - Message editing, unsend, retry
    - Read receipts and typing indicators
-   - Image attachments
+   - Image and document attachments
    - Offline queue
    - Push notifications
 

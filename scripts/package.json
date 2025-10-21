@@ -5,7 +5,10 @@
   "private": true,
   "scripts": {
     "seed": "node seed-test-data.js",
-    "seed:prod": "node seed-test-data.js --prod"
+    "seed:prod": "node seed-test-data.js --prod",
+    "cleanup": "node cleanup-duplicates.js --dry-run",
+    "cleanup:run": "node cleanup-duplicates.js",
+    "cleanup:prod": "node cleanup-duplicates.js --prod"
   },
   "dependencies": {
     "firebase-admin": "^12.0.0"

@@ -2,11 +2,20 @@
 
 ## Quick Reference
 
-**Always use the quick-test script for terminal testing:**
+**⚡ We use TIERED TESTING for efficient development:**
 
 ```bash
-./scripts/quick-test.sh --quick
+# During story development (5-20 seconds)
+./scripts/test-story.sh NewConversationViewModelTests
+
+# Before marking story complete (20-40 seconds)
+./scripts/test-epic.sh 2
+
+# Before committing (1-2 minutes)
+./scripts/quick-test.sh
 ```
+
+**📚 See [Testing Strategy Guide](./testing-strategy.md) for complete workflow details.**
 
 **Never run tests with parallel simulators enabled** - it spawns multiple simulator windows and is actually slower!
 
@@ -102,33 +111,37 @@ xcodebuild test \
 
 ## Testing Workflow
 
-### Daily Development
+### During Story Development (FAST - Use Story Tests)
 
 ```bash
 # 1. Write code
 # 2. Write/update tests
-# 3. Run quick test
-./scripts/quick-test.sh -q
+# 3. Run STORY tests (5-20 seconds)
+./scripts/test-story.sh NewConversationViewModelTests
 
-# 4. If tests pass, commit
-git add .
-git commit -m "Feature: Add X with tests"
-
+# 4. Iterate until green ✅
 # 5. On failure, debug in Xcode
 # Open Xcode, set breakpoints, run specific test (Cmd+U)
 ```
 
-### Before Committing
+### Before Marking Story Complete (MEDIUM - Use Epic Tests)
 
 ```bash
-# Run ALL tests to catch regressions
+# Verify you didn't break epic features (20-40 seconds)
+./scripts/test-epic.sh 2
+
+# If pass ✅, story is ready for commit
+```
+
+### Before Committing (FULL - Use Full Suite)
+
+```bash
+# Run ALL unit tests to catch regressions (1-2 minutes)
 ./scripts/quick-test.sh
 
-# Verify clean build
-./scripts/build.sh
-
-# Check linter
-# (Future: add linter check here)
+# If tests pass, commit
+git add .
+git commit -m "Story 2.0: Feature with tests"
 ```
 
 ### Continuous Integration (CI)
@@ -141,6 +154,57 @@ git commit -m "Feature: Add X with tests"
 ```
 
 The scripts automatically disable parallel testing, so CI runs are consistent with local development.
+
+---
+
+## Test Creation Guidelines
+
+### When Creating Tests for a Story
+
+**CRITICAL for Tiered Testing:** Each story should have **ONE primary test class** that can be run in isolation.
+
+**Rules:**
+1. **One test class per feature/ViewModel**
+   - Good: `NewConversationViewModelTests.swift` (tests ONE ViewModel)
+   - Bad: Multiple small test files that need to run together
+
+2. **Name tests to match the component**
+   - ViewModel: `{ViewModelName}Tests` → `NewConversationViewModelTests`
+   - Repository: `{RepositoryName}Tests` → `FirebaseConversationRepositoryTests`
+   - Entity: `{EntityName}Tests` → `UserTests`
+
+3. **Organize by architecture layer**
+   - Domain: `MessageAITests/Domain/Entities/`
+   - Data: `MessageAITests/Data/Repositories/`
+   - Presentation: `MessageAITests/Presentation/ViewModels/`
+
+4. **Comprehensive coverage in ONE class**
+   - All scenarios for that component in the same test file
+   - Enables fast story-level testing: `./scripts/test-story.sh NewConversationViewModelTests`
+
+**Example Story Structure:**
+```
+Story 2.0: Start New Conversation
+│
+├── Code:
+│   ├── NewConversationViewModel.swift        ← New ViewModel
+│   ├── NewConversationView.swift             ← New View
+│   └── UserRowView.swift                     ← Helper component
+│
+└── Tests:
+    └── NewConversationViewModelTests.swift   ← ONE test class, 9 tests
+        ├── testLoadUsers_Success
+        ├── testLoadUsers_Failure
+        ├── testSearchFilter_ByName
+        ├── testSearchFilter_ByEmail
+        ├── testSelectUser_Success
+        ├── testSelectUser_Failure
+        ├── testSelectUser_PreventsSelf
+        ├── testSearchFilter_Empty
+        └── testSearchDebounce
+        
+→ Run: ./scripts/test-story.sh NewConversationViewModelTests (10s)
+```
 
 ---
 
@@ -168,7 +232,8 @@ MessageAITests/
     └── ViewModels/                     # ViewModel tests
         ├── AuthViewModelTests.swift
         ├── ProfileSetupViewModelTests.swift
-        └── ConversationsListViewModelTests.swift
+        ├── ConversationsListViewModelTests.swift
+        └── NewConversationViewModelTests.swift  ← Story 2.0
 ```
 
 ### Test Naming Conventions
@@ -181,6 +246,7 @@ func testFetchMessages_EmptyConversation_ReturnsEmptyArray()
 
 // Test class naming: {What}Tests
 class AuthViewModelTests: XCTestCase { }
+class NewConversationViewModelTests: XCTestCase { }
 class UserRepositoryTests: XCTestCase { }
 ```
 
@@ -604,23 +670,27 @@ try await repository.sendMessage(message)
 ## Summary
 
 **✅ Do This**:
-- Use `./scripts/quick-test.sh -q` for fast iteration
+- Use **tiered testing**: story → epic → full suite (see [Testing Strategy](./testing-strategy.md))
+- Use `./scripts/test-story.sh <TestName>` during development (5-20s)
+- Use `./scripts/test-epic.sh <num>` before marking story complete (20-40s)
+- Use `./scripts/quick-test.sh` before committing (1-2min)
 - Keep simulator running between test runs
 - Write tests for all ViewModels and Entities
 - Use mock repositories with the standard pattern
 - Test before every commit
-- Use Firebase Emulator for integration tests
+- Use Firebase Emulator for integration tests (weekly)
 - Clean up test data in tearDown
 - Use unique IDs (UUID) for test data
 
 **❌ Don't Do This**:
+- Don't run full test suite during story development (use story tests instead)
 - Don't use parallel testing (multiple simulators)
-- Don't run tests without quick-test.sh script
-- Don't commit without running tests
+- Don't run tests without using the tiered test scripts
+- Don't commit without running full test suite (`./scripts/quick-test.sh`)
 - Don't write tests that hit real external services
 - Don't use Date() without controlling the value
 - Don't use production Firebase in integration tests
 - Don't forget to wait for real-time listeners to set up
 
-**Questions?** Check `docs/architecture/testing-strategy.md` for detailed testing strategy.
+**Questions?** Check `docs/architecture/testing-strategy.md` for complete testing strategy guide.
 

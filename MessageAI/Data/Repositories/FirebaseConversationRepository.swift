@@ -1,5 +1,6 @@
 import Foundation
 import FirebaseFirestore
+import FirebaseAuth
 import Combine
 
 /*
@@ -76,6 +77,14 @@ final class FirebaseConversationRepository: ConversationRepositoryProtocol {
         
         do {
             let data = try Firestore.Encoder.default.encode(conversation)
+            
+            // DEBUG: Log what we're trying to create
+            print("📝 Creating conversation:")
+            print("   ID: \(conversation.id)")
+            print("   Participants: \(participantIds)")
+            print("   Current Auth UID: \(Auth.auth().currentUser?.uid ?? "NOT AUTHENTICATED")")
+            print("   Data keys: \(data.keys.sorted())")
+            
             try await db.collection("conversations").document(conversation.id).setData(data)
             print("✅ Conversation created: \(conversation.id) with \(participantIds.count) participants")
             return conversation
@@ -84,6 +93,62 @@ final class FirebaseConversationRepository: ConversationRepositoryProtocol {
             throw RepositoryError.encodingError(error)
         } catch {
             print("❌ Create conversation failed: \(error.localizedDescription)")
+            print("   Error details: \(error)")
+            throw RepositoryError.networkError(error)
+        }
+    }
+    
+    func getOrCreateConversation(participantIds: [String]) async throws -> Conversation {
+        print("🔍 Looking for existing conversation with participants: \(participantIds)")
+        
+        do {
+            // 1. Sort participant IDs for consistent comparison
+            let sortedIds = participantIds.sorted()
+            
+            guard !sortedIds.isEmpty else {
+                print("❌ Cannot create conversation with no participants")
+                throw RepositoryError.invalidInput
+            }
+            
+            // 2. Get current user ID to query only conversations they're in
+            guard let currentUserId = Auth.auth().currentUser?.uid else {
+                print("❌ User not authenticated")
+                throw RepositoryError.unauthorized
+            }
+            
+            // 3. Query Firestore for conversations containing CURRENT USER
+            // (Security rules only allow reading conversations the user is part of)
+            print("🔍 Querying conversations where current user \(currentUserId) is participant")
+            let snapshot = try await db.collection("conversations")
+                .whereField("participantIds", arrayContains: currentUserId)
+                .getDocuments()
+            
+            // 3. Check each conversation for exact match
+            for document in snapshot.documents {
+                guard let conversation = try? Firestore.Decoder.default.decode(
+                    Conversation.self,
+                    from: document.data()
+                ) else {
+                    continue
+                }
+                
+                let existingIds = conversation.participantIds.sorted()
+                
+                // Exact match found (same participants, same count)
+                if existingIds == sortedIds {
+                    print("✅ Found existing conversation: \(conversation.id)")
+                    return conversation
+                }
+            }
+            
+            // 4. No match found - create new conversation
+            print("🆕 Creating new conversation with sorted IDs: \(sortedIds)")
+            return try await createConversation(participantIds: sortedIds)
+            
+        } catch let error as RepositoryError {
+            throw error
+        } catch {
+            print("❌ Get or create conversation failed: \(error.localizedDescription)")
             throw RepositoryError.networkError(error)
         }
     }

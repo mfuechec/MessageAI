@@ -128,5 +128,36 @@ final class FirebaseConversationRepositoryTests: XCTestCase {
         // When: Mark as read again
         // Then: Should succeed without errors
     }
+    
+    // MARK: - Get Or Create Conversation Tests (Story 2.0)
+    
+    func testGetOrCreateConversation_ExistingFound() async throws {
+        throw XCTSkip("Requires Firebase Emulator - will be implemented in Story 1.10")
+        
+        // Given: Conversation already exists between user A and user B
+        // When: Call getOrCreateConversation with [userA, userB]
+        // Then: Should return existing conversation (no duplicate created)
+        // And: Verify same conversation ID returned
+    }
+    
+    func testGetOrCreateConversation_CreatesNew() async throws {
+        throw XCTSkip("Requires Firebase Emulator - will be implemented in Story 1.10")
+        
+        // Given: No conversation exists between user A and user B
+        // When: Call getOrCreateConversation with [userA, userB]
+        // Then: Should create new conversation
+        // And: Verify conversation exists in Firestore
+        // And: Verify participantIds match
+    }
+    
+    func testGetOrCreateConversation_ParticipantSorting() async throws {
+        throw XCTSkip("Requires Firebase Emulator - will be implemented in Story 1.10")
+        
+        // Given: Conversation exists with participantIds [userA, userB] (sorted)
+        // When: Call getOrCreateConversation with [userB, userA] (reversed order)
+        // Then: Should find existing conversation (IDs are sorted internally)
+        // And: Verify no duplicate created
+        // And: Verify same conversation ID returned regardless of input order
+    }
 }
 

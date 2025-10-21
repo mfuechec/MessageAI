@@ -17,6 +17,11 @@ final class FirebaseAuthRepositoryTests: XCTestCase {
     
     override func setUp() async throws {
         try await super.setUp()
+        
+        // Skip all tests if emulator not running
+        // To run these tests: ./scripts/start-emulator.sh
+        try XCTSkipIf(true, "Requires Firebase Emulator - start with ./scripts/start-emulator.sh")
+        
         cancellables = Set<AnyCancellable>()
         
         // Configure Firebase with emulator

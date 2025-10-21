@@ -10,6 +10,7 @@ class MockConversationRepository: ConversationRepositoryProtocol {
     var observeConversationsCalled = false
     var getConversationCalled = false
     var createConversationCalled = false
+    var getOrCreateConversationCalled = false
     var updateUnreadCountCalled = false
     var markAsReadCalled = false
     var updateConversationCalled = false
@@ -52,6 +53,21 @@ class MockConversationRepository: ConversationRepositoryProtocol {
     
     func createConversation(participantIds: [String]) async throws -> Conversation {
         createConversationCalled = true
+        capturedParticipantIds = participantIds
+        
+        if shouldFail, let error = mockError {
+            throw error
+        }
+        
+        if let conversation = mockConversation {
+            return conversation
+        }
+        
+        throw RepositoryError.conversationNotFound("Mock conversation not configured")
+    }
+    
+    func getOrCreateConversation(participantIds: [String]) async throws -> Conversation {
+        getOrCreateConversationCalled = true
         capturedParticipantIds = participantIds
         
         if shouldFail, let error = mockError {
@@ -109,6 +125,7 @@ class MockConversationRepository: ConversationRepositoryProtocol {
         observeConversationsCalled = false
         getConversationCalled = false
         createConversationCalled = false
+        getOrCreateConversationCalled = false
         updateUnreadCountCalled = false
         markAsReadCalled = false
         updateConversationCalled = false

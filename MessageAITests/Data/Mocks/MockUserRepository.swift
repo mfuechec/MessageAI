@@ -16,6 +16,7 @@ class MockUserRepository: UserRepositoryProtocol {
     // MARK: - Tracking Properties
     
     var getUserCalled = false
+    var getAllUsersCalled = false
     var updateUserCalled = false
     var observeUserPresenceCalled = false
     var updateOnlineStatusCalled = false
@@ -24,6 +25,7 @@ class MockUserRepository: UserRepositoryProtocol {
     
     var shouldFail = false
     var mockUser: User?
+    var mockUsers: [User] = []
     var mockError: Error = NSError(domain: "mock-error", code: -1, userInfo: [NSLocalizedDescriptionKey: "Mock error"])
     
     // MARK: - Captured Parameters
@@ -47,6 +49,16 @@ class MockUserRepository: UserRepositoryProtocol {
         }
         
         return user
+    }
+    
+    func getAllUsers() async throws -> [User] {
+        getAllUsersCalled = true
+        
+        if shouldFail {
+            throw mockError
+        }
+        
+        return mockUsers
     }
     
     func updateUser(_ user: User) async throws {
@@ -83,11 +95,13 @@ class MockUserRepository: UserRepositoryProtocol {
     /// Resets all tracking flags and captured parameters
     func reset() {
         getUserCalled = false
+        getAllUsersCalled = false
         updateUserCalled = false
         observeUserPresenceCalled = false
         updateOnlineStatusCalled = false
         shouldFail = false
         mockUser = nil
+        mockUsers = []
         capturedUserId = nil
         capturedUser = nil
         capturedIsOnline = nil

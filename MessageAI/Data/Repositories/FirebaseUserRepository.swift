@@ -69,6 +69,29 @@ final class FirebaseUserRepository: UserRepositoryProtocol {
         }
     }
     
+    func getAllUsers() async throws -> [User] {
+        do {
+            let snapshot = try await db.collection("users").getDocuments()
+            
+            let users = snapshot.documents.compactMap { doc -> User? in
+                try? Firestore.Decoder.default.decode(User.self, from: doc.data())
+            }
+            
+            // Sort alphabetically by display name
+            let sortedUsers = users.sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
+            
+            print("✅ Fetched \(sortedUsers.count) users")
+            return sortedUsers
+            
+        } catch let error as DecodingError {
+            print("❌ Get all users failed (decoding): \(error.localizedDescription)")
+            throw RepositoryError.decodingError(error)
+        } catch {
+            print("❌ Get all users failed: \(error.localizedDescription)")
+            throw RepositoryError.networkError(error)
+        }
+    }
+    
     func updateUser(_ user: User) async throws {
         do {
             let data = try Firestore.Encoder.default.encode(user)

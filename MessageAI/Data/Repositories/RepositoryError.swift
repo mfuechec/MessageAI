@@ -6,6 +6,7 @@ enum RepositoryError: LocalizedError {
     case conversationNotFound(String)
     case messageNotFound(String)
     case unauthorized
+    case invalidInput
     case networkError(Error)
     case encodingError(Error)
     case decodingError(Error)
@@ -21,6 +22,8 @@ enum RepositoryError: LocalizedError {
             return "Message not found: \(id)"
         case .unauthorized:
             return "Unauthorized access"
+        case .invalidInput:
+            return "Invalid input parameters"
         case .networkError(let error):
             return "Network error: \(error.localizedDescription)"
         case .encodingError(let error):

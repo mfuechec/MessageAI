@@ -129,5 +129,15 @@ class DIContainer {
             networkMonitor: networkMonitor
         )
     }
+    
+    /// Creates NewConversationViewModel for starting new conversations (Story 2.0)
+    /// - Returns: Configured NewConversationViewModel instance
+    func makeNewConversationViewModel() -> NewConversationViewModel {
+        NewConversationViewModel(
+            userRepository: userRepository,
+            conversationRepository: conversationRepository,
+            authRepository: authRepository
+        )
+    }
 }
 

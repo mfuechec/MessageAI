@@ -125,8 +125,43 @@ async function createUserDocument(uid, userData) {
   console.log(`  ✓ Created/updated user document: ${userData.email}`);
 }
 
-// Helper: Create conversation
+// Helper: Find existing conversation with exact participant match
+async function findExistingConversation(participantIds) {
+  // Sort participant IDs for consistent comparison
+  const sortedIds = [...participantIds].sort();
+  
+  // Query conversations that contain all participants
+  const snapshot = await db.collection('conversations')
+    .where('participantIds', 'array-contains', participantIds[0])
+    .get();
+  
+  // Find exact match (same participants, no more, no less)
+  for (const doc of snapshot.docs) {
+    const data = doc.data();
+    const existingIds = [...data.participantIds].sort();
+    
+    if (existingIds.length === sortedIds.length &&
+        existingIds.every((id, index) => id === sortedIds[index])) {
+      return doc.id;
+    }
+  }
+  
+  return null;
+}
+
+// Helper: Create or get existing conversation
 async function createConversation(participantIds, participantData) {
+  // Check if conversation already exists
+  const existingId = await findExistingConversation(participantIds);
+  
+  if (existingId) {
+    const participantNames = participantData.map(p => p.displayName).join(' & ');
+    console.log(`  ✓ Conversation already exists: ${existingId}`);
+    console.log(`    Participants: ${participantNames}`);
+    return existingId;
+  }
+  
+  // Create new conversation
   const conversationId = `test-conv-${Date.now()}`;
   const now = new Date();
   

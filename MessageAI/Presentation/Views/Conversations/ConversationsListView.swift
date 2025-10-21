@@ -4,8 +4,14 @@ import SwiftUI
 struct ConversationsListView: View {
     @StateObject var viewModel: ConversationsListViewModel
     @State private var selectedConversation: Conversation?
-    @State private var showComingSoonAlert = false
+    @State private var showNewConversation = false
+    @StateObject private var newConversationViewModel: NewConversationViewModel
     @EnvironmentObject private var authViewModel: AuthViewModel
+    
+    init(viewModel: ConversationsListViewModel) {
+        _viewModel = StateObject(wrappedValue: viewModel)
+        _newConversationViewModel = StateObject(wrappedValue: DIContainer.shared.makeNewConversationViewModel())
+    }
     
     var body: some View {
         NavigationView {
@@ -40,17 +46,33 @@ struct ConversationsListView: View {
                 
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button(action: {
-                        showComingSoonAlert = true
+                        showNewConversation = true
                     }) {
                         Image(systemName: "square.and.pencil")
                     }
-                    .accessibilityLabel("New Conversation")
+                    .accessibilityLabel("New Message")
                 }
             }
-            .alert("Coming Soon", isPresented: $showComingSoonAlert) {
-                Button("OK", role: .cancel) { }
-            } message: {
-                Text("Creating new conversations will be available in the next update.")
+            .sheet(isPresented: $showNewConversation) {
+                NewConversationView(
+                    viewModel: newConversationViewModel,
+                    onConversationSelected: { _ in }  // Not used, parent observes ViewModel
+                )
+            }
+            .onChange(of: newConversationViewModel.selectedConversation) { conversation in
+                // Parent observes the ViewModel directly (more reliable than child onChange)
+                if let conversation = conversation {
+                    print("📱 Parent detected conversation selection: \(conversation.id)")
+                    // Dismiss sheet
+                    showNewConversation = false
+                    // Wait for dismissal then open chat
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        print("🚀 Opening chat for conversation: \(conversation.id)")
+                        selectedConversation = conversation
+                        // Reset for next time
+                        newConversationViewModel.selectedConversation = nil
+                    }
+                }
             }
         }
     }
@@ -97,7 +119,7 @@ struct ConversationsListView: View {
                 .foregroundColor(.secondary)
             
             Button("New Conversation") {
-                showComingSoonAlert = true
+                showNewConversation = true
             }
             .buttonStyle(.borderedProminent)
         }

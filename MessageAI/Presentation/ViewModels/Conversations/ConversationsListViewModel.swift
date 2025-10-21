@@ -101,9 +101,30 @@ class ConversationsListViewModel: ObservableObject {
     
     func formattedTimestamp(for conversation: Conversation) -> String {
         guard let timestamp = conversation.lastMessageTimestamp else {
-            return RelativeDateTimeFormatter().localizedString(for: conversation.createdAt, relativeTo: Date())
+            return formattedRelativeTime(for: conversation.createdAt)
         }
-        return RelativeDateTimeFormatter().localizedString(for: timestamp, relativeTo: Date())
+        return formattedRelativeTime(for: timestamp)
+    }
+    
+    /// Helper to format timestamp as relative time, ensuring "ago" format (never "in X seconds")
+    private func formattedRelativeTime(for date: Date) -> String {
+        let now = Date()
+        let timeInterval = now.timeIntervalSince(date)
+        
+        // Handle very recent messages (< 1 minute) - show "now"
+        if timeInterval >= -1 && timeInterval < 60 {
+            return "now"
+        }
+        
+        // For timestamps in the future (due to server time skew), treat as "now"
+        if timeInterval < 0 {
+            return "now"
+        }
+        
+        // Use RelativeDateTimeFormatter for older messages
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .abbreviated
+        return formatter.localizedString(for: date, relativeTo: now)
     }
 }
 

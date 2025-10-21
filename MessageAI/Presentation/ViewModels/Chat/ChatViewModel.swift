@@ -201,9 +201,23 @@ class ChatViewModel: ObservableObject {
     
     /// Returns the formatted timestamp for a message
     func formattedTimestamp(for message: Message) -> String {
+        let now = Date()
+        let timeInterval = now.timeIntervalSince(message.timestamp)
+        
+        // Handle very recent messages (< 1 minute) - show "now"
+        if timeInterval >= -1 && timeInterval < 60 {
+            return "now"
+        }
+        
+        // For timestamps in the future (due to server time skew), treat as "now"
+        if timeInterval < 0 {
+            return "now"
+        }
+        
+        // Use RelativeDateTimeFormatter for older messages
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .abbreviated
-        return formatter.localizedString(for: message.timestamp, relativeTo: Date())
+        return formatter.localizedString(for: message.timestamp, relativeTo: now)
     }
 }
 

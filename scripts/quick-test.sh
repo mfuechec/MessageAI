@@ -44,6 +44,7 @@ BUILD_ONLY=false
 TEST_ONLY=false
 SPECIFIC_TEST=""
 QUICK=false
+SKIP_INTEGRATION=true  # Skip integration tests by default (require emulator)
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -63,6 +64,10 @@ while [[ $# -gt 0 ]]; do
             QUICK=true
             shift
             ;;
+        --with-integration)
+            SKIP_INTEGRATION=false
+            shift
+            ;;
         --help|-h)
             echo "Usage: $0 [OPTIONS]"
             echo ""
@@ -71,12 +76,17 @@ while [[ $# -gt 0 ]]; do
             echo "  --test-only           Only run tests (assumes already built)"
             echo "  --test <name>         Run specific test (e.g., ConversationsListViewModelTests)"
             echo "  --quick, -q           Skip build, run tests immediately"
+            echo "  --with-integration    Include integration tests (requires emulator)"
             echo "  --help, -h            Show this help message"
             echo ""
             echo "Examples:"
-            echo "  $0                                    # Build and run all tests"
-            echo "  $0 --quick                            # Run tests without building"
+            echo "  $0                                    # Build and run unit tests only"
+            echo "  $0 --quick                            # Run unit tests without building"
+            echo "  $0 --with-integration                 # Run ALL tests (needs emulator)"
             echo "  $0 --test ConversationsListViewModelTests  # Run specific test suite"
+            echo ""
+            echo "Note: Integration tests require Firebase Emulator to be running."
+            echo "      Start it with: ./scripts/start-emulator.sh"
             exit 0
             ;;
         *)
@@ -117,6 +127,9 @@ if [ "$BUILD_ONLY" = false ]; then
     if [ -n "$SPECIFIC_TEST" ]; then
         echo -e "${BLUE}ℹ️  Running specific test: $SPECIFIC_TEST${NC}"
         TEST_ARGS="-only-testing:MessageAITests/$SPECIFIC_TEST"
+    elif [ "$SKIP_INTEGRATION" = true ]; then
+        echo -e "${YELLOW}ℹ️  Skipping integration tests (use --with-integration to include)${NC}"
+        TEST_ARGS="-skip-testing:MessageAITests/Integration"
     fi
     
     xcodebuild test-without-building \

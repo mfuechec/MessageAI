@@ -2,13 +2,20 @@
 
 ## Quick Start
 
-Run tests the fast way:
+**We use TIERED TESTING - run the right tests at the right time:**
 
 ```bash
-./scripts/quick-test.sh --quick
+# During development (5-20s)
+./scripts/test-story.sh NewConversationViewModelTests
+
+# Before story complete (20-40s)
+./scripts/test-epic.sh 2
+
+# Before commit (1-2min)
+./scripts/quick-test.sh
 ```
 
-**That's it!** This is 10x faster than traditional testing.
+**📚 See [Testing Strategy](../docs/architecture/testing-strategy.md) for complete guide.**
 
 ---
 
@@ -31,17 +38,17 @@ Run tests the fast way:
 ## Common Commands
 
 ```bash
-# Daily development (fast!)
-./scripts/quick-test.sh -q
+# During story development (FASTEST - 10s)
+./scripts/test-story.sh NewConversationViewModelTests
 
-# First time or after code changes
+# Before marking story complete (30s)
+./scripts/test-epic.sh 2
+
+# Before committing (90s)
 ./scripts/quick-test.sh
 
-# Run specific test suite
-./scripts/quick-test.sh -q --test ConversationsListViewModelTests
-
-# See all options
-./scripts/quick-test.sh --help
+# With integration tests (needs emulator, 3min)
+./scripts/quick-test.sh --with-integration
 ```
 
 ---
@@ -57,17 +64,25 @@ See [`docs/architecture/testing-best-practices.md`](../docs/architecture/testing
 
 ---
 
-## Rules for Future Development
+## Rules for Test Creation & Execution
 
-1. ✅ **ALWAYS** use `quick-test.sh` for terminal testing
-2. ✅ **NEVER** use direct `xcodebuild test` without parallel testing flags
+**Test Creation Rules:**
+1. ✅ **ONE test class per feature/ViewModel** for story-level testing
+2. ✅ **Name tests clearly**: `NewConversationViewModelTests` (matches ViewModel name)
+3. ✅ **Organize by layer**: Domain/Data/Presentation directories
+4. ✅ **Use mocks for dependencies** (see [Mock Repository Pattern](../docs/architecture/testing-best-practices.md))
+5. ✅ **Write tests FIRST** (TDD approach)
+
+**Test Execution Rules:**
+1. ✅ **USE TIERED TESTING**: story → epic → full (appropriate to context)
+2. ✅ **NEVER** use direct `xcodebuild test` without scripts
 3. ✅ **KEEP** simulator running between test runs
-4. ✅ **TEST** before every commit
+4. ✅ **TEST** before every commit (full suite with `quick-test.sh`)
 
 These rules are enforced in:
 - Dev agent configuration (`.bmad-core/agents/dev.md`)
-- README.md testing section
-- Testing best practices guide
+- Testing strategy guide (`docs/architecture/testing-strategy.md`)
+- Testing best practices guide (`docs/architecture/testing-best-practices.md`)
 
 ---
 

@@ -118,5 +118,17 @@ final class FirebaseUserRepositoryTests: XCTestCase {
         // When: Update online status
         // Then: lastSeen should be updated with server timestamp
     }
+    
+    // MARK: - Get All Users Tests (Story 2.0)
+    
+    func testGetAllUsers_Success() async throws {
+        throw XCTSkip("Requires Firebase Emulator - will be implemented in Story 1.10")
+        
+        // Given: Multiple user documents exist in Firestore users collection
+        // When: Call getAllUsers()
+        // Then: Should return array of all User entities
+        // And: Users should be sorted alphabetically by displayName
+        // And: Verify all expected users are present
+    }
 }
 

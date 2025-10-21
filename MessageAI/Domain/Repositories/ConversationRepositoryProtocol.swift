@@ -13,6 +13,12 @@ protocol ConversationRepositoryProtocol {
     /// - Returns: The newly created conversation
     func createConversation(participantIds: [String]) async throws -> Conversation
     
+    /// Get existing conversation or create new one with duplicate prevention
+    /// [Source: docs/architecture/data-models.md#duplicate-prevention]
+    /// - Parameter participantIds: Array of user IDs (will be sorted internally for consistent matching)
+    /// - Returns: Existing conversation if found, otherwise newly created conversation
+    func getOrCreateConversation(participantIds: [String]) async throws -> Conversation
+    
     /// Observe conversations in real-time for a user
     /// - Parameter userId: The user ID whose conversations to observe
     /// - Returns: Publisher emitting updated conversation arrays
