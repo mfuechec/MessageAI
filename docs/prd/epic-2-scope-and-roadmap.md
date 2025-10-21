@@ -2,8 +2,9 @@
 
 **Epic Goal:** Complete MVP with Reliability  
 **Timeline:** 1.5 days (estimated)  
-**Total Stories:** 13 (2.0 through 2.13)  
-**Status:** Planning Phase
+**Total Stories:** 13 (2.0 through 2.12)  
+**Status:** In Progress (2/13 stories completed)  
+**Completed:** Story 2.0 ✅, Story 2.1 ✅
 
 ---
 
@@ -38,7 +39,7 @@ Epic 2 transforms the basic messaging foundation from Epic 1 into a **production
 ### Phase 1: Foundation (Stories 2.0-2.1)
 **Goal:** Enable users to start conversations
 
-#### Story 2.0: Start New Conversation ⭐ **CRITICAL PATH**
+#### Story 2.0: Start New Conversation ⭐ **CRITICAL PATH** ✅ **DONE**
 - **Complexity:** Medium
 - **Estimated Time:** 3-4 hours
 - **Dependencies:** None (blocks all other stories)
@@ -51,7 +52,7 @@ Epic 2 transforms the basic messaging foundation from Epic 1 into a **production
 - **Why Critical:** Without this, users can't create conversations (currently only test data exists)
 - **Risks:** Firestore query performance with large user bases
 
-#### Story 2.1: Group Chat Functionality
+#### Story 2.1: Group Chat Functionality ✅ **DONE**
 - **Complexity:** Medium-High
 - **Estimated Time:** 4-5 hours
 - **Dependencies:** Story 2.0 (extends user selection for multi-select)
@@ -67,7 +68,7 @@ Epic 2 transforms the basic messaging foundation from Epic 1 into a **production
 ### Phase 2: Message Management (Stories 2.3-2.5)
 **Goal:** Advanced message operations
 
-#### Story 2.3: Message Editing with History
+#### Story 2.2: Message Editing with History
 - **Complexity:** Medium
 - **Estimated Time:** 3-4 hours
 - **Dependencies:** None (extends existing chat)
@@ -79,7 +80,7 @@ Epic 2 transforms the basic messaging foundation from Epic 1 into a **production
   - Real-time edit sync
 - **Risks:** Conflict resolution (offline edits on multiple devices)
 
-#### Story 2.4: Message Unsend (Delete for Everyone)
+#### Story 2.3: Message Unsend (Delete for Everyone)
 - **Complexity:** Low-Medium
 - **Estimated Time:** 2-3 hours
 - **Dependencies:** None
@@ -90,7 +91,7 @@ Epic 2 transforms the basic messaging foundation from Epic 1 into a **production
   - Real-time deletion sync
 - **Risks:** Privacy compliance (ensure data actually deleted)
 
-#### Story 2.5: Message Send Retry on Failure
+#### Story 2.4: Message Send Retry on Failure
 - **Complexity:** Medium
 - **Estimated Time:** 3-4 hours
 - **Dependencies:** None
@@ -106,7 +107,7 @@ Epic 2 transforms the basic messaging foundation from Epic 1 into a **production
 ### Phase 3: Real-Time Indicators (Stories 2.6-2.7)
 **Goal:** Enhanced communication feedback
 
-#### Story 2.6: Read Receipts
+#### Story 2.5: Read Receipts
 - **Complexity:** Medium
 - **Estimated Time:** 3-4 hours
 - **Dependencies:** None
@@ -117,7 +118,7 @@ Epic 2 transforms the basic messaging foundation from Epic 1 into a **production
   - `markMessagesAsRead()` repository method
 - **Risks:** Performance with large message volumes
 
-#### Story 2.7: Typing Indicators
+#### Story 2.6: Typing Indicators
 - **Complexity:** Medium
 - **Estimated Time:** 2-3 hours
 - **Dependencies:** None
@@ -150,10 +151,10 @@ Epic 2 transforms the basic messaging foundation from Epic 1 into a **production
   - Image compression quality
   - Offline upload queue complexity
 
-#### Story 2.9: Document Attachments (PDF)
+#### Story 2.8: Document Attachments (PDF)
 - **Complexity:** Medium
 - **Estimated Time:** 3-4 hours
-- **Dependencies:** Story 2.8 (shares upload infrastructure)
+- **Dependencies:** Story 2.7 (shares upload infrastructure)
 - **Key Deliverables:**
   - Document picker (UIDocumentPickerViewController)
   - PDF upload (10MB limit)
@@ -167,7 +168,7 @@ Epic 2 transforms the basic messaging foundation from Epic 1 into a **production
 ### Phase 5: Offline & Notifications (Stories 2.10-2.11)
 **Goal:** Production-grade reliability
 
-#### Story 2.10: Offline Message Queue with Manual Send
+#### Story 2.9: Offline Message Queue with Manual Send
 - **Complexity:** Medium-High
 - **Estimated Time:** 4-5 hours
 - **Dependencies:** None (enhances existing offline behavior)
@@ -198,10 +199,10 @@ Epic 2 transforms the basic messaging foundation from Epic 1 into a **production
 
 ---
 
-### Phase 6: Performance & Testing (Stories 2.12-2.13)
+### Phase 6: Performance & Testing (Stories 2.11-2.12)
 **Goal:** Production-ready quality
 
-#### Story 2.12: Performance Optimization & Network Resilience
+#### Story 2.11: Performance Optimization & Network Resilience
 - **Complexity:** Medium-High
 - **Estimated Time:** 4-5 hours
 - **Dependencies:** All previous stories (optimizes entire app)
@@ -214,7 +215,7 @@ Epic 2 transforms the basic messaging foundation from Epic 1 into a **production
   - Load testing (1000 message conversation)
 - **Risks:** Performance regressions from new features
 
-#### Story 2.13: Comprehensive Reliability Testing & Regression Suite
+#### Story 2.12: Comprehensive Reliability Testing & Regression Suite
 - **Complexity:** Medium
 - **Estimated Time:** 4-6 hours
 - **Dependencies:** All previous stories (tests everything)
@@ -236,31 +237,31 @@ Epic 2 transforms the basic messaging foundation from Epic 1 into a **production
 
 1. **Story 2.0** ⭐ (Start New Conversation) - **MUST DO FIRST**
 2. **Story 2.1** (Group Chat)
-3. **Story 2.3** (Message Editing)
-4. **Story 2.4** (Message Unsend)
-5. **Story 2.5** (Message Retry)
+3. **Story 2.2** (Message Editing)
+4. **Story 2.3** (Message Unsend)
+5. **Story 2.4** (Message Retry)
 
 **Week 2: Enhancements (Days 4-6)**
 
-6. **Story 2.6** (Read Receipts)
-7. **Story 2.7** (Typing Indicators)
-8. **Story 2.8** (Image Attachments)
-9. **Story 2.9** (PDF Attachments)
+6. **Story 2.5** (Read Receipts)
+7. **Story 2.6** (Typing Indicators)
+8. **Story 2.7** (Image Attachments)
+9. **Story 2.8** (PDF Attachments)
 
 **Week 3: Production-Ready (Days 7-9)**
 
-10. **Story 2.10** (Offline Queue)
-11. **Story 2.11** (Push Notifications) ⚠️ *Complex, allow extra time*
-12. **Story 2.12** (Performance Optimization)
-13. **Story 2.13** (Testing & Deployment)
+10. **Story 2.9** (Offline Queue)
+11. **Story 2.10** (Push Notifications) ⚠️ *Complex, allow extra time*
+12. **Story 2.11** (Performance Optimization)
+13. **Story 2.12** (Testing & Deployment)
 
 ### Parallel Implementation Opportunities
 
 Stories that can be implemented simultaneously (no dependencies):
 
-- **Parallel Set 1:** Stories 2.3, 2.4, 2.5 (message operations)
-- **Parallel Set 2:** Stories 2.6, 2.7 (real-time indicators)
-- **Sequential:** Story 2.8 must complete before 2.9 (shared infrastructure)
+- **Parallel Set 1:** Stories 2.2, 2.3, 2.4 (message operations)
+- **Parallel Set 2:** Stories 2.5, 2.6 (real-time indicators)
+- **Sequential:** Story 2.7 must complete before 2.8 (shared infrastructure)
 
 ---
 
@@ -278,11 +279,11 @@ Stories that can be implemented simultaneously (no dependencies):
 | 2.6 | Medium | 3-4h | Low |
 | 2.7 | Medium | 2-3h | Low |
 | 2.8 | High | 5-6h | High (storage, compression, offline) |
-| 2.9 | Medium | 3-4h | Low (builds on 2.8) |
-| 2.10 | Medium-High | 4-5h | Medium (sync complexity) |
-| 2.11 | High | 6-8h | High (external dependencies) |
-| 2.12 | Medium-High | 4-5h | Medium (performance testing) |
-| 2.13 | Medium | 4-6h | Low (mostly testing) |
+| 2.8 | Medium | 3-4h | Low (builds on 2.7) |
+| 2.9 | Medium-High | 4-5h | Medium (sync complexity) |
+| 2.10 | High | 6-8h | High (external dependencies) |
+| 2.11 | Medium-High | 4-5h | Medium (performance testing) |
+| 2.12 | Medium | 4-6h | Low (mostly testing) |
 
 **Total Estimated Time:** 46-59 hours
 
@@ -307,12 +308,12 @@ Stories that can be implemented simultaneously (no dependencies):
 ### External (Third-Party Services)
 - ⚠️ **Firebase Cloud Functions** - Required for Story 2.11 (push notifications)
 - ⚠️ **APNs Certificate** - Required for Story 2.11
-- ⚠️ **TestFlight Access** - Required for Story 2.13
-- ⚠️ **Beta Testers** - Required for Story 2.13
+- ⚠️ **TestFlight Access** - Required for Story 2.12
+- ⚠️ **Beta Testers** - Required for Story 2.12
 
 ### Infrastructure
-- ⚠️ **Firebase Storage** - Required for Stories 2.8, 2.9
-- ⚠️ **Firestore Indexes** - Required for Story 2.12 (performance)
+- ⚠️ **Firebase Storage** - Required for Stories 2.7, 2.8
+- ⚠️ **Firestore Indexes** - Required for Story 2.11 (performance)
 
 ---
 
@@ -320,15 +321,15 @@ Stories that can be implemented simultaneously (no dependencies):
 
 ### High-Risk Stories
 
-#### Story 2.11: Push Notifications
+#### Story 2.10: Push Notifications
 - **Risk:** Cloud Function deployment complexity
 - **Mitigation:** Allocate extra time, test thoroughly with emulator
 - **Impact if delayed:** MVP can function without push (but degrades UX)
 
-#### Story 2.8: Image Attachments
+#### Story 2.7: Image Attachments
 - **Risk:** Storage quota management, offline upload complexity
 - **Mitigation:** Implement compression, clear user feedback
-- **Impact if delayed:** Blocks Story 2.9 (PDFs share infrastructure)
+- **Impact if delayed:** Blocks Story 2.8 (PDFs share infrastructure)
 
 ### Medium-Risk Stories
 
@@ -337,7 +338,7 @@ Stories that can be implemented simultaneously (no dependencies):
 - **Mitigation:** Implement pagination in user selection, proper indexing
 - **Impact if delayed:** Blocks entire Epic 2 (critical path)
 
-#### Story 2.10: Offline Queue
+#### Story 2.9: Offline Queue
 - **Risk:** Synchronization complexity, edge cases
 - **Mitigation:** Comprehensive unit tests, clear queue state management
 - **Impact if delayed:** Degrades offline experience
@@ -374,13 +375,13 @@ Stories that can be implemented simultaneously (no dependencies):
 - ✅ **Epic 1 Complete** - Done (Stories 1.1-1.10)
 - ✅ **94 Unit Tests Passing** - Verified
 - ✅ **Firebase Emulator Working** - Tested
-- ⚠️ **Cloud Functions Setup** - Not yet done (needed for Story 2.11)
-- ⚠️ **APNs Certificate** - Not yet done (needed for Story 2.11)
+- ⚠️ **Cloud Functions Setup** - Not yet done (needed for Story 2.10)
+- ⚠️ **APNs Certificate** - Not yet done (needed for Story 2.10)
 
 ### Story-Specific Blockers
-- **Story 2.9** - Blocked by Story 2.8 (shared upload infrastructure)
-- **Story 2.11** - Blocked by Cloud Functions deployment
-- **Story 2.13** - Blocked by TestFlight access
+- **Story 2.8** - Blocked by Story 2.7 (shared upload infrastructure)
+- **Story 2.10** - Blocked by Cloud Functions deployment
+- **Story 2.12** - Blocked by TestFlight access
 
 ---
 
@@ -421,7 +422,7 @@ Stories that can be implemented simultaneously (no dependencies):
 ## Recommended Approach
 
 ### Option 1: Sequential (Safest)
-Implement stories 2.0 → 2.13 in order. Ensures no missed dependencies.
+Implement stories 2.0 → 2.12 in order. Ensures no missed dependencies.
 
 **Pros:** Clear path, no confusion, lower risk  
 **Cons:** Slower overall progress
