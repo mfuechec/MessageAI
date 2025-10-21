@@ -292,15 +292,56 @@ For complete schema details, see `docs/architecture/database-schema.md`
 
 ### Running Tests
 
+**⚡ Quick Test Script (Recommended)**
+
+Use the optimized test script for fast, single-simulator testing:
+
 ```bash
-# Run all tests (in Xcode)
+# First time (builds + runs all tests)
+./scripts/quick-test.sh
+
+# Subsequent runs (fast - skips rebuild if no code changes)
+./scripts/quick-test.sh --quick
+# or
+./scripts/quick-test.sh -q
+
+# Run specific test suite
+./scripts/quick-test.sh -q --test ConversationsListViewModelTests
+
+# Run specific test class
+./scripts/quick-test.sh -q --test AuthViewModelTests
+
+# See all options
+./scripts/quick-test.sh --help
+```
+
+**Why use quick-test.sh?**
+- ✅ **10x faster**: Reuses booted simulator (~5-10 seconds vs 60-90 seconds)
+- ✅ **Single simulator**: No multiple simulator windows spawning
+- ✅ **Caches builds**: Skip rebuild with `--quick` flag when code unchanged
+- ✅ **Better output**: Filtered, readable test results
+
+**Alternative: Xcode UI**
+
+```bash
+# Run all tests
 Cmd+U
 
 # Run specific test class
-Cmd+U with test file open
+Click diamond icon next to test class in Xcode
+```
 
-# Run tests from terminal
-xcodebuild test -project MessageAI.xcodeproj -scheme MessageAI -destination 'platform=iOS Simulator,name=iPhone 17 Pro'
+**Note**: Xcode UI may spawn multiple simulators (parallel testing). For single simulator, use `quick-test.sh`.
+
+**Manual xcodebuild (Not Recommended)**
+
+```bash
+# Only use if quick-test.sh unavailable
+xcodebuild test \
+  -scheme MessageAI \
+  -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
+  -parallel-testing-enabled NO \
+  -maximum-concurrent-test-simulator-destinations 1
 ```
 
 ### Adding Dependencies (Swift Package Manager)

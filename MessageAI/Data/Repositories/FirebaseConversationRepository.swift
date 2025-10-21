@@ -141,5 +141,15 @@ final class FirebaseConversationRepository: ConversationRepositoryProtocol {
     func markAsRead(conversationId: String, userId: String) async throws {
         try await updateUnreadCount(conversationId: conversationId, userId: userId, count: 0)
     }
+    
+    func updateConversation(id: String, updates: [String: Any]) async throws {
+        do {
+            try await db.collection("conversations").document(id).updateData(updates)
+            print("✅ Conversation updated: \(id) with \(updates.keys.count) fields")
+        } catch {
+            print("❌ Update conversation failed: \(error.localizedDescription)")
+            throw RepositoryError.networkError(error)
+        }
+    }
 }
 

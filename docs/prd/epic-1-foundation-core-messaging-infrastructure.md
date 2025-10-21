@@ -147,16 +147,17 @@ so that **I can quickly access ongoing chats**.
 2. `ConversationsListViewModel` observes conversations using `ConversationRepositoryProtocol`
 3. Each conversation row shows: participant name(s), last message preview, timestamp, unread count badge
 4. Empty state displayed when no conversations exist ("Start a new conversation")
-5. Pull-to-refresh gesture for manual sync
-6. Tap conversation navigates to chat view
-7. Navigation bar with title "Messages" and "New Conversation" button
-8. Real-time updates when new messages arrive (conversation list reorders)
-9. Loading state while initial conversations load
-10. Offline indicator banner displayed when no network connectivity
-11. Conversations sorted by most recent message first
-12. Unit tests for `ConversationsListViewModel` with mocked data
-13. Dark mode styling verified
-14. Smooth scrolling performance with 50+ conversations
+5. Tap conversation navigates to chat view
+6. Navigation bar with title "Messages" and "New Conversation" button
+7. Real-time updates when new messages arrive (conversation list reorders)
+8. Loading state while initial conversations load
+9. Offline indicator banner displayed when no network connectivity
+10. Conversations sorted by most recent message first
+11. Unit tests for `ConversationsListViewModel` with mocked data
+12. Dark mode styling verified
+13. Smooth scrolling performance with 50+ conversations
+
+**Note:** Pull-to-refresh intentionally excluded - real-time Firestore listeners provide automatic updates.
 
 ## Story 1.8: One-on-One Chat View with Real-Time Messaging
 
@@ -175,7 +176,7 @@ so that **I can communicate instantly with another user**.
 7. Messages display sender name (or "You"), timestamp, and message text
 8. Message bubbles styled differently for current user vs other participants
 9. Auto-scroll to bottom when new messages arrive or user sends message
-10. Pull-to-load-more for older messages (pagination)
+10. Scroll-to-top loads older messages (pagination, NOT pull-to-refresh for new messages)
 11. Loading state while initial messages load
 12. Empty state for new conversations ("Say hello!")
 13. Keyboard handling: Input bar stays above keyboard, scroll adjusts

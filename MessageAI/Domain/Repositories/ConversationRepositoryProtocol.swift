@@ -30,5 +30,11 @@ protocol ConversationRepositoryProtocol {
     ///   - conversationId: The conversation ID
     ///   - userId: The user ID
     func markAsRead(conversationId: String, userId: String) async throws
+    
+    /// Update conversation fields (e.g., lastMessage, lastMessageTimestamp)
+    /// - Parameters:
+    ///   - id: The conversation ID
+    ///   - updates: Dictionary of field names to values
+    func updateConversation(id: String, updates: [String: Any]) async throws
 }
 

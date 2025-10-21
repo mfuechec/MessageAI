@@ -37,33 +37,11 @@ struct MessageAIApp: App {
                     )
                     ProfileSetupView(viewModel: profileViewModel, authViewModel: authViewModel)
                 } else {
-                    // Story 1.7 will implement ConversationsListView
-                    NavigationView {
-                        VStack(spacing: 20) {
-                            Text("Conversations List")
-                                .font(.largeTitle)
-                                .fontWeight(.bold)
-                            
-                            Text("Coming in Story 1.7")
-                                .font(.title3)
-                                .foregroundColor(.secondary)
-                            
-                            Text("Signed in as: \(currentUser.displayName)")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                                .padding(.top, 40)
-                        }
-                        .navigationBarTitleDisplayMode(.inline)
-                        .toolbar {
-                            ToolbarItem(placement: .navigationBarTrailing) {
-                                Button("Logout") {
-                                    Task {
-                                        await authViewModel.signOut()
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    // Show Conversations List after profile setup complete
+                    ConversationsListView(
+                        viewModel: DIContainer.shared.makeConversationsListViewModel(currentUserId: currentUser.id)
+                    )
+                    .environmentObject(authViewModel)
                 }
             } else {
                 AuthView(viewModel: authViewModel)

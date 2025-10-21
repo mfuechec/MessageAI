@@ -13,7 +13,7 @@ The UX balances two modes: **focused communication** (traditional chat) and **in
 - Conversations list shows recent chats with preview, timestamp, and unread badges
 - Insights tab aggregates AI-generated content across all conversations
 - Tap conversation to enter full chat view
-- Pull-to-refresh for manual sync
+- Real-time updates via Firestore listeners (no manual refresh needed)
 
 **Message Composition:**
 - Standard iOS keyboard with text input bar at bottom

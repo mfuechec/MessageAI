@@ -99,38 +99,29 @@ class DIContainer {
     }
     
     /// Creates ChatViewModel for a specific conversation
-    /// - Parameter conversationId: The conversation to display
+    /// - Parameters:
+    ///   - conversationId: The conversation to display
+    ///   - currentUserId: The ID of the current user
     /// - Returns: Configured ChatViewModel instance
-    func makeChatViewModel(conversationId: String) -> ChatViewModel {
+    func makeChatViewModel(conversationId: String, currentUserId: String) -> ChatViewModel {
         ChatViewModel(
             conversationId: conversationId,
+            currentUserId: currentUserId,
             messageRepository: messageRepository,
+            conversationRepository: conversationRepository,
             userRepository: userRepository
         )
     }
     
     /// Creates ConversationsListViewModel for displaying conversation list
+    /// - Parameter currentUserId: The ID of the current user viewing conversations
     /// - Returns: Configured ConversationsListViewModel instance
-    func makeConversationsListViewModel() -> ConversationsListViewModel {
+    func makeConversationsListViewModel(currentUserId: String) -> ConversationsListViewModel {
         ConversationsListViewModel(
             conversationRepository: conversationRepository,
-            userRepository: userRepository
+            userRepository: userRepository,
+            currentUserId: currentUserId
         )
     }
-}
-
-// MARK: - Placeholder ViewModels
-
-// These placeholder classes allow DIContainer to compile
-// They will be replaced with real implementations in future stories
-
-/// Placeholder ChatViewModel (will be implemented in Story 1.7+)
-class ChatViewModel {
-    init(conversationId: String, messageRepository: MessageRepositoryProtocol, userRepository: UserRepositoryProtocol) {}
-}
-
-/// Placeholder ConversationsListViewModel (will be implemented in Story 1.7+)
-class ConversationsListViewModel {
-    init(conversationRepository: ConversationRepositoryProtocol, userRepository: UserRepositoryProtocol) {}
 }
 

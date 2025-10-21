@@ -149,7 +149,14 @@ main() {
     echo ""
     
     # Build command
-    BUILD_CMD="xcodebuild -project $PROJECT_FILE -scheme $SCHEME -configuration $CONFIGURATION -destination '$DESTINATION' $ACTION"
+    BUILD_CMD="xcodebuild -project $PROJECT_FILE -scheme $SCHEME -configuration $CONFIGURATION -destination '$DESTINATION'"
+    
+    # Add parallel testing flags for test actions to prevent multiple simulators
+    if [[ "$ACTION" == *"test"* ]]; then
+        BUILD_CMD="$BUILD_CMD -parallel-testing-enabled NO -maximum-concurrent-test-simulator-destinations 1"
+    fi
+    
+    BUILD_CMD="$BUILD_CMD $ACTION"
     
     if [ "$SHOW_FULL_OUTPUT" = true ]; then
         print_info "Executing: $BUILD_CMD"

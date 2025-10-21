@@ -13,6 +13,7 @@
 		C12635AF2EA6CC2E005442C5 /* FirebaseMessaging in Frameworks */ = {isa = PBXBuildFile; productRef = C12635AE2EA6CC2E005442C5 /* FirebaseMessaging */; };
 		C12635B12EA6CC2E005442C5 /* FirebaseStorage in Frameworks */ = {isa = PBXBuildFile; productRef = C12635B02EA6CC2E005442C5 /* FirebaseStorage */; };
 		C12636172EA6EE7A005442C5 /* Kingfisher in Frameworks */ = {isa = PBXBuildFile; productRef = C12636162EA6EE7A005442C5 /* Kingfisher */; };
+		C12636292EA707AB005442C5 /* MessageKit in Frameworks */ = {isa = PBXBuildFile; productRef = C12636282EA707AB005442C5 /* MessageKit */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -51,6 +52,7 @@
 				C12636172EA6EE7A005442C5 /* Kingfisher in Frameworks */,
 				C12635AF2EA6CC2E005442C5 /* FirebaseMessaging in Frameworks */,
 				C12635A92EA6CC2E005442C5 /* FirebaseAnalytics in Frameworks */,
+				C12636292EA707AB005442C5 /* MessageKit in Frameworks */,
 				C12635AB2EA6CC2E005442C5 /* FirebaseAuth in Frameworks */,
 				C12635B12EA6CC2E005442C5 /* FirebaseStorage in Frameworks */,
 				C12635AD2EA6CC2E005442C5 /* FirebaseFirestore in Frameworks */,
@@ -119,6 +121,7 @@
 				C12635AE2EA6CC2E005442C5 /* FirebaseMessaging */,
 				C12635B02EA6CC2E005442C5 /* FirebaseStorage */,
 				C12636162EA6EE7A005442C5 /* Kingfisher */,
+				C12636282EA707AB005442C5 /* MessageKit */,
 			);
 			productName = MessageAI;
 			productReference = C126356F2EA6BF89005442C5 /* MessageAI.app */;
@@ -178,6 +181,7 @@
 			packageReferences = (
 				C12635A72EA6CC2E005442C5 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
 				C12636142EA6EE0D005442C5 /* XCRemoteSwiftPackageReference "Kingfisher" */,
+				C12636272EA707AB005442C5 /* XCRemoteSwiftPackageReference "MessageKit" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = C12635702EA6BF89005442C5 /* Products */;
@@ -509,6 +513,14 @@
 				minimumVersion = 7.10.0;
 			};
 		};
+		C12636272EA707AB005442C5 /* XCRemoteSwiftPackageReference "MessageKit" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/MessageKit/MessageKit";
+			requirement = {
+				kind = exactVersion;
+				version = 4.2.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -541,6 +553,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = C12636142EA6EE0D005442C5 /* XCRemoteSwiftPackageReference "Kingfisher" */;
 			productName = Kingfisher;
+		};
+		C12636282EA707AB005442C5 /* MessageKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C12636272EA707AB005442C5 /* XCRemoteSwiftPackageReference "MessageKit" */;
+			productName = MessageKit;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
