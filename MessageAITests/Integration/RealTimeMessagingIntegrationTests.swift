@@ -1,62 +1,170 @@
 import XCTest
+import Combine
+import FirebaseAuth
 @testable import MessageAI
 
 /// Integration tests for real-time messaging functionality
-/// These tests require Firebase Emulator setup (Story 1.10)
+/// These tests verify end-to-end message flow using Firebase Emulator
+@MainActor
 final class RealTimeMessagingIntegrationTests: XCTestCase {
     
-    func testSendAndReceiveMessage_RealTime() async throws {
-        throw XCTSkip("Requires Firebase Emulator - will be implemented in Story 1.10")
+    var firebaseService: FirebaseService!
+    var userRepository: FirebaseUserRepository!
+    var authRepository: FirebaseAuthRepository!
+    var messageRepository: FirebaseMessageRepository!
+    var conversationRepository: FirebaseConversationRepository!
+    
+    var userA: MessageAI.User!
+    var userB: MessageAI.User!
+    var conversationId: String!
+    
+    override func setUp() async throws {
+        try await super.setUp()
         
-        // Test Plan:
-        // Given: Two users (User A, User B) authenticated
-        // Given: Shared conversation exists
-        // When: User A sends message "Hello from A"
-        // Then: User B's ChatViewModel receives message within 2 seconds
-        // Then: Message appears in User B's messages array
-        // Then: Message status transitions from sending → sent → delivered
-        //
-        // Implementation Notes:
-        // 1. Set up Firebase Emulator with test auth users
-        // 2. Create two ChatViewModel instances for different users
-        // 3. Send message from User A
-        // 4. Use expectation with 2-second timeout to wait for real-time update
-        // 5. Verify message content, sender, and status on User B's side
-        // 6. Clean up test data after completion
+        // Configure emulator
+        firebaseService = FirebaseService()
+        firebaseService.useEmulator()
+        firebaseService.configure()
+        
+        // Initialize repositories
+        userRepository = FirebaseUserRepository(firebaseService: firebaseService)
+        authRepository = FirebaseAuthRepository(firebaseService: firebaseService, userRepository: userRepository)
+        messageRepository = FirebaseMessageRepository(firebaseService: firebaseService)
+        conversationRepository = FirebaseConversationRepository(firebaseService: firebaseService)
+        
+        // Clean up any existing auth
+        if Auth.auth().currentUser != nil {
+            try await authRepository.signOut()
+        }
+        
+        // Create two test users
+        userA = try await authRepository.signUp(
+            email: "userA-\(UUID().uuidString)@test.com",
+            password: "password123"
+        )
+        try await authRepository.signOut()
+        
+        userB = try await authRepository.signUp(
+            email: "userB-\(UUID().uuidString)@test.com",
+            password: "password123"
+        )
+        
+        // Create conversation between them
+        let conversation = try await conversationRepository.createConversation(participantIds: [userA.id, userB.id])
+        conversationId = conversation.id
+    }
+    
+    override func tearDown() async throws {
+        // Clean up emulator data
+        if Auth.auth().currentUser != nil {
+            try await authRepository.signOut()
+        }
+        try await super.tearDown()
+    }
+    
+    func testSendMessage_UserAToUserB_UserBReceivesRealTime() async throws {
+        // Given
+        let expectation = XCTestExpectation(description: "User B receives message")
+        var receivedMessages: [Message] = []
+        
+        // User B observes messages
+        let cancellable = messageRepository.observeMessages(
+            conversationId: conversationId
+        )
+        .sink { messages in
+            receivedMessages = messages
+            if !messages.isEmpty {
+                expectation.fulfill()
+            }
+        }
+        
+        // Wait for listener to set up
+        try await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
+        
+        // When: User A sends message
+        let message = Message(
+            id: UUID().uuidString,
+            conversationId: conversationId,
+            senderId: userA.id,
+            text: "Hello from User A!",
+            timestamp: Date(),
+            status: .sent,
+            statusUpdatedAt: Date(),
+            attachments: [],
+            editHistory: nil,
+            editCount: 0,
+            isEdited: false,
+            isDeleted: false,
+            deletedAt: nil,
+            deletedBy: nil,
+            readBy: [],
+            readCount: 0,
+            isPriority: false,
+            priorityReason: nil
+        )
+        
+        try await messageRepository.sendMessage(message)
+        
+        // Then: User B receives message in real-time
+        await fulfillment(of: [expectation], timeout: 5.0)
+        
+        XCTAssertEqual(receivedMessages.count, 1)
+        XCTAssertEqual(receivedMessages.first?.text, "Hello from User A!")
+        XCTAssertEqual(receivedMessages.first?.senderId, userA.id)
+        
+        cancellable.cancel()
     }
     
     func testMultipleMessages_RealTimeOrdering() async throws {
-        throw XCTSkip("Requires Firebase Emulator - will be implemented in Story 1.10")
+        // Given
+        let expectation = XCTestExpectation(description: "Receive multiple messages")
+        var receivedMessages: [Message] = []
         
-        // Test Plan:
-        // Given: Two users in conversation
-        // When: User A sends 3 messages in rapid succession
-        // Then: User B receives all 3 messages in correct order
-        // Then: Messages are sorted by timestamp
-        // Then: No message duplication occurs
-    }
-    
-    func testOfflineMessage_SyncsWhenOnline() async throws {
-        throw XCTSkip("Requires Firebase Emulator - will be implemented in Story 1.10")
+        let cancellable = messageRepository.observeMessages(conversationId: conversationId)
+            .sink { messages in
+                receivedMessages = messages
+                if messages.count >= 3 {
+                    expectation.fulfill()
+                }
+            }
         
-        // Test Plan:
-        // Given: User A is online
-        // Given: User B is offline (simulate network disconnection)
-        // When: User A sends message
-        // When: User B comes back online
-        // Then: User B receives message within 2 seconds of reconnection
-        // Then: Message status reflects correct delivery state
-    }
-    
-    func testConversationLastMessage_Updates() async throws {
-        throw XCTSkip("Requires Firebase Emulator - will be implemented in Story 1.10")
+        try await Task.sleep(nanoseconds: 500_000_000)
         
-        // Test Plan:
-        // Given: Conversation with existing messages
-        // When: New message is sent
-        // Then: Conversation's lastMessage field is updated
-        // Then: Conversation's lastMessageTimestamp is updated
-        // Then: Conversation appears at top of ConversationsList
+        // When: Send 3 messages
+        for i in 1...3 {
+            let message = Message(
+                id: UUID().uuidString,
+                conversationId: conversationId,
+                senderId: userA.id,
+                text: "Message \(i)",
+                timestamp: Date(),
+                status: .sent,
+                statusUpdatedAt: Date(),
+                attachments: [],
+                editHistory: nil,
+                editCount: 0,
+                isEdited: false,
+                isDeleted: false,
+                deletedAt: nil,
+                deletedBy: nil,
+                readBy: [],
+                readCount: 0,
+                isPriority: false,
+                priorityReason: nil
+            )
+            try await messageRepository.sendMessage(message)
+            try await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds between messages
+        }
+        
+        // Then
+        await fulfillment(of: [expectation], timeout: 5.0)
+        XCTAssertEqual(receivedMessages.count, 3)
+        
+        // Verify ordering (should be oldest first)
+        XCTAssertEqual(receivedMessages[0].text, "Message 1")
+        XCTAssertEqual(receivedMessages[1].text, "Message 2")
+        XCTAssertEqual(receivedMessages[2].text, "Message 3")
+        
+        cancellable.cancel()
     }
 }
-

@@ -387,6 +387,220 @@ jobs:
 
 ---
 
+## Integration Testing with Firebase Emulator
+
+### When to Use Integration Tests
+
+- Testing Firebase SDK interactions (Auth, Firestore, Storage)
+- Verifying real-time listeners work correctly
+- End-to-end workflows (sign up → send message → receive message)
+- Offline persistence behavior
+- Multi-user real-time scenarios
+
+### Integration Test Pattern
+
+```swift
+@MainActor
+final class FeatureIntegrationTests: XCTestCase {
+    var firebaseService: FirebaseService!
+    var repository: SomeRepository!
+    
+    override func setUp() async throws {
+        // 1. Configure emulator
+        firebaseService = FirebaseService()
+        firebaseService.useEmulator()
+        firebaseService.configure()
+        
+        // 2. Initialize repositories
+        repository = FirebaseRepository(firebaseService: firebaseService)
+        
+        // 3. Create test data
+        await createTestData()
+    }
+    
+    override func tearDown() async throws {
+        // 4. Clean up test data
+        await cleanupTestData()
+        
+        repository = nil
+        try await super.tearDown()
+    }
+    
+    func testFeature_Scenario_Outcome() async throws {
+        // Given: Setup preconditions
+        
+        // When: Execute action
+        
+        // Then: Verify results using XCTAssert*
+    }
+}
+```
+
+### Real-Time Listener Testing
+
+```swift
+func testRealTimeListener() async throws {
+    let expectation = XCTestExpectation(description: "Receive message")
+    
+    // Subscribe to real-time updates
+    let cancellable = repository.observeMessages(conversationId: "test")
+        .sink { messages in
+            if !messages.isEmpty {
+                expectation.fulfill()
+            }
+        }
+    
+    // Wait for listener to set up
+    try await Task.sleep(nanoseconds: 500_000_000)
+    
+    // Trigger update
+    try await repository.sendMessage(testMessage)
+    
+    // Wait for listener to fire
+    await fulfillment(of: [expectation], timeout: 5.0)
+    
+    cancellable.cancel()
+}
+```
+
+### Emulator Best Practices
+
+- **Use unique IDs** for test data (UUID) to prevent conflicts
+- **Clean up after each test** to prevent cross-test pollution
+- **Use descriptive test names**: `testFeature_Scenario_ExpectedOutcome`
+- **Keep tests fast** (< 5 seconds each) by minimizing Task.sleep
+- **Avoid testing UI** in integration tests (use unit tests with mocks)
+- **Test one thing** per test method
+
+### Multi-User Testing
+
+```swift
+func testMultiUserRealTime() async throws {
+    // Create two users
+    let userA = try await authRepository.signUp(
+        email: "userA@test.com",
+        password: "password123"
+    )
+    try await authRepository.signOut()
+    
+    let userB = try await authRepository.signUp(
+        email: "userB@test.com",
+        password: "password123"
+    )
+    
+    // User B observes messages
+    let expectation = XCTestExpectation(description: "User B receives message")
+    let cancellable = messageRepository.observeMessages(conversationId: conversationId)
+        .sink { messages in
+            if !messages.isEmpty {
+                expectation.fulfill()
+            }
+        }
+    
+    // User A sends message
+    try await messageRepository.sendMessage(messageFromUserA)
+    
+    // Verify User B received it
+    await fulfillment(of: [expectation], timeout: 5.0)
+    cancellable.cancel()
+}
+```
+
+### Coverage Goals
+
+| Layer | Target | Rationale |
+|-------|--------|-----------|
+| Domain Layer | 80%+ | Pure Swift, easy to test |
+| Data Layer | 70%+ | Firebase integration, some paths hard to test |
+| Presentation Layer | 75%+ | ViewModels, use mocks |
+
+### Performance Testing
+
+Measure critical paths to detect regressions:
+
+```swift
+func testPerformance_MessageSend() async throws {
+    let start = Date()
+    try await messageRepository.sendMessage(message)
+    let duration = Date().timeIntervalSince(start)
+    
+    XCTAssertLessThan(duration, 2.0, "Message send should take < 2 seconds")
+}
+```
+
+### Running Integration Tests
+
+```bash
+# Terminal 1: Start emulator
+./scripts/start-emulator.sh
+
+# Terminal 2: Run integration tests
+./scripts/run-integration-tests.sh
+
+# Or run complete test suite (skips integration tests if emulator not running)
+./scripts/ci-test.sh
+```
+
+### Common Integration Test Pitfalls
+
+**❌ DON'T: Forget to clean up test data**
+```swift
+// Bad: Test data persists, affects other tests
+func testFeature() async throws {
+    let user = try await authRepository.signUp(...)
+    // Test completes, user still in emulator
+}
+```
+
+**✅ DO: Clean up in tearDown**
+```swift
+// Good: Each test starts with clean slate
+override func tearDown() async throws {
+    if authRepository.auth.currentUser != nil {
+        try await authRepository.signOut()
+    }
+    try await super.tearDown()
+}
+```
+
+---
+
+**❌ DON'T: Use production Firebase in tests**
+```swift
+// Bad: Hits real Firebase, slow and dangerous
+func testFeature() {
+    let service = FirebaseService.shared
+    // Uses production Firebase!
+}
+```
+
+**✅ DO: Use emulator**
+```swift
+// Good: Uses local emulator
+override func setUp() async throws {
+    firebaseService = FirebaseService()
+    firebaseService.useEmulator()  // 🔥 Critical!
+    firebaseService.configure()
+}
+```
+
+---
+
+**❌ DON'T: Forget to wait for real-time listeners**
+```swift
+// Bad: Listener hasn't set up yet
+let cancellable = repository.observeMessages(...)
+try await repository.sendMessage(message)  // Listener might miss this!
+```
+
+**✅ DO: Wait for listener to set up**
+```swift
+// Good: Give listener time to establish connection
+let cancellable = repository.observeMessages(...)
+try await Task.sleep(nanoseconds: 500_000_000)  // 0.5 seconds
+try await repository.sendMessage(message)
+```
+
 ## Summary
 
 **✅ Do This**:
@@ -395,6 +609,9 @@ jobs:
 - Write tests for all ViewModels and Entities
 - Use mock repositories with the standard pattern
 - Test before every commit
+- Use Firebase Emulator for integration tests
+- Clean up test data in tearDown
+- Use unique IDs (UUID) for test data
 
 **❌ Don't Do This**:
 - Don't use parallel testing (multiple simulators)
@@ -402,6 +619,8 @@ jobs:
 - Don't commit without running tests
 - Don't write tests that hit real external services
 - Don't use Date() without controlling the value
+- Don't use production Firebase in integration tests
+- Don't forget to wait for real-time listeners to set up
 
 **Questions?** Check `docs/architecture/testing-strategy.md` for detailed testing strategy.
 

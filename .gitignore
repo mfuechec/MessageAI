@@ -82,3 +82,9 @@ fastlane/test_output
 # AI Debug Logs
 .ai/
 
+# Firebase Emulator
+emulator-data/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+

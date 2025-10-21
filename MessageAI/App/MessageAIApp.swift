@@ -16,9 +16,9 @@ struct MessageAIApp: App {
     @StateObject private var authViewModel = DIContainer.shared.makeAuthViewModel()
     
     /// Initialize Firebase on app launch
-    /// FirebaseService.shared triggers Firebase configuration with environment-specific settings
+    /// Explicitly call configure() to set up Firebase with environment-specific settings
     init() {
-        _ = FirebaseService.shared
+        FirebaseService.shared.configure()
     }
     
     var body: some Scene {

@@ -2,147 +2,182 @@ import XCTest
 import Combine
 @testable import MessageAI
 
-/// Unit tests for FirebaseMessageRepository
-///
-/// Note: These tests require Firebase Emulator for full integration testing.
-/// Basic structure is provided here; comprehensive tests will be added in Story 1.10.
+/// Integration tests for FirebaseMessageRepository using Firebase Emulator
+@MainActor
 final class FirebaseMessageRepositoryTests: XCTestCase {
     
     var sut: FirebaseMessageRepository!
+    var firebaseService: FirebaseService!
     var cancellables: Set<AnyCancellable>!
     
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
+        try await super.setUp()
         cancellables = Set<AnyCancellable>()
-        // Note: Full setup requires Firebase Emulator (Story 1.10)
-        // sut = FirebaseMessageRepository(firebaseService: mockService)
+        
+        // Configure Firebase with emulator
+        firebaseService = FirebaseService()
+        firebaseService.useEmulator()
+        firebaseService.configure()
+        
+        sut = FirebaseMessageRepository(firebaseService: firebaseService)
     }
     
-    override func tearDown() {
+    override func tearDown() async throws {
         cancellables = nil
         sut = nil
-        super.tearDown()
+        try await super.tearDown()
     }
     
     // MARK: - Send Message Tests
     
     func testSendMessage_Success() async throws {
-        throw XCTSkip("Requires Firebase Emulator - will be implemented in Story 1.10")
-        
         // Given
-        // let message = Message(
-        //     conversationId: "conv-1",
-        //     senderId: "user-1",
-        //     text: "Test message"
-        // )
+        let message = Message(
+            id: UUID().uuidString,
+            conversationId: "test-conversation",
+            senderId: "user-1",
+            text: "Test message",
+            timestamp: Date(),
+            status: .sent,
+            statusUpdatedAt: Date(),
+            attachments: [],
+            editHistory: nil,
+            editCount: 0,
+            isEdited: false,
+            isDeleted: false,
+            deletedAt: nil,
+            deletedBy: nil,
+            readBy: [],
+            readCount: 0,
+            isPriority: false,
+            priorityReason: nil
+        )
         
         // When
-        // try await sut.sendMessage(message)
+        try await sut.sendMessage(message)
+        
+        // Then: Verify message can be retrieved
+        let messages = try await sut.getMessages(conversationId: message.conversationId, limit: 50)
+        XCTAssertTrue(messages.contains(where: { $0.id == message.id }))
+    }
+    
+    func testGetMessages_ReturnsMessagesForConversation() async throws {
+        // Given
+        let conversationId = UUID().uuidString
+        let message1 = Message(
+            id: UUID().uuidString,
+            conversationId: conversationId,
+            senderId: "user-1",
+            text: "First message",
+            timestamp: Date(),
+            status: .sent,
+            statusUpdatedAt: Date(),
+            attachments: [],
+            editHistory: nil,
+            editCount: 0,
+            isEdited: false,
+            isDeleted: false,
+            deletedAt: nil,
+            deletedBy: nil,
+            readBy: [],
+            readCount: 0,
+            isPriority: false,
+            priorityReason: nil
+        )
+        
+        try await sut.sendMessage(message1)
+        
+        // When
+        let messages = try await sut.getMessages(conversationId: conversationId, limit: 50)
         
         // Then
-        // Verify message was written to Firestore
+        XCTAssertFalse(messages.isEmpty)
+        XCTAssertTrue(messages.contains(where: { $0.id == message1.id }))
     }
     
-    func testSendMessage_EncodingError() async throws {
-        throw XCTSkip("Requires Firebase Emulator - will be implemented in Story 1.10")
+    func testGetMessages_WithLimit_RespectsLimit() async throws {
+        // Given
+        let conversationId = UUID().uuidString
         
-        // Given: Message with invalid data
-        // When: Send message
-        // Then: Should throw RepositoryError.encodingError
-    }
-    
-    func testSendMessage_NetworkError() async throws {
-        throw XCTSkip("Requires Firebase Emulator - will be implemented in Story 1.10")
+        // Send multiple messages
+        for i in 1...5 {
+            let message = Message(
+                id: UUID().uuidString,
+                conversationId: conversationId,
+                senderId: "user-1",
+                text: "Message \(i)",
+                timestamp: Date(),
+                status: .sent,
+                statusUpdatedAt: Date(),
+                attachments: [],
+                editHistory: nil,
+                editCount: 0,
+                isEdited: false,
+                isDeleted: false,
+                deletedAt: nil,
+                deletedBy: nil,
+                readBy: [],
+                readCount: 0,
+                isPriority: false,
+                priorityReason: nil
+            )
+            try await sut.sendMessage(message)
+        }
         
-        // Given: Network offline
-        // When: Send message
-        // Then: Message should queue for offline sync
+        // When
+        let messages = try await sut.getMessages(conversationId: conversationId, limit: 3)
+        
+        // Then
+        XCTAssertLessThanOrEqual(messages.count, 3)
     }
     
     // MARK: - Observe Messages Tests
     
-    func testObserveMessages_ReceivesInitialMessages() throws {
-        throw XCTSkip("Requires Firebase Emulator - will be implemented in Story 1.10")
-        
+    func testObserveMessages_ReceivesRealTimeUpdates() async throws {
         // Given
-        // let expectation = expectation(description: "Receive initial messages")
-        // var receivedMessages: [Message] = []
+        let conversationId = UUID().uuidString
+        let expectation = XCTestExpectation(description: "Receive message update")
+        var receivedMessages: [Message] = []
+        
+        let cancellable = sut.observeMessages(conversationId: conversationId)
+            .sink { messages in
+                receivedMessages = messages
+                if !messages.isEmpty {
+                    expectation.fulfill()
+                }
+            }
+        
+        // Wait for listener to set up
+        try await Task.sleep(nanoseconds: 500_000_000)
         
         // When
-        // sut.observeMessages(conversationId: "conv-1")
-        //     .sink { messages in
-        //         receivedMessages = messages
-        //         expectation.fulfill()
-        //     }
-        //     .store(in: &cancellables)
+        let message = Message(
+            id: UUID().uuidString,
+            conversationId: conversationId,
+            senderId: "user-1",
+            text: "Real-time message",
+            timestamp: Date(),
+            status: .sent,
+            statusUpdatedAt: Date(),
+            attachments: [],
+            editHistory: nil,
+            editCount: 0,
+            isEdited: false,
+            isDeleted: false,
+            deletedAt: nil,
+            deletedBy: nil,
+            readBy: [],
+            readCount: 0,
+            isPriority: false,
+            priorityReason: nil
+        )
+        try await sut.sendMessage(message)
         
         // Then
-        // wait(for: [expectation], timeout: 5.0)
-        // XCTAssertEqual(receivedMessages.count, 2)
-    }
-    
-    func testObserveMessages_ReceivesRealtimeUpdates() throws {
-        throw XCTSkip("Requires Firebase Emulator - will be implemented in Story 1.10")
+        await fulfillment(of: [expectation], timeout: 5.0)
+        XCTAssertFalse(receivedMessages.isEmpty)
+        XCTAssertTrue(receivedMessages.contains(where: { $0.id == message.id }))
         
-        // Given: Observer is set up
-        // When: New message is added to Firestore
-        // Then: Observer should emit updated message list
-    }
-    
-    func testObserveMessages_HandlesErrors() throws {
-        throw XCTSkip("Requires Firebase Emulator - will be implemented in Story 1.10")
-        
-        // Given: Firestore query error
-        // When: Observer encounters error
-        // Then: Should emit empty array (not crash)
-    }
-    
-    // MARK: - Get Messages Tests
-    
-    func testGetMessages_WithLimit() async throws {
-        throw XCTSkip("Requires Firebase Emulator - will be implemented in Story 1.10")
-        
-        // Given: Conversation with 100 messages
-        // When: Get messages with limit 50
-        // Then: Should return exactly 50 messages
-    }
-    
-    func testGetMessages_EmptyConversation() async throws {
-        throw XCTSkip("Requires Firebase Emulator - will be implemented in Story 1.10")
-        
-        // Given: Empty conversation
-        // When: Get messages
-        // Then: Should return empty array
-    }
-    
-    // MARK: - Update Message Status Tests
-    
-    func testUpdateMessageStatus_Success() async throws {
-        throw XCTSkip("Requires Firebase Emulator - will be implemented in Story 1.10")
-        
-        // Given: Existing message with status .sent
-        // When: Update status to .delivered
-        // Then: Message status should be updated in Firestore
-    }
-    
-    // MARK: - Edit Message Tests
-    
-    func testEditMessage_Success() async throws {
-        throw XCTSkip("Requires Firebase Emulator - will be implemented in Story 1.10")
-        
-        // Given: Existing message
-        // When: Edit message text
-        // Then: Message should be updated with isEdited=true and new text
-    }
-    
-    // MARK: - Delete Message Tests
-    
-    func testDeleteMessage_Success() async throws {
-        throw XCTSkip("Requires Firebase Emulator - will be implemented in Story 1.10")
-        
-        // Given: Existing message
-        // When: Delete message
-        // Then: Message should have isDeleted=true
+        cancellable.cancel()
     }
 }
-

@@ -1,172 +1,248 @@
 import XCTest
 import Combine
+import FirebaseAuth
 @testable import MessageAI
 
-/// Unit tests for FirebaseAuthRepository
+/// Integration tests for FirebaseAuthRepository using Firebase Emulator
 ///
-/// Note: These tests require Firebase Emulator for full integration testing.
-/// Basic structure is provided here; comprehensive tests will be added in Story 1.10.
+/// These tests verify authentication flow with real Firebase SDK operations
+/// against the Firebase Emulator. Requires emulator to be running.
+@MainActor
 final class FirebaseAuthRepositoryTests: XCTestCase {
     
     var sut: FirebaseAuthRepository!
+    var firebaseService: FirebaseService!
+    var userRepository: FirebaseUserRepository!
     var cancellables: Set<AnyCancellable>!
     
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
+        try await super.setUp()
         cancellables = Set<AnyCancellable>()
-        // Note: Full setup requires Firebase Emulator (Story 1.10)
+        
+        // Configure Firebase with emulator
+        firebaseService = FirebaseService()
+        firebaseService.useEmulator()
+        firebaseService.configure()
+        
+        // Initialize repositories
+        userRepository = FirebaseUserRepository(firebaseService: firebaseService)
+        sut = FirebaseAuthRepository(firebaseService: firebaseService, userRepository: userRepository)
+        
+        // Clean emulator state
+        try await cleanEmulatorAuth()
     }
     
-    override func tearDown() {
+    override func tearDown() async throws {
+        try await cleanEmulatorAuth()
         cancellables = nil
         sut = nil
-        super.tearDown()
+        userRepository = nil
+        try await super.tearDown()
     }
     
-    // MARK: - Sign In Tests
+    // MARK: - Helper Methods
     
-    func testSignIn_Success() async throws {
-        throw XCTSkip("Requires Firebase Emulator - will be implemented in Story 1.10")
-        
-        // Given: Valid email and password
-        // When: Sign in
-        // Then: Should return User entity and update online status
-    }
-    
-    func testSignIn_InvalidCredentials() async throws {
-        throw XCTSkip("Requires Firebase Emulator - will be implemented in Story 1.10")
-        
-        // Given: Invalid email or password
-        // When: Sign in
-        // Then: Should throw RepositoryError.networkError
-    }
-    
-    func testSignIn_UpdatesOnlineStatus() async throws {
-        throw XCTSkip("Requires Firebase Emulator - will be implemented in Story 1.10")
-        
-        // Given: Valid credentials
-        // When: Sign in
-        // Then: User's isOnline should be true
-    }
-    
-    func testSignIn_FetchesUserProfile() async throws {
-        throw XCTSkip("Requires Firebase Emulator - will be implemented in Story 1.10")
-        
-        // Given: User with profile in Firestore
-        // When: Sign in
-        // Then: Should return complete User entity from Firestore
+    private func cleanEmulatorAuth() async throws {
+        // Sign out current user if any
+        if Auth.auth().currentUser != nil {
+            try await sut.signOut()
+        }
     }
     
     // MARK: - Sign Up Tests
     
     func testSignUp_Success() async throws {
-        throw XCTSkip("Requires Firebase Emulator - will be implemented in Story 1.10")
+        // Given
+        let email = "test@example.com"
+        let password = "password123"
         
-        // Given: New email and password
-        // When: Sign up
-        // Then: Should create user in Auth and Firestore
+        // When
+        let user = try await sut.signUp(email: email, password: password)
+        
+        // Then
+        XCTAssertEqual(user.email, email)
+        XCTAssertFalse(user.id.isEmpty)
+        XCTAssertEqual(user.displayName, "test") // Extracted from email
+        XCTAssertTrue(user.isOnline)
     }
     
     func testSignUp_CreatesUserDocument() async throws {
-        throw XCTSkip("Requires Firebase Emulator - will be implemented in Story 1.10")
+        // Given
+        let email = "newuser@example.com"
+        let password = "password123"
         
-        // Given: New user signs up
-        // When: Check Firestore
-        // Then: User document should exist with default values
+        // When
+        let user = try await sut.signUp(email: email, password: password)
+        
+        // Then: Verify user exists in Firestore
+        let fetchedUser = try await sut.getCurrentUser()
+        XCTAssertNotNil(fetchedUser)
+        XCTAssertEqual(fetchedUser?.id, user.id)
     }
     
     func testSignUp_ExtractsDisplayNameFromEmail() async throws {
-        throw XCTSkip("Requires Firebase Emulator - will be implemented in Story 1.10")
+        // Given
+        let email = "john.doe@example.com"
+        let password = "password123"
         
-        // Given: Email "john@example.com"
-        // When: Sign up
-        // Then: displayName should be "john"
+        // When
+        let user = try await sut.signUp(email: email, password: password)
+        
+        // Then
+        XCTAssertEqual(user.displayName, "john.doe")
     }
     
-    func testSignUp_EmailAlreadyExists() async throws {
-        throw XCTSkip("Requires Firebase Emulator - will be implemented in Story 1.10")
+    // MARK: - Sign In Tests
+    
+    func testSignIn_Success() async throws {
+        // Given: Create user first
+        let email = "signin@example.com"
+        let password = "password123"
+        _ = try await sut.signUp(email: email, password: password)
+        try await sut.signOut()
         
-        // Given: Email already registered
-        // When: Sign up with same email
-        // Then: Should throw RepositoryError.networkError
+        // When: Sign in
+        let user = try await sut.signIn(email: email, password: password)
+        
+        // Then
+        XCTAssertEqual(user.email, email)
+        XCTAssertTrue(user.isOnline)
+    }
+    
+    func testSignIn_InvalidCredentials() async throws {
+        // Given
+        let email = "nonexistent@example.com"
+        let password = "wrongpassword"
+        
+        // When/Then
+        do {
+            _ = try await sut.signIn(email: email, password: password)
+            XCTFail("Should throw error for invalid credentials")
+        } catch {
+            // Expected error
+            XCTAssertTrue(error is RepositoryError || error is NSError)
+        }
+    }
+    
+    func testSignIn_UpdatesOnlineStatus() async throws {
+        // Given: Create and sign out user
+        let email = "online@example.com"
+        let password = "password123"
+        _ = try await sut.signUp(email: email, password: password)
+        try await sut.signOut()
+        
+        // When: Sign in
+        let user = try await sut.signIn(email: email, password: password)
+        
+        // Then
+        XCTAssertTrue(user.isOnline)
     }
     
     // MARK: - Sign Out Tests
     
     func testSignOut_Success() async throws {
-        throw XCTSkip("Requires Firebase Emulator - will be implemented in Story 1.10")
-        
         // Given: Authenticated user
-        // When: Sign out
-        // Then: User should be signed out successfully
-    }
-    
-    func testSignOut_UpdatesOnlineStatus() async throws {
-        throw XCTSkip("Requires Firebase Emulator - will be implemented in Story 1.10")
+        let email = "signout@example.com"
+        let password = "password123"
+        _ = try await sut.signUp(email: email, password: password)
         
-        // Given: Authenticated user
-        // When: Sign out
-        // Then: User's isOnline should be false
+        // When
+        try await sut.signOut()
+        
+        // Then
+        let currentUser = try await sut.getCurrentUser()
+        XCTAssertNil(currentUser)
     }
     
     func testSignOut_WhenNotAuthenticated() async throws {
-        throw XCTSkip("Requires Firebase Emulator - will be implemented in Story 1.10")
-        
         // Given: No authenticated user
-        // When: Sign out
-        // Then: Should complete without errors
+        
+        // When/Then: Should not throw
+        try await sut.signOut()
     }
     
     // MARK: - Get Current User Tests
     
     func testGetCurrentUser_WhenAuthenticated() async throws {
-        throw XCTSkip("Requires Firebase Emulator - will be implemented in Story 1.10")
+        // Given
+        let email = "current@example.com"
+        let password = "password123"
+        let signedUpUser = try await sut.signUp(email: email, password: password)
         
-        // Given: User is authenticated
-        // When: Get current user
-        // Then: Should return User entity
+        // When
+        let currentUser = try await sut.getCurrentUser()
+        
+        // Then
+        XCTAssertNotNil(currentUser)
+        XCTAssertEqual(currentUser?.id, signedUpUser.id)
+        XCTAssertEqual(currentUser?.email, email)
     }
     
     func testGetCurrentUser_WhenNotAuthenticated() async throws {
-        throw XCTSkip("Requires Firebase Emulator - will be implemented in Story 1.10")
-        
         // Given: No authenticated user
-        // When: Get current user
-        // Then: Should return nil
-    }
-    
-    func testGetCurrentUser_ProfileNotFound() async throws {
-        throw XCTSkip("Requires Firebase Emulator - will be implemented in Story 1.10")
         
-        // Given: User authenticated but no Firestore profile
-        // When: Get current user
-        // Then: Should return nil (not throw error)
+        // When
+        let currentUser = try await sut.getCurrentUser()
+        
+        // Then
+        XCTAssertNil(currentUser)
     }
     
     // MARK: - Observe Auth State Tests
     
-    func testObserveAuthState_EmitsUserOnSignIn() throws {
-        throw XCTSkip("Requires Firebase Emulator - will be implemented in Story 1.10")
+    func testObserveAuthState_EmitsUserOnSignIn() async throws {
+        // Given
+        let expectation = XCTestExpectation(description: "Auth state emits user")
+        var receivedUser: MessageAI.User?
         
-        // Given: Observing auth state
-        // When: User signs in
-        // Then: Should emit User entity
+        let cancellable = sut.observeAuthState()
+            .sink { user in
+                receivedUser = user
+                expectation.fulfill()
+            }
+        
+        // When
+        let email = "observe@example.com"
+        let password = "password123"
+        _ = try await sut.signUp(email: email, password: password)
+        
+        // Then
+        await fulfillment(of: [expectation], timeout: 5.0)
+        XCTAssertNotNil(receivedUser)
+        XCTAssertEqual(receivedUser?.email, email)
+        
+        cancellable.cancel()
     }
     
-    func testObserveAuthState_EmitsNilOnSignOut() throws {
-        throw XCTSkip("Requires Firebase Emulator - will be implemented in Story 1.10")
+    func testObserveAuthState_EmitsNilOnSignOut() async throws {
+        // Given: Authenticated user
+        let email = "observeout@example.com"
+        let password = "password123"
+        _ = try await sut.signUp(email: email, password: password)
         
-        // Given: Observing auth state with authenticated user
-        // When: User signs out
-        // Then: Should emit nil
-    }
-    
-    func testObserveAuthState_HandlesProfileFetchError() throws {
-        throw XCTSkip("Requires Firebase Emulator - will be implemented in Story 1.10")
+        let expectation = XCTestExpectation(description: "Auth state emits nil")
+        var receivedUser: MessageAI.User?
+        var emissionCount = 0
         
-        // Given: User authenticated but profile fetch fails
-        // When: Observing auth state
-        // Then: Should emit nil (not crash)
+        let cancellable = sut.observeAuthState()
+            .sink { user in
+                emissionCount += 1
+                receivedUser = user
+                if emissionCount == 2 {
+                    expectation.fulfill()
+                }
+            }
+        
+        // Wait for initial emission
+        try await Task.sleep(nanoseconds: 500_000_000)
+        
+        // When
+        try await sut.signOut()
+        
+        // Then
+        await fulfillment(of: [expectation], timeout: 5.0)
+        XCTAssertNil(receivedUser)
+        
+        cancellable.cancel()
     }
 }
-

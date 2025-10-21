@@ -36,23 +36,44 @@ class FirebaseService {
     // MARK: - Services
     
     /// Firestore database instance with offline persistence enabled
-    let firestore: Firestore
+    var firestore: Firestore {
+        return Firestore.firestore()
+    }
     
     /// Firebase Authentication instance
-    let auth: Auth
+    var auth: Auth {
+        return Auth.auth()
+    }
     
     /// Firebase Storage instance for file uploads
-    let storage: Storage
+    var storage: Storage {
+        return Storage.storage()
+    }
     
     // MARK: - Initialization
     
-    /// Private initializer to enforce singleton pattern
+    /// Internal initializer for testing (allows emulator configuration)
+    /// For production code, use FirebaseService.shared
+    init() {
+        // Default initialization - configure() must be called separately
+    }
+    
+    /// Configure Firebase with environment-specific settings
     ///
-    /// Configures Firebase with environment-specific settings and enables critical features:
+    /// This method should be called once at app startup. It:
     /// - Loads GoogleService-Info plist based on current environment
     /// - Enables Firestore offline persistence with unlimited cache
-    /// - Initializes all Firebase services
-    private init() {
+    /// - Optionally configures emulator for testing
+    func configure() {
+        // Check if already configured
+        if FirebaseApp.app() != nil {
+            print("⚠️  Firebase already configured")
+            return
+        }
+        
+        // Use emulator if launch argument is set (for testing)
+        useEmulator()
+        
         // Configure Firebase with environment-specific plist
         if let filePath = Bundle.main.path(forResource: Environment.current.firebaseConfigFileName, ofType: "plist"),
            let options = FirebaseOptions(contentsOfFile: filePath) {
@@ -61,19 +82,37 @@ class FirebaseService {
             fatalError("Failed to load Firebase configuration for \(Environment.current.displayName) environment")
         }
         
-        // Initialize Firestore with offline persistence
-        self.firestore = Firestore.firestore()
+        // Configure Firestore offline persistence
         let settings = FirestoreSettings()
         settings.cacheSettings = PersistentCacheSettings(sizeBytes: NSNumber(value: FirestoreCacheSizeUnlimited))
-        self.firestore.settings = settings
-        
-        // Initialize Auth
-        self.auth = Auth.auth()
-        
-        // Initialize Storage
-        self.storage = Storage.storage()
+        Firestore.firestore().settings = settings
         
         print("✅ Firebase configured for \(Environment.current.displayName) environment")
+    }
+    
+    /// Configure Firebase to use local emulator for testing
+    ///
+    /// This method checks for the USE_FIREBASE_EMULATOR launch argument and configures
+    /// Firebase services to use local emulators instead of production services.
+    /// Only works in DEBUG builds.
+    func useEmulator() {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("USE_FIREBASE_EMULATOR") {
+            print("🔥 Using Firebase Emulator")
+            
+            // Auth Emulator
+            Auth.auth().useEmulator(withHost: "localhost", port: 9099)
+            
+            // Firestore Emulator
+            let settings = Firestore.firestore().settings
+            settings.host = "localhost:8080"
+            settings.isSSLEnabled = false
+            Firestore.firestore().settings = settings
+            
+            // Storage Emulator
+            Storage.storage().useEmulator(withHost: "localhost", port: 9199)
+        }
+        #endif
     }
 }
 
