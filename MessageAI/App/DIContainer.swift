@@ -39,6 +39,10 @@ class DIContainer {
     /// Provides access to Firestore, Auth, and Storage
     private let firebaseService: FirebaseService
     
+    /// Network monitor instance (Story 1.9)
+    /// Tracks network connectivity status for offline indicators
+    private lazy var networkMonitor: NetworkMonitor = NetworkMonitor()
+    
     // MARK: - Repositories
     
     /// Message repository (Story 1.4)
@@ -109,7 +113,8 @@ class DIContainer {
             currentUserId: currentUserId,
             messageRepository: messageRepository,
             conversationRepository: conversationRepository,
-            userRepository: userRepository
+            userRepository: userRepository,
+            networkMonitor: networkMonitor
         )
     }
     
@@ -120,7 +125,8 @@ class DIContainer {
         ConversationsListViewModel(
             conversationRepository: conversationRepository,
             userRepository: userRepository,
-            currentUserId: currentUserId
+            currentUserId: currentUserId,
+            networkMonitor: networkMonitor
         )
     }
 }

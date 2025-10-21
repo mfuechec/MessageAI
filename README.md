@@ -401,6 +401,26 @@ MessageAITests/
 - Story 1.6: Conversation List
 - And more... (see `docs/prd/epic-list.md`)
 
+## Offline Support
+
+MessageAI is fully functional offline thanks to Firestore offline persistence:
+
+- **View Messages**: All cached conversations and messages accessible offline
+- **Send Messages**: Messages composed offline queue automatically and sync when online
+- **Optimistic UI**: Sent messages appear immediately, even offline
+- **Offline Indicators**: Banners notify users when offline in both conversations list and chat view
+- **Zero Message Loss**: Queued messages persist across app restarts
+
+### Testing Offline Behavior
+
+1. Run app on simulator
+2. Enable airplane mode (swipe down from top-right → enable airplane mode)
+3. Navigate app - all cached data accessible
+4. Send message - appears with "Sending..." status
+5. Disable airplane mode - message syncs automatically
+
+**Note**: Integration tests for offline scenarios require Firebase Emulator (Story 1.10). Current tests include comprehensive test skeletons documenting offline test coverage requirements.
+
 ## Documentation
 
 Detailed documentation available in `docs/`:

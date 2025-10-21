@@ -41,7 +41,7 @@ struct ChatView: View {
     private var offlineBanner: some View {
         HStack {
             Image(systemName: "wifi.slash")
-            Text("You're offline")
+            Text("You're offline. Messages will send when connected.")
                 .font(.subheadline)
         }
         .foregroundColor(.white)

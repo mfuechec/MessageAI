@@ -1,6 +1,5 @@
 import Foundation
 import Combine
-import Network
 
 /// ViewModel for managing chat messages and message sending
 @MainActor
@@ -22,8 +21,8 @@ class ChatViewModel: ObservableObject {
     private let messageRepository: MessageRepositoryProtocol
     private let conversationRepository: ConversationRepositoryProtocol
     private let userRepository: UserRepositoryProtocol
+    private let networkMonitor: any NetworkMonitorProtocol
     private var cancellables = Set<AnyCancellable>()
-    private var networkMonitor: NWPathMonitor?
     
     // MARK: - Initialization
     
@@ -32,22 +31,19 @@ class ChatViewModel: ObservableObject {
         currentUserId: String,
         messageRepository: MessageRepositoryProtocol,
         conversationRepository: ConversationRepositoryProtocol,
-        userRepository: UserRepositoryProtocol
+        userRepository: UserRepositoryProtocol,
+        networkMonitor: any NetworkMonitorProtocol = NetworkMonitor()
     ) {
         self.conversationId = conversationId
         self.currentUserId = currentUserId
         self.messageRepository = messageRepository
         self.conversationRepository = conversationRepository
         self.userRepository = userRepository
+        self.networkMonitor = networkMonitor
         
         observeMessages()
         loadParticipantUsers()
         setupNetworkMonitoring()
-    }
-    
-    deinit {
-        cancellables.removeAll()
-        networkMonitor?.cancel()
     }
     
     // MARK: - Private Methods
@@ -86,14 +82,12 @@ class ChatViewModel: ObservableObject {
     }
     
     private func setupNetworkMonitoring() {
-        let monitor = NWPathMonitor()
-        monitor.pathUpdateHandler = { [weak self] path in
-            DispatchQueue.main.async {
-                self?.isOffline = (path.status != .satisfied)
+        networkMonitor.isConnectedPublisher
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] isConnected in
+                self?.isOffline = !isConnected
             }
-        }
-        monitor.start(queue: DispatchQueue.global(qos: .background))
-        networkMonitor = monitor
+            .store(in: &cancellables)
     }
     
     // MARK: - Public Methods

@@ -17,6 +17,7 @@ class ConversationsListViewModel: ObservableObject {
     private let conversationRepository: ConversationRepositoryProtocol
     private let userRepository: UserRepositoryProtocol
     private let currentUserId: String
+    private let networkMonitor: any NetworkMonitorProtocol
     private var cancellables = Set<AnyCancellable>()
     
     // MARK: - Initialization
@@ -24,11 +25,13 @@ class ConversationsListViewModel: ObservableObject {
     init(
         conversationRepository: ConversationRepositoryProtocol,
         userRepository: UserRepositoryProtocol,
-        currentUserId: String
+        currentUserId: String,
+        networkMonitor: any NetworkMonitorProtocol = NetworkMonitor()
     ) {
         self.conversationRepository = conversationRepository
         self.userRepository = userRepository
         self.currentUserId = currentUserId
+        self.networkMonitor = networkMonitor
         
         observeConversations()
         observeNetworkStatus()
@@ -77,9 +80,12 @@ class ConversationsListViewModel: ObservableObject {
     }
     
     private func observeNetworkStatus() {
-        // For MVP: Simple offline detection based on Firestore errors
-        // Production would use NWPathMonitor for network reachability
-        // For now, this is a placeholder
+        networkMonitor.isConnectedPublisher
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] isConnected in
+                self?.isOffline = !isConnected
+            }
+            .store(in: &cancellables)
     }
     
     // MARK: - Display Helper Methods

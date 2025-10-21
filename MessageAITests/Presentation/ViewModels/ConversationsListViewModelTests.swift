@@ -9,12 +9,14 @@ final class ConversationsListViewModelTests: XCTestCase {
     var sut: ConversationsListViewModel!
     var mockConversationRepo: MockConversationRepository!
     var mockUserRepo: MockUserRepository!
+    var mockNetworkMonitor: MockNetworkMonitor!
     var cancellables: Set<AnyCancellable>!
     
     override func setUp() {
         super.setUp()
         mockConversationRepo = MockConversationRepository()
         mockUserRepo = MockUserRepository()
+        mockNetworkMonitor = MockNetworkMonitor()
         cancellables = Set<AnyCancellable>()
     }
     
@@ -22,6 +24,7 @@ final class ConversationsListViewModelTests: XCTestCase {
         sut = nil
         mockConversationRepo = nil
         mockUserRepo = nil
+        mockNetworkMonitor = nil
         cancellables = nil
         super.tearDown()
     }
@@ -46,7 +49,8 @@ final class ConversationsListViewModelTests: XCTestCase {
         sut = ConversationsListViewModel(
             conversationRepository: mockConversationRepo,
             userRepository: mockUserRepo,
-            currentUserId: "user-1"
+            currentUserId: "user-1",
+            networkMonitor: mockNetworkMonitor
         )
         
         // Give time for publisher to emit
@@ -67,7 +71,8 @@ final class ConversationsListViewModelTests: XCTestCase {
         sut = ConversationsListViewModel(
             conversationRepository: mockConversationRepo,
             userRepository: mockUserRepo,
-            currentUserId: "user-1"
+            currentUserId: "user-1",
+            networkMonitor: mockNetworkMonitor
         )
         
         // Give time for publisher to emit
@@ -117,7 +122,8 @@ final class ConversationsListViewModelTests: XCTestCase {
         sut = ConversationsListViewModel(
             conversationRepository: mockConversationRepo,
             userRepository: mockUserRepo,
-            currentUserId: "user-1"
+            currentUserId: "user-1",
+            networkMonitor: mockNetworkMonitor
         )
         
         // Give time for publisher to emit
@@ -158,7 +164,8 @@ final class ConversationsListViewModelTests: XCTestCase {
         sut = ConversationsListViewModel(
             conversationRepository: mockConversationRepo,
             userRepository: mockUserRepo,
-            currentUserId: "user-1"
+            currentUserId: "user-1",
+            networkMonitor: mockNetworkMonitor
         )
         
         // Give time for publisher to emit
@@ -191,7 +198,8 @@ final class ConversationsListViewModelTests: XCTestCase {
         sut = ConversationsListViewModel(
             conversationRepository: mockConversationRepo,
             userRepository: mockUserRepo,
-            currentUserId: "user-1"
+            currentUserId: "user-1",
+            networkMonitor: mockNetworkMonitor
         )
         
         // Give time for publisher to emit
@@ -220,7 +228,8 @@ final class ConversationsListViewModelTests: XCTestCase {
         sut = ConversationsListViewModel(
             conversationRepository: mockConversationRepo,
             userRepository: mockUserRepo,
-            currentUserId: "user-1"
+            currentUserId: "user-1",
+            networkMonitor: mockNetworkMonitor
         )
         
         // Give time for publisher to emit
@@ -255,7 +264,8 @@ final class ConversationsListViewModelTests: XCTestCase {
         sut = ConversationsListViewModel(
             conversationRepository: mockConversationRepo,
             userRepository: mockUserRepo,
-            currentUserId: "user-1"
+            currentUserId: "user-1",
+            networkMonitor: mockNetworkMonitor
         )
         
         // Give time for publisher and user loading to complete
@@ -285,7 +295,8 @@ final class ConversationsListViewModelTests: XCTestCase {
         sut = ConversationsListViewModel(
             conversationRepository: mockConversationRepo,
             userRepository: mockUserRepo,
-            currentUserId: "user-1"
+            currentUserId: "user-1",
+            networkMonitor: mockNetworkMonitor
         )
         
         // Give time for publisher to emit
@@ -316,7 +327,8 @@ final class ConversationsListViewModelTests: XCTestCase {
         sut = ConversationsListViewModel(
             conversationRepository: mockConversationRepo,
             userRepository: mockUserRepo,
-            currentUserId: "user-1"
+            currentUserId: "user-1",
+            networkMonitor: mockNetworkMonitor
         )
         
         // Give time for publisher to emit
@@ -346,7 +358,8 @@ final class ConversationsListViewModelTests: XCTestCase {
         sut = ConversationsListViewModel(
             conversationRepository: mockConversationRepo,
             userRepository: mockUserRepo,
-            currentUserId: "user-1"
+            currentUserId: "user-1",
+            networkMonitor: mockNetworkMonitor
         )
         
         // Give time for publisher to emit
@@ -383,7 +396,8 @@ final class ConversationsListViewModelTests: XCTestCase {
         sut = ConversationsListViewModel(
             conversationRepository: mockConversationRepo,
             userRepository: mockUserRepo,
-            currentUserId: "user-1"
+            currentUserId: "user-1",
+            networkMonitor: mockNetworkMonitor
         )
         
         // Give time for publisher and user loading to complete
@@ -393,6 +407,62 @@ final class ConversationsListViewModelTests: XCTestCase {
         XCTAssertTrue(mockUserRepo.getUserCalled)
         // Note: In a real implementation, we'd verify that all participant users were loaded
         // For now, we just verify that getUser was called
+    }
+    
+    // MARK: - Network Monitoring Tests
+    
+    func testNetworkMonitor_UpdatesOfflineState() async throws {
+        // Given
+        let mockNetworkMonitor = MockNetworkMonitor()
+        mockConversationRepo.mockConversations = []
+        
+        sut = ConversationsListViewModel(
+            conversationRepository: mockConversationRepo,
+            userRepository: mockUserRepo,
+            currentUserId: "user-1",
+            networkMonitor: mockNetworkMonitor
+        )
+        
+        // Initial state: online
+        XCTAssertFalse(sut.isOffline)
+        
+        // When: Network goes offline
+        mockNetworkMonitor.simulateOffline()
+        
+        // Give time for Combine publisher to propagate
+        try await Task.sleep(nanoseconds: 100_000_000)
+        
+        // Then: ViewModel reflects offline state
+        XCTAssertTrue(sut.isOffline)
+        
+        // When: Network returns online
+        mockNetworkMonitor.simulateOnline()
+        
+        // Give time for Combine publisher to propagate
+        try await Task.sleep(nanoseconds: 100_000_000)
+        
+        // Then: ViewModel reflects online state
+        XCTAssertFalse(sut.isOffline)
+    }
+    
+    func testNetworkMonitor_StartsOnline() async throws {
+        // Given
+        let mockNetworkMonitor = MockNetworkMonitor()
+        mockConversationRepo.mockConversations = []
+        
+        // When
+        sut = ConversationsListViewModel(
+            conversationRepository: mockConversationRepo,
+            userRepository: mockUserRepo,
+            currentUserId: "user-1",
+            networkMonitor: mockNetworkMonitor
+        )
+        
+        // Give time for initialization
+        try await Task.sleep(nanoseconds: 100_000_000)
+        
+        // Then: Default state is online (not offline)
+        XCTAssertFalse(sut.isOffline)
     }
 }
 
