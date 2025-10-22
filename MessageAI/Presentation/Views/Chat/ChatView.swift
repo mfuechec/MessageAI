@@ -659,10 +659,22 @@ struct MessageKitWrapper: UIViewControllerRepresentable {
             )
             result.append(timestampString)
             
-            // Only show read receipts for current user's messages
+            // Only show read receipts for current user's messages (AC #2)
             if isCurrentUser {
-                // Get status icon and color
-                let (statusText, statusColor) = statusIconAndColor(for: actualMessage.status)
+                let statusText: String
+                let statusColor: UIColor
+
+                // Special handling for .read status in group chats (AC #6)
+                if actualMessage.status == .read && viewModel.isGroupConversation {
+                    // Calculate read count (exclude sender from denominator)
+                    let totalParticipants = viewModel.participants.count - 1 // Exclude sender
+                    let readCount = actualMessage.readBy.count
+                    statusText = "✓✓ Read by \(readCount) of \(totalParticipants)"
+                    statusColor = .systemBlue
+                } else {
+                    // Use standard status icons for non-group or non-read messages
+                    (statusText, statusColor) = statusIconAndColor(for: actualMessage.status)
+                }
 
                 // Add status icon with appropriate color
                 let statusString = NSAttributedString(
