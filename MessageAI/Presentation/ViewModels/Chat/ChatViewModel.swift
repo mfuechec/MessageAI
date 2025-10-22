@@ -78,6 +78,12 @@ class ChatViewModel: ObservableObject {
     @Published var selectedImage: UIImage?
     @Published var selectedImageURL: String?  // For full-screen viewer
 
+    // Document upload state
+    @Published var isDocumentPickerPresented: Bool = false
+    @Published var selectedDocumentURL: URL?
+    @Published var showDocumentPreview: Bool = false
+    @Published var documentPreviewURL: URL?
+
     // Track loading states separately
     private var messagesLoaded: Bool = false
     private var participantsLoaded: Bool = false
@@ -1096,6 +1102,11 @@ class ChatViewModel: ObservableObject {
         isImagePickerPresented = true
     }
 
+    /// Open document picker
+    func selectDocument() {
+        isDocumentPickerPresented = true
+    }
+
     /// Send image message with compression and upload
     func sendImageMessage(image: UIImage) {
         Task {
@@ -1262,6 +1273,179 @@ class ChatViewModel: ObservableObject {
                 print("❌ Failed to cancel upload: \(error.localizedDescription)")
             }
         }
+    }
+
+    // MARK: - Document Upload Methods
+
+    /// Send a document message with optional caption
+    func sendDocumentMessage(fileURL: URL) {
+        Task {
+            let messageId = UUID().uuidString
+
+            // Step 1: Validate document
+            do {
+                let (fileName, _) = try DocumentValidator.validate(fileURL: fileURL)
+                print("📎 Validated document: \(fileName)")
+            } catch {
+                errorMessage = error.localizedDescription
+                return
+            }
+
+            // Step 2: Copy to temporary storage for retry capability
+            let tempURL: URL
+            do {
+                tempURL = try copyDocumentToTemp(fileURL: fileURL, messageId: messageId)
+            } catch {
+                print("⚠️ Failed to copy document to temp: \(error)")
+                errorMessage = "Failed to save document temporarily."
+                return
+            }
+
+            // Step 3: Create optimistic message with caption support
+            let caption = messageText  // Capture current text for caption
+            let message = Message(
+                id: messageId,
+                conversationId: conversationId,
+                senderId: currentUserId,
+                text: caption,  // Include caption (empty string if no caption)
+                timestamp: Date(),
+                status: .sending,
+                statusUpdatedAt: Date(),
+                attachments: []  // Will be populated after upload
+            )
+
+            messages.append(message)
+            uploadProgress[messageId] = 0.0
+            messageText = ""  // Clear text input after creating message
+
+            // Step 4: Upload document in background
+            await performDocumentUpload(messageId: messageId, fileURL: tempURL)
+        }
+    }
+
+    /// Perform the actual document upload (extracted for reuse in retry)
+    private func performDocumentUpload(messageId: String, fileURL: URL) async {
+        do {
+            // Upload to Firebase Storage
+            let attachment = try await storageRepository.uploadMessageDocument(
+                fileURL,
+                conversationId: conversationId,
+                messageId: messageId
+            ) { progress in
+                Task { @MainActor in
+                    self.uploadProgress[messageId] = progress
+                }
+            }
+
+            // Update message with attachment
+            guard let index = messages.firstIndex(where: { $0.id == messageId }) else {
+                return
+            }
+
+            var updatedMessage = messages[index]
+            updatedMessage.attachments = [attachment]
+            updatedMessage.status = .sent
+            updatedMessage.statusUpdatedAt = Date()
+
+            // Save to Firestore
+            try await messageRepository.sendMessage(updatedMessage)
+
+            // Update local array
+            messages[index] = updatedMessage
+
+            // Clean up
+            uploadProgress.removeValue(forKey: messageId)
+            uploadErrors.removeValue(forKey: messageId)
+            deleteTemporaryDocument(messageId: messageId)
+
+            print("✅ Document message sent: \(messageId)")
+
+        } catch {
+            print("❌ Document upload failed: \(error.localizedDescription)")
+
+            // Check if error is due to network unavailability
+            let isOfflineError = (error as NSError).code == NSURLErrorNotConnectedToInternet ||
+                                 (error as NSError).code == FirestoreErrorCode.unavailable.rawValue
+
+            if isOfflineError {
+                // Update UI to show queued status (will auto-retry when online)
+                if let index = messages.firstIndex(where: { $0.id == messageId }) {
+                    messages[index].status = .queued
+                }
+
+                uploadProgress.removeValue(forKey: messageId)
+
+            } else {
+                // Non-network error (permissions, quota, validation) - show retry button
+                if let index = messages.firstIndex(where: { $0.id == messageId }) {
+                    messages[index].status = .failed
+                }
+
+                uploadProgress.removeValue(forKey: messageId)
+                uploadErrors[messageId] = "Failed to upload document. Tap to retry."
+            }
+        }
+    }
+
+    /// Retry failed document upload (loads from temp storage)
+    func retryDocumentUpload(messageId: String) {
+        Task {
+            // Load document URL from temporary storage
+            guard let tempURL = getTemporaryDocumentURL(messageId: messageId),
+                  FileManager.default.fileExists(atPath: tempURL.path) else {
+                errorMessage = "Document no longer available. Please send again."
+
+                // Remove failed message if document is gone
+                messages.removeAll { $0.id == messageId }
+                uploadErrors.removeValue(forKey: messageId)
+                return
+            }
+
+            // Reset error state
+            uploadErrors.removeValue(forKey: messageId)
+
+            // Update message status back to sending
+            if let index = messages.firstIndex(where: { $0.id == messageId }) {
+                messages[index].status = .sending
+            }
+
+            // Retry upload with cached document
+            await performDocumentUpload(messageId: messageId, fileURL: tempURL)
+        }
+    }
+
+    // MARK: - Document File Management
+
+    /// Copy document to temporary directory for retry capability
+    private func copyDocumentToTemp(fileURL: URL, messageId: String) throws -> URL {
+        let tempDir = FileManager.default.temporaryDirectory
+        let tempURL = tempDir.appendingPathComponent("\(messageId).pdf")
+
+        // Access security-scoped resource if needed
+        let accessed = fileURL.startAccessingSecurityScopedResource()
+        defer {
+            if accessed {
+                fileURL.stopAccessingSecurityScopedResource()
+            }
+        }
+
+        try FileManager.default.copyItem(at: fileURL, to: tempURL)
+        print("📋 Copied document to temp: \(tempURL.path)")
+        return tempURL
+    }
+
+    /// Get temporary document URL for a message
+    private func getTemporaryDocumentURL(messageId: String) -> URL? {
+        let tempDir = FileManager.default.temporaryDirectory
+        return tempDir.appendingPathComponent("\(messageId).pdf")
+    }
+
+    /// Delete temporary document file
+    private func deleteTemporaryDocument(messageId: String) {
+        guard let tempURL = getTemporaryDocumentURL(messageId: messageId) else { return }
+
+        try? FileManager.default.removeItem(at: tempURL)
+        print("🗑️ Deleted temporary document: \(tempURL.path)")
     }
 
     // MARK: - Offline Queue Management

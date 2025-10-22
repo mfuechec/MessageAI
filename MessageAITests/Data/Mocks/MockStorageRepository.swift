@@ -14,9 +14,11 @@ class MockStorageRepository: StorageRepositoryProtocol {
 
     var uploadProfileImageCalled = false
     var uploadMessageImageCalled = false
+    var uploadMessageDocumentCalled = false
     var cancelUploadCalled = false
     var deleteFileCalled = false
     var capturedImage: UIImage?
+    var capturedDocumentURL: URL?
     var capturedUserId: String?
     var capturedConversationId: String?
     var capturedMessageId: String?
@@ -77,7 +79,45 @@ class MockStorageRepository: StorageRepositoryProtocol {
             type: .image,
             url: mockDownloadURL,
             thumbnailURL: nil,
-            sizeBytes: 1024 * 500  // 500KB
+            sizeBytes: 1024 * 500,  // 500KB
+            fileName: nil  // Images don't need file name
+        )
+    }
+
+    func uploadMessageDocument(
+        _ fileURL: URL,
+        conversationId: String,
+        messageId: String,
+        progressHandler: ((Double) -> Void)?
+    ) async throws -> MessageAttachment {
+        uploadMessageDocumentCalled = true
+        capturedDocumentURL = fileURL
+        capturedConversationId = conversationId
+        capturedMessageId = messageId
+
+        // Call progress handler to test progress tracking
+        if let handler = progressHandler {
+            handler(0.5)
+            handler(1.0)
+            progressHandlerCalled = true
+        }
+
+        if shouldFailUpload {
+            throw mockError
+        }
+
+        // Return mock attachment or configured one
+        if let mockAttachment = mockAttachment {
+            return mockAttachment
+        }
+
+        return MessageAttachment(
+            id: UUID().uuidString,
+            type: .file,
+            url: mockDownloadURL,
+            thumbnailURL: nil,
+            sizeBytes: 1024 * 1024 * 5,  // 5MB
+            fileName: "document.pdf"
         )
     }
 
@@ -100,9 +140,11 @@ class MockStorageRepository: StorageRepositoryProtocol {
     func reset() {
         uploadProfileImageCalled = false
         uploadMessageImageCalled = false
+        uploadMessageDocumentCalled = false
         cancelUploadCalled = false
         deleteFileCalled = false
         capturedImage = nil
+        capturedDocumentURL = nil
         capturedUserId = nil
         capturedConversationId = nil
         capturedMessageId = nil

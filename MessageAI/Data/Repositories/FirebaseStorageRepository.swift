@@ -141,7 +141,8 @@ class FirebaseStorageRepository: StorageRepositoryProtocol {
                 type: .image,
                 url: downloadURL.absoluteString,
                 thumbnailURL: nil,
-                sizeBytes: sizeBytes
+                sizeBytes: sizeBytes,
+                fileName: nil  // Images don't need file name
             )
 
             return attachment
@@ -149,6 +150,90 @@ class FirebaseStorageRepository: StorageRepositoryProtocol {
         } catch let error as NSError {
             activeUploads.removeValue(forKey: messageId)
             print("❌ [StorageRepo] Upload failed: \(error.localizedDescription)")
+
+            // Map Firebase Storage errors
+            if error.domain == "FIRStorageErrorDomain" {
+                switch error.code {
+                case -13021: throw StorageError.unauthorized
+                case -13020: throw StorageError.permissionDenied
+                case -13030: throw StorageError.quotaExceeded
+                case -13040: throw StorageError.uploadCancelled
+                default: throw StorageError.uploadFailed(error.localizedDescription)
+                }
+            }
+
+            throw StorageError.uploadFailed(error.localizedDescription)
+        }
+    }
+
+    func uploadMessageDocument(
+        _ fileURL: URL,
+        conversationId: String,
+        messageId: String,
+        progressHandler: ((Double) -> Void)?
+    ) async throws -> MessageAttachment {
+        let startTime = Date()
+        print("📤 [StorageRepo] Uploading document for message: \(messageId)")
+
+        // Step 1: Validate document using DocumentValidator
+        let (fileName, sizeBytes) = try DocumentValidator.validate(fileURL: fileURL)
+        print("✅ [StorageRepo] Document validated: \(fileName), \(sizeBytes) bytes")
+
+        // Step 2: Read file data
+        guard let documentData = try? Data(contentsOf: fileURL) else {
+            throw StorageError.imageProcessingFailed  // Reuse existing error (rename generic later if needed)
+        }
+
+        // Step 3: Create storage reference
+        let storagePath = "documents/\(conversationId)/\(messageId)/document.pdf"
+        let storageRef = storage.reference().child(storagePath)
+
+        // Step 4: Set metadata
+        let metadata = StorageMetadata()
+        metadata.contentType = "application/pdf"
+        metadata.customMetadata = ["fileName": fileName]
+
+        do {
+            // Step 5: Upload with progress tracking
+            let uploadTask = storageRef.putData(documentData, metadata: metadata)
+            activeUploads[messageId] = uploadTask
+
+            // Observe progress
+            uploadTask.observe(.progress) { snapshot in
+                guard let progress = snapshot.progress else { return }
+                let percentComplete = Double(progress.completedUnitCount)
+                                    / Double(progress.totalUnitCount)
+
+                Task { @MainActor in
+                    progressHandler?(percentComplete)
+                }
+            }
+
+            // Wait for completion
+            let _ = try await uploadTask
+            activeUploads.removeValue(forKey: messageId)
+
+            let duration = Date().timeIntervalSince(startTime)
+            print("✅ [StorageRepo] Document upload complete: \(storagePath), duration: \(String(format: "%.2f", duration))s")
+
+            // Step 6: Get download URL
+            let downloadURL = try await storageRef.downloadURL()
+
+            // Step 7: Create MessageAttachment
+            let attachment = MessageAttachment(
+                id: UUID().uuidString,
+                type: .file,
+                url: downloadURL.absoluteString,
+                thumbnailURL: nil,
+                sizeBytes: sizeBytes,
+                fileName: fileName
+            )
+
+            return attachment
+
+        } catch let error as NSError {
+            activeUploads.removeValue(forKey: messageId)
+            print("❌ [StorageRepo] Document upload failed: \(error.localizedDescription)")
 
             // Map Firebase Storage errors
             if error.domain == "FIRStorageErrorDomain" {

@@ -7,11 +7,12 @@ struct MessageAttachment: Codable, Equatable {
     let url: String
     let thumbnailURL: String?
     let sizeBytes: Int64
-    
+    let fileName: String?  // Required for documents (e.g., "Invoice.pdf"), optional for images
+
     enum AttachmentType: String, Codable {
         case image
         case video  // Future
-        case file   // Future
+        case file   // PDF documents
     }
 }
 

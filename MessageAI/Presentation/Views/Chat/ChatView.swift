@@ -178,6 +178,27 @@ struct ChatView: View {
                 viewModel.selectedImage = nil  // Clear after sending
             }
         }
+        // Document Picker Sheet
+        .sheet(isPresented: $viewModel.isDocumentPickerPresented) {
+            DocumentPickerView(
+                selectedDocumentURL: $viewModel.selectedDocumentURL,
+                onDismiss: { viewModel.isDocumentPickerPresented = false }
+            )
+        }
+        .onChange(of: viewModel.selectedDocumentURL) { oldValue, newValue in
+            if let fileURL = newValue {
+                viewModel.sendDocumentMessage(fileURL: fileURL)
+                viewModel.selectedDocumentURL = nil  // Clear after sending
+            }
+        }
+        // QuickLook Document Preview
+        .sheet(isPresented: $viewModel.showDocumentPreview) {
+            if let url = viewModel.documentPreviewURL {
+                QuickLookPreview(fileURL: url, onDismiss: {
+                    viewModel.showDocumentPreview = false
+                })
+            }
+        }
         .onAppear {
             // Track that user is viewing this conversation (for notification suppression)
             viewModel.onAppear()
@@ -769,6 +790,61 @@ struct MessageKitWrapper: UIViewControllerRepresentable {
             print("📷 Tapped image: \(attachment.url)")
         }
 
+        // Configure custom cells (for document messages)
+        func configureCustomCell(_ cell: UICollectionViewCell, for message: MessageType, at indexPath: IndexPath, in messagesCollectionView: MessagesCollectionView) {
+            guard let messageKitMessage = message as? MessageKitMessage,
+                  case .custom(let mediaItem) = messageKitMessage.kind,
+                  let documentItem = mediaItem as? DocumentMediaItem,
+                  let domainMessage = viewModel.messages[safe: indexPath.section] else {
+                return
+            }
+
+            // Remove existing subviews
+            cell.contentView.subviews.forEach { $0.removeFromSuperview() }
+
+            // Check for upload progress
+            let progress = viewModel.uploadProgress[domainMessage.id]
+            let error = viewModel.uploadErrors[domainMessage.id]
+
+            // Create DocumentCardView wrapped in UIHostingController
+            let documentCard = DocumentCardView(
+                fileName: documentItem.fileName,
+                fileSizeBytes: documentItem.sizeBytes,
+                uploadProgress: progress,
+                hasError: error != nil,
+                onTap: {
+                    Task { @MainActor in
+                        if error != nil {
+                            // Retry upload
+                            self.viewModel.retryDocumentUpload(messageId: domainMessage.id)
+                        } else if let url = documentItem.url {
+                            // Open QuickLook preview
+                            self.viewModel.documentPreviewURL = url
+                            self.viewModel.showDocumentPreview = true
+                        }
+                    }
+                },
+                onRetry: error != nil ? {
+                    Task { @MainActor in
+                        self.viewModel.retryDocumentUpload(messageId: domainMessage.id)
+                    }
+                } : nil
+            )
+
+            let hostingController = UIHostingController(rootView: documentCard)
+            hostingController.view.backgroundColor = .clear
+            hostingController.view.translatesAutoresizingMaskIntoConstraints = false
+
+            cell.contentView.addSubview(hostingController.view)
+
+            NSLayoutConstraint.activate([
+                hostingController.view.topAnchor.constraint(equalTo: cell.contentView.topAnchor),
+                hostingController.view.bottomAnchor.constraint(equalTo: cell.contentView.bottomAnchor),
+                hostingController.view.leadingAnchor.constraint(equalTo: cell.contentView.leadingAnchor),
+                hostingController.view.trailingAnchor.constraint(equalTo: cell.contentView.trailingAnchor)
+            ])
+        }
+
         private func addProgressOverlay(to imageView: UIImageView, progress: Double) {
             // Remove existing overlay
             imageView.subviews.forEach { $0.removeFromSuperview() }
@@ -1019,14 +1095,30 @@ class CustomMessagesViewController: MessagesViewController {
         messageInputBar.shouldManageSendButtonEnabledState = true
         messageInputBar.inputTextView.textContainerInset = UIEdgeInsets(top: 8, left: 12, bottom: 8, right: 12)
 
-        // Add attachment button (paperclip icon)
+        // Add attachment button (paperclip icon) with menu
         let attachmentButton = InputBarButtonItem()
         attachmentButton.setSize(CGSize(width: 36, height: 36), animated: false)
         attachmentButton.setImage(UIImage(systemName: "paperclip"), for: .normal)
         attachmentButton.tintColor = .systemBlue
-        attachmentButton.onTouchUpInside { [weak self] _ in
-            self?.viewModel?.selectImage()
+
+        // Create menu with Photo and Document options
+        if #available(iOS 14.0, *) {
+            let photoAction = UIAction(title: "Photo", image: UIImage(systemName: "photo")) { [weak self] _ in
+                self?.viewModel?.selectImage()
+            }
+            let documentAction = UIAction(title: "Document", image: UIImage(systemName: "doc")) { [weak self] _ in
+                self?.viewModel?.selectDocument()
+            }
+            let menu = UIMenu(title: "", children: [photoAction, documentAction])
+            attachmentButton.menu = menu
+            attachmentButton.showsMenuAsPrimaryAction = true
+        } else {
+            // Fallback for iOS 13 - just open image picker
+            attachmentButton.onTouchUpInside { [weak self] _ in
+                self?.viewModel?.selectImage()
+            }
         }
+
         messageInputBar.setLeftStackViewWidthConstant(to: 36, animated: false)
         messageInputBar.setStackViewItems([attachmentButton], forStack: .left, animated: false)
 
@@ -1034,7 +1126,7 @@ class CustomMessagesViewController: MessagesViewController {
         messageInputBar.inputTextView.accessibilityLabel = "Message input"
         messageInputBar.inputTextView.accessibilityHint = "Enter your message"
         messageInputBar.sendButton.accessibilityLabel = "Send message"
-        attachmentButton.accessibilityLabel = "Attach image"
+        attachmentButton.accessibilityLabel = "Attach photo or document"
     }
     
     func showEmptyState() {
