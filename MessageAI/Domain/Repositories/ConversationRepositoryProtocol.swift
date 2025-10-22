@@ -49,5 +49,13 @@ protocol ConversationRepositoryProtocol {
     ///   - userId: The user ID
     ///   - isTyping: True if user is typing, false if stopped
     func updateTypingState(conversationId: String, userId: String, isTyping: Bool) async throws
+
+    /// Load more conversations for pagination (Story 2.11 - AC #3)
+    /// - Parameters:
+    ///   - userId: The user ID whose conversations to load
+    ///   - lastConversation: The last conversation from previous page (for cursor-based pagination)
+    ///   - limit: Number of conversations to load (default: 50)
+    /// - Returns: Array of older conversations
+    func loadMoreConversations(userId: String, lastConversation: Conversation?, limit: Int) async throws -> [Conversation]
 }
 

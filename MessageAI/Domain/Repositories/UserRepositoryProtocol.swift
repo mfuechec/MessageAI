@@ -30,5 +30,15 @@ protocol UserRepositoryProtocol {
     /// Update current user's online status
     /// - Parameter isOnline: True if online, false if offline
     func updateOnlineStatus(isOnline: Bool) async throws
+
+    /// Update current conversation ID for notification suppression (Story 2.10)
+    /// - Parameter conversationId: The conversation ID being viewed, or nil if not viewing any
+    func updateCurrentConversation(conversationId: String?) async throws
+
+    /// Update FCM token for push notifications (Story 2.10)
+    /// - Parameters:
+    ///   - token: The FCM device token
+    ///   - userId: The user ID to update (optional, defaults to current user)
+    func updateFCMToken(_ token: String, userId: String?) async throws
 }
 

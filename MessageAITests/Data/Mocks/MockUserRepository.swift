@@ -21,6 +21,8 @@ class MockUserRepository: UserRepositoryProtocol {
     var updateUserCalled = false
     var observeUserPresenceCalled = false
     var updateOnlineStatusCalled = false
+    var updateCurrentConversationCalled = false  // Story 2.10 QA Fix
+    var updateFCMTokenCalled = false  // Story 2.10 QA Fix
     
     // MARK: - Configurable Behavior
     
@@ -35,6 +37,8 @@ class MockUserRepository: UserRepositoryProtocol {
     var capturedUserIds: [String]?
     var capturedUser: User?
     var capturedIsOnline: Bool?
+    var capturedConversationId: String?  // Story 2.10 QA Fix
+    var capturedFCMToken: String?  // Story 2.10 QA Fix
     
     // MARK: - UserRepositoryProtocol Implementation
     
@@ -98,12 +102,33 @@ class MockUserRepository: UserRepositoryProtocol {
     func updateOnlineStatus(isOnline: Bool) async throws {
         updateOnlineStatusCalled = true
         capturedIsOnline = isOnline
-        
+
         if shouldFail {
             throw mockError
         }
     }
-    
+
+    // Story 2.10 QA Fix
+    func updateCurrentConversation(conversationId: String?) async throws {
+        updateCurrentConversationCalled = true
+        capturedConversationId = conversationId
+
+        if shouldFail {
+            throw mockError
+        }
+    }
+
+    // Story 2.10 QA Fix
+    func updateFCMToken(_ token: String, userId: String?) async throws {
+        updateFCMTokenCalled = true
+        capturedFCMToken = token
+        capturedUserId = userId
+
+        if shouldFail {
+            throw mockError
+        }
+    }
+
     // MARK: - Helper Methods
     
     /// Resets all tracking flags and captured parameters
@@ -114,6 +139,8 @@ class MockUserRepository: UserRepositoryProtocol {
         updateUserCalled = false
         observeUserPresenceCalled = false
         updateOnlineStatusCalled = false
+        updateCurrentConversationCalled = false
+        updateFCMTokenCalled = false
         shouldFail = false
         mockUser = nil
         mockUsers = []
@@ -121,6 +148,8 @@ class MockUserRepository: UserRepositoryProtocol {
         capturedUserIds = nil
         capturedUser = nil
         capturedIsOnline = nil
+        capturedConversationId = nil
+        capturedFCMToken = nil
     }
 }
 

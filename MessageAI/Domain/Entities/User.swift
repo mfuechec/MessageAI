@@ -29,6 +29,7 @@ struct User: Codable, Equatable, Identifiable, Hashable {
     let createdAt: Date
     var fcmToken: String?
     var fcmTokenUpdatedAt: Date?
+    var currentConversationId: String?  // For notification suppression (Story 2.10 QA Fix)
     var timezone: String?
     var locale: String?
     var preferredLanguage: String?
@@ -79,6 +80,7 @@ struct User: Codable, Equatable, Identifiable, Hashable {
         createdAt: Date = Date(),
         fcmToken: String? = nil,
         fcmTokenUpdatedAt: Date? = nil,
+        currentConversationId: String? = nil,
         timezone: String? = nil,
         locale: String? = nil,
         preferredLanguage: String? = nil,
@@ -93,6 +95,7 @@ struct User: Codable, Equatable, Identifiable, Hashable {
         self.createdAt = createdAt
         self.fcmToken = fcmToken
         self.fcmTokenUpdatedAt = fcmTokenUpdatedAt
+        self.currentConversationId = currentConversationId
         self.timezone = timezone
         self.locale = locale
         self.preferredLanguage = preferredLanguage

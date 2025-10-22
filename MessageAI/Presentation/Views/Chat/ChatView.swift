@@ -940,9 +940,18 @@ struct MessageKitWrapper: UIViewControllerRepresentable {
             let contentHeight = scrollView.contentSize.height
             let scrollViewHeight = scrollView.frame.size.height
             let distanceFromBottom = contentHeight - offsetY - scrollViewHeight
-            
+
             // User is "near bottom" if within 100 points
             isNearBottom = distanceFromBottom < 100
+
+            // Story 2.11 - AC #2: Pagination trigger
+            // Load more messages when user scrolls near top (within 200 points)
+            if offsetY < 200 && !viewModel.isLoadingMore && viewModel.hasMoreMessages {
+                Task { @MainActor in
+                    print("📄 [Pagination] User scrolled to top, loading more messages...")
+                    await viewModel.loadMoreMessages()
+                }
+            }
         }
         
         // MARK: - Helper Methods

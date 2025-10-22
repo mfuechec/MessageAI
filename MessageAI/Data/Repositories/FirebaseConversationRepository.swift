@@ -244,5 +244,39 @@ final class FirebaseConversationRepository: ConversationRepositoryProtocol {
             throw RepositoryError.networkError(error)
         }
     }
+
+    // MARK: - Pagination (Story 2.11 - AC #3)
+
+    func loadMoreConversations(userId: String, lastConversation: Conversation?, limit: Int) async throws -> [Conversation] {
+        do {
+            var query = db.collection("conversations")
+                .whereField("participantIds", arrayContains: userId)
+                .order(by: "lastMessageTimestamp", descending: true)
+                .limit(to: limit)
+
+            // Cursor-based pagination: start after the last conversation
+            if let lastConv = lastConversation,
+               let lastTimestamp = lastConv.lastMessageTimestamp {
+                query = query.start(after: [lastTimestamp])
+            }
+
+            let snapshot = try await query.getDocuments()
+
+            let conversations = snapshot.documents.compactMap { doc -> Conversation? in
+                guard let conversation = try? doc.data(as: Conversation.self) else {
+                    print("⚠️ Failed to decode conversation: \(doc.documentID)")
+                    return nil
+                }
+                return conversation
+            }
+
+            print("📄 [Pagination] Loaded \(conversations.count) older conversations (requested limit: \(limit))")
+            return conversations
+
+        } catch {
+            print("❌ Failed to load more conversations: \(error.localizedDescription)")
+            throw RepositoryError.networkError(error)
+        }
+    }
 }
 

@@ -172,7 +172,7 @@ final class FirebaseUserRepository: UserRepositoryProtocol {
             print("❌ Update online status failed: No authenticated user")
             throw RepositoryError.unauthorized
         }
-        
+
         do {
             try await db.collection("users").document(currentUserId).updateData([
                 "isOnline": isOnline,
@@ -181,6 +181,54 @@ final class FirebaseUserRepository: UserRepositoryProtocol {
             print("✅ Online status updated: \(currentUserId) -> \(isOnline)")
         } catch {
             print("❌ Update online status failed: \(error.localizedDescription)")
+            throw RepositoryError.networkError(error)
+        }
+    }
+
+    /// Update current conversation ID for notification suppression (Story 2.10 QA Fix)
+    func updateCurrentConversation(conversationId: String?) async throws {
+        guard let currentUserId = auth.currentUser?.uid else {
+            print("❌ Update current conversation failed: No authenticated user")
+            throw RepositoryError.unauthorized
+        }
+
+        do {
+            if let conversationId = conversationId {
+                // Set conversation ID
+                try await db.collection("users").document(currentUserId).updateData([
+                    "currentConversationId": conversationId
+                ])
+                print("✅ Current conversation updated: \(currentUserId) -> \(conversationId)")
+            } else {
+                // Clear conversation ID
+                try await db.collection("users").document(currentUserId).updateData([
+                    "currentConversationId": FieldValue.delete()
+                ])
+                print("✅ Current conversation cleared: \(currentUserId)")
+            }
+        } catch {
+            print("❌ Update current conversation failed: \(error.localizedDescription)")
+            throw RepositoryError.networkError(error)
+        }
+    }
+
+    /// Update FCM token for push notifications (Story 2.10 QA Fix)
+    func updateFCMToken(_ token: String, userId: String?) async throws {
+        let targetUserId = userId ?? auth.currentUser?.uid
+
+        guard let targetUserId = targetUserId else {
+            print("❌ Update FCM token failed: No user ID provided")
+            throw RepositoryError.unauthorized
+        }
+
+        do {
+            try await db.collection("users").document(targetUserId).updateData([
+                "fcmToken": token,
+                "fcmTokenUpdatedAt": FieldValue.serverTimestamp()
+            ])
+            print("✅ FCM token updated for user: \(targetUserId)")
+        } catch {
+            print("❌ Update FCM token failed: \(error.localizedDescription)")
             throw RepositoryError.networkError(error)
         }
     }

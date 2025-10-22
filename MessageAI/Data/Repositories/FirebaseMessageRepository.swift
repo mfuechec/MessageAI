@@ -59,10 +59,13 @@ final class FirebaseMessageRepository: MessageRepositoryProtocol {
     
     func observeMessages(conversationId: String) -> AnyPublisher<[Message], Never> {
         let subject = PassthroughSubject<[Message], Never>()
-        
+
+        // CRITICAL FIX (Story 2.11 QA): Limit initial real-time query to 50 most recent messages
+        // Older messages loaded on-demand via loadMoreMessages() for pagination
         let listener = db.collection("messages")
             .whereField("conversationId", isEqualTo: conversationId)
-            .order(by: "timestamp", descending: false)
+            .order(by: "timestamp", descending: true)  // DESC to get most recent first
+            .limit(to: 50)  // AC #2: Load only 50 most recent messages
             .addSnapshotListener { snapshot, error in
                 if let error = error {
                     print("❌ Observe messages error: \(error.localizedDescription)")

@@ -1,18 +1,24 @@
 import Foundation
 import Combine
 import UIKit
+import UserNotifications
 
 /// ViewModel for managing conversations list display and real-time updates
 @MainActor
 class ConversationsListViewModel: ObservableObject {
     // MARK: - Published Properties
-    
+
     @Published var conversations: [Conversation] = []
     @Published var users: [String: User] = [:] // userId -> User mapping (single source of truth)
     @Published var isLoading: Bool = false
     @Published var errorMessage: String?
     @Published var isOffline: Bool = false
-    
+    @Published var notificationPermissionDenied: Bool = false // Story 2.10a AC 11
+
+    // Story 2.11 - AC #3: Pagination state
+    @Published var isLoadingMore: Bool = false
+    @Published var hasMoreConversations: Bool = true
+
     // MARK: - Private Properties
     
     private let conversationRepository: ConversationRepositoryProtocol
@@ -168,6 +174,20 @@ class ConversationsListViewModel: ObservableObject {
         }
     }
 
+    /// Check notification permission status and update UI state (Story 2.10a AC 13)
+    ///
+    /// Queries iOS notification settings to determine if user has denied permissions.
+    /// Updates `notificationPermissionDenied` to show/hide permission banner.
+    func checkNotificationPermissionStatus() async {
+        let center = UNUserNotificationCenter.current()
+        let settings = await center.notificationSettings()
+
+        await MainActor.run {
+            notificationPermissionDenied = (settings.authorizationStatus == .denied)
+            print("🔔 Notification permission status: \(settings.authorizationStatus.rawValue) (denied=\(notificationPermissionDenied))")
+        }
+    }
+
     // MARK: - Display Helper Methods
     
     func displayName(for conversation: Conversation) -> String {
@@ -190,21 +210,63 @@ class ConversationsListViewModel: ObservableObject {
     private func formattedRelativeTime(for date: Date) -> String {
         let now = Date()
         let timeInterval = now.timeIntervalSince(date)
-        
+
         // Handle very recent messages (< 1 minute) - show "now"
         if timeInterval >= -1 && timeInterval < 60 {
             return "now"
         }
-        
+
         // For timestamps in the future (due to server time skew), treat as "now"
         if timeInterval < 0 {
             return "now"
         }
-        
+
         // Use RelativeDateTimeFormatter for older messages
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .abbreviated
         return formatter.localizedString(for: date, relativeTo: now)
+    }
+
+    // MARK: - Pagination (Story 2.11 - AC #3)
+
+    /// Load more conversations for pagination (load older conversations)
+    func loadMoreConversations() async {
+        // Prevent concurrent loads
+        guard !isLoadingMore && hasMoreConversations else {
+            return
+        }
+
+        isLoadingMore = true
+        defer { isLoadingMore = false }
+
+        do {
+            // Get last conversation for cursor-based pagination
+            let lastConversation = conversations.last
+
+            // Load next page (50 conversations)
+            let olderConversations = try await conversationRepository.loadMoreConversations(
+                userId: currentUserId,
+                lastConversation: lastConversation,
+                limit: 50
+            )
+
+            // If we got fewer than requested, we've reached the end
+            if olderConversations.count < 50 {
+                hasMoreConversations = false
+            }
+
+            // Append older conversations to existing list
+            conversations.append(contentsOf: olderConversations)
+
+            // Load participant users for new conversations
+            loadParticipantUsers(from: olderConversations)
+
+            print("📄 [Pagination] Loaded \(olderConversations.count) older conversations. Total: \(conversations.count)")
+
+        } catch {
+            print("❌ Failed to load more conversations: \(error.localizedDescription)")
+            errorMessage = "Failed to load more conversations: \(error.localizedDescription)"
+        }
     }
 }
 

@@ -587,5 +587,75 @@ final class ConversationsListViewModelTests: XCTestCase {
         
         // Note: Badge count = 0 would be set in UIApplication (clears badge)
     }
+
+    // MARK: - Deep Link Fallback Tests (Story 2.10a)
+
+    func testFetchConversationWithParticipants_Success() async throws {
+        // Given
+        let conversationId = "test-conv-123"
+        let user1 = User(id: "user-1", email: "user1@test.com", displayName: "User 1", isOnline: true, lastSeen: Date(), createdAt: Date())
+        let user2 = User(id: "user-2", email: "user2@test.com", displayName: "User 2", isOnline: false, lastSeen: Date(), createdAt: Date())
+
+        let expectedConversation = Conversation(
+            id: conversationId,
+            participantIds: ["user-1", "user-2"],
+            lastMessage: "Test message",
+            lastMessageTimestamp: Date(),
+            lastMessageSenderId: "user-2",
+            lastMessageId: nil,
+            unreadCounts: [:],
+            typingUsers: [],
+            createdAt: Date(),
+            isGroup: false,
+            groupName: nil,
+            lastAISummaryAt: nil,
+            hasUnreadPriority: false,
+            priorityCount: 0,
+            activeSchedulingDetected: false
+        )
+
+        mockConversationRepo.mockConversations = [expectedConversation]
+        mockUserRepo.mockUsers = [user1, user2]
+
+        // When
+        let (conversation, participants) = try await sut.fetchConversationWithParticipants(id: conversationId)
+
+        // Then
+        XCTAssertEqual(conversation.id, conversationId, "Should return correct conversation")
+        XCTAssertEqual(participants.count, 2, "Should return all participants")
+        XCTAssertTrue(mockConversationRepo.getConversationCalled, "Should call getConversation")
+    }
+
+    func testFetchConversationWithParticipants_ConversationNotFound() async throws {
+        // Given
+        let conversationId = "non-existent"
+        mockConversationRepo.shouldFail = true
+        mockConversationRepo.mockError = RepositoryError.conversationNotFound(conversationId)
+
+        // When/Then
+        do {
+            _ = try await sut.fetchConversationWithParticipants(id: conversationId)
+            XCTFail("Should throw conversationNotFound error")
+        } catch {
+            // Expected error
+            XCTAssertTrue(mockConversationRepo.getConversationCalled, "Should attempt to fetch conversation")
+        }
+    }
+
+    func testFetchConversationWithParticipants_NetworkError() async throws {
+        // Given
+        let conversationId = "test-conv-456"
+        mockConversationRepo.shouldFail = true
+        mockConversationRepo.mockError = NSError(domain: "Network", code: -1009, userInfo: nil)
+
+        // When/Then
+        do {
+            _ = try await sut.fetchConversationWithParticipants(id: conversationId)
+            XCTFail("Should throw network error")
+        } catch {
+            // Expected error
+            XCTAssertTrue(mockConversationRepo.getConversationCalled, "Should attempt to fetch conversation")
+        }
+    }
 }
 

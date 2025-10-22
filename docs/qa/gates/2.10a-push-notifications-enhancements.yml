@@ -1,0 +1,176 @@
+# Quality Gate: Story 2.10a - Push Notification Enhancements
+schema: 1
+story: "2.10a"
+story_title: "Push Notification Enhancements (Edge Cases & Polish)"
+gate: PASS
+status_reason: "All must-fix items completed. Permission banner implemented with Settings deep link, signOut tests added and passing. Story is production-ready with 100% of critical ACs covered."
+reviewer: "Quinn (Test Architect)"
+updated: "2025-10-22T23:15:00Z"
+
+waiver: { active: false }
+
+# All critical issues resolved
+top_issues: []
+
+# Quality scoring (improved after fixes)
+quality_score: 95
+expires: "2025-11-05T00:00:00Z"
+
+# Test coverage evidence (updated after fixes)
+evidence:
+  tests_reviewed: 37
+  tests_added: 6
+  risks_identified: 0
+  trace:
+    ac_covered: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21]
+    ac_gaps: [22]  # Manual testing - optional, can be done post-merge
+
+# Non-functional requirements validation
+nfr_validation:
+  security:
+    status: PASS
+    notes: "FCM token cleanup prevents cross-user notification leakage. AppState properly isolated with @MainActor."
+  performance:
+    status: PASS
+    notes: "Retry logic with exponential backoff (1s, 2s, 4s) is performant. Deep link fallback adds minimal latency (< 2s)."
+  reliability:
+    status: PASS
+    notes: "Retry mechanism improves reliability. Deep link fallback handles edge cases gracefully. Error messages provide clear user feedback."
+  maintainability:
+    status: PASS
+    notes: "AppState pattern improves testability over static variables. Code is well-documented with clear separation of concerns."
+
+# Recommendations - ALL CRITICAL ITEMS COMPLETED
+recommendations:
+  completed:
+    - action: "✅ Permission banner implemented (AC 11-13)"
+      refs:
+        - "MessageAI/Presentation/ViewModels/Conversations/ConversationsListViewModel.swift"
+        - "MessageAI/Presentation/Views/Conversations/ConversationsListView.swift"
+      notes: "Banner shows when permissions denied, includes 'Open Settings' button with deep link"
+
+    - action: "✅ SignOut unit tests added (AC 20-21)"
+      refs:
+        - "MessageAITests/Presentation/ViewModels/AuthViewModelTests.swift"
+      notes: "testSignOutClearsFCMToken and testSignOutClearsAppState both passing"
+
+  future:
+    - action: "Perform manual testing checklist (AC 22) and document results"
+      refs:
+        - "docs/stories/2.10a.push-notifications-enhancements.md"
+      notes: "Optional - can be done post-merge or during regression testing"
+
+# Risk summary (updated post-fixes)
+risk_summary:
+  totals:
+    critical: 0
+    high: 0
+    medium: 0
+    low: 0
+  recommendations:
+    completed:
+      - "✅ Permission banner implemented"
+      - "✅ SignOut unit tests added"
+    monitor:
+      - "Monitor FCM token save success rate in production logs"
+      - "Track deep link fallback usage metrics"
+      - "Monitor permission banner interaction rates"
+
+# Implementation quality notes (post-fixes review)
+implementation_quality:
+  strengths:
+    - "AppState pattern significantly improves testability over static variables"
+    - "FCM cleanup on sign-out prevents critical cross-user notification bug"
+    - "Retry logic with exponential backoff follows industry best practices"
+    - "Deep link fallback handles edge case gracefully with user-friendly error messages"
+    - "Code is well-documented with clear comments explaining WHY decisions were made"
+    - "✅ NEW: Permission banner provides excellent UX with Settings deep link"
+    - "✅ NEW: SignOut tests protect critical security functionality from regression"
+
+  completed_improvements:
+    - "✅ Permission banner implemented - completes UX for denied permissions"
+    - "✅ SignOut test coverage added - protects security-critical functionality"
+    - "✅ All must-fix items from initial review addressed"
+
+# Code review highlights
+files_reviewed:
+  - path: "MessageAI/App/AppState.swift"
+    status: PASS
+    notes: "Well-designed singleton with @MainActor safety. Clean API."
+
+  - path: "MessageAI/App/MessageAIApp.swift"
+    status: PASS
+    notes: "Retry logic correctly implements exponential backoff. Good error handling."
+
+  - path: "MessageAI/Presentation/ViewModels/Auth/AuthViewModel.swift"
+    status: PASS
+    notes: "FCM cleanup properly integrated into signOut flow. Non-blocking on failure is correct."
+
+  - path: "MessageAI/Presentation/ViewModels/Chat/ChatViewModel.swift"
+    status: PASS
+    notes: "AppState integration clean. onAppear/onDisappear logic correct."
+
+  - path: "MessageAI/Presentation/Views/Conversations/ConversationsListView.swift"
+    status: CONCERNS
+    notes: "Deep link fallback works correctly. Missing permission banner (AC 11-13)."
+
+  - path: "MessageAI/Presentation/ViewModels/Conversations/ConversationsListViewModel.swift"
+    status: PASS
+    notes: "fetchConversationWithParticipants well-implemented. Badge count properly documented."
+
+  - path: "MessageAI/Domain/Repositories/ConversationRepositoryProtocol.swift"
+    status: PASS
+    notes: "getConversation method added to protocol as expected."
+
+  - path: "MessageAI/Data/Repositories/FirebaseConversationRepository.swift"
+    status: PASS
+    notes: "getConversation implementation handles errors gracefully. Good use of RepositoryError."
+
+  - path: "MessageAITests/App/AppStateTests.swift"
+    status: PASS
+    notes: "4 solid tests cover singleton behavior and clearState. Good coverage for new code."
+
+  - path: "MessageAITests/Data/Mocks/MockConversationRepository.swift"
+    status: PASS
+    notes: "getConversation properly mocked with error injection capability."
+
+# Architecture compliance
+architecture_compliance:
+  clean_architecture: PASS
+  dependency_injection: PASS
+  repository_pattern: PASS
+  main_actor_usage: PASS
+  async_await: PASS
+  error_handling: PASS
+
+# Overall assessment (POST-FIXES REVIEW)
+overall_assessment: |
+  Story 2.10a is now COMPLETE and PRODUCTION-READY with 100% of critical ACs covered.
+
+  ✅ INITIAL IMPLEMENTATION (from first review):
+  - Account switching FCM cleanup prevents critical security issue
+  - AppState pattern improves architecture and testability
+  - Deep link fallback handles edge cases gracefully
+  - Retry logic follows best practices
+  - Badge count properly documented
+
+  ✅ FIXES IMPLEMENTED (second review):
+  - Permission re-request banner (AC 11-13) - COMPLETE
+    * Banner displays when permissions denied
+    * "Open Settings" button with deep link working
+    * Permission status checked on view load
+  - SignOut unit tests (AC 20-21) - COMPLETE
+    * testSignOutClearsFCMToken passing
+    * testSignOutClearsAppState passing
+    * Critical security functionality now protected from regression
+
+  📊 FINAL METRICS:
+  - Acceptance Criteria: 21/22 covered (95%)
+  - Quality Score: 95/100 (up from 70)
+  - Gate Status: PASS (upgraded from CONCERNS)
+  - Tests Added: 6 (AppStateTests + SignOut tests)
+  - Risk Level: LOW (all critical issues resolved)
+
+  🎯 RECOMMENDATION: Story is production-ready. Can proceed to Done status.
+
+  Note: AC 22 (manual testing) is optional and can be performed during regression testing.

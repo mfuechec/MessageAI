@@ -1,4 +1,5 @@
 import SwiftUI
+import Kingfisher
 
 /// Row view component for displaying conversation summary
 struct ConversationRowView: View {
@@ -60,30 +61,19 @@ struct ConversationRowView: View {
                     if let photoURL = user.profileImageURL,
                        !photoURL.isEmpty,
                        let url = URL(string: photoURL) {
-                        // Load profile image from URL
-                        let _ = print("🖼️ Loading profile image for \(user.displayName): \(photoURL)")
-                        AsyncImage(url: url) { phase in
-                            Group {
-                                switch phase {
-                                case .success(let image):
-                                    let _ = print("✅ Profile image loaded for \(user.displayName)")
-                                    image
-                                        .resizable()
-                                        .scaledToFill()
-                                        .frame(width: 56, height: 56)
-                                        .clipShape(Circle())
-                                case .failure(let error):
-                                    let _ = print("❌ Profile image failed for \(user.displayName): \(error)")
-                                    initialsCircle
-                                case .empty:
-                                    let _ = print("⏳ Profile image loading for \(user.displayName)...")
-                                    initialsCircle
-                                @unknown default:
-                                    initialsCircle
-                                }
+                        // Story 2.11 - AC #4: Optimized image loading with Kingfisher
+                        // Uses downsampling to 56x56 for efficient memory usage (reduces ~95% memory vs full image)
+                        let _ = print("🖼️ Loading optimized profile image for \(user.displayName)")
+                        KFImage(url)
+                            .placeholder {
+                                initialsCircle
                             }
-                        }
-                        .id(user.id)  // Force unique identity per user to prevent image caching issues
+                            .resizable()
+                            .downsampling(size: CGSize(width: 56, height: 56))  // AC #4: Downsample to display size
+                            .cacheOriginalImage()
+                            .scaledToFill()
+                            .frame(width: 56, height: 56)
+                            .clipShape(Circle())
                     } else {
                         let _ = print("ℹ️ No profile image for \(user.displayName), showing initials")
                         initialsCircle

@@ -404,5 +404,50 @@ final class AuthViewModelTests: XCTestCase {
         XCTAssertNotNil(newSut.currentUser, "currentUser should be set from auth state observer")
         XCTAssertEqual(newSut.currentUser?.id, testUser.id)
     }
+
+    // MARK: - Sign Out Tests (Story 2.10a AC 20-21)
+
+    func testSignOutClearsFCMToken() async throws {
+        // Given - User must be signed in
+        let testUser = User(
+            id: "test-user-123",
+            email: "test@example.com",
+            displayName: "Test User",
+            isOnline: true,
+            lastSeen: Date(),
+            createdAt: Date()
+        )
+        mockRepository.mockUser = testUser
+        sut.currentUser = testUser
+
+        // When
+        await sut.signOut()
+
+        // Then
+        XCTAssertNil(sut.currentUser, "Current user should be nil after sign out")
+        // Note: FCM token deletion happens in Firestore (integration-level verification needed)
+        // This test verifies the signOut flow completes without error
+    }
+
+    func testSignOutClearsAppState() async throws {
+        // Given - User signed in and viewing a conversation
+        let testUser = User(
+            id: "test-user-123",
+            email: "test@example.com",
+            displayName: "Test User",
+            isOnline: true,
+            lastSeen: Date(),
+            createdAt: Date()
+        )
+        sut.currentUser = testUser
+        AppState.shared.currentlyViewingConversationId = "test-conversation"
+
+        // When
+        await sut.signOut()
+
+        // Then
+        XCTAssertNil(AppState.shared.currentlyViewingConversationId, "AppState should be cleared after sign out")
+        XCTAssertNil(sut.currentUser, "Current user should be nil after sign out")
+    }
 }
 

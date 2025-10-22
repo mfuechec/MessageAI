@@ -5,7 +5,7 @@ struct NetworkRetryPolicy {
     static let maxRetries = 3
     static let timeoutSeconds: TimeInterval = 10.0
 
-    /// Calculate exponential backoff delay: 1s, 2s, 4s
+    /// Calculate exponential backoff delay: 2s, 4s, 8s (2^attempt)
     static func delay(for attempt: Int) -> TimeInterval {
         return pow(2.0, Double(attempt))
     }

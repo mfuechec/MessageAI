@@ -21,10 +21,13 @@ struct ConversationsListView: View {
     @State private var showNewConversation = false
     @StateObject private var newConversationViewModel: NewConversationViewModel
     @EnvironmentObject private var authViewModel: AuthViewModel
-    
+
     // Toast notification state
     @State private var showReconnectedToast = false
-    
+
+    // Story 2.11 - AC #14: Timestamp update timer
+    @State private var timestampRefreshTrigger = false
+
     // CRITICAL: Use single state object to prevent desynchronization
     @State private var chatContext: ChatContext? {
         didSet {
@@ -59,18 +62,25 @@ struct ConversationsListView: View {
                 
                 // Toast notifications
                 VStack {
+                    // Permission denied banner (Story 2.10a AC 11-13)
+                    if viewModel.notificationPermissionDenied {
+                        permissionDeniedBanner
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                    }
+
                     if viewModel.isOffline {
                         offlineToast
                             .transition(.move(edge: .top).combined(with: .opacity))
                     }
-                    
+
                     if showReconnectedToast {
                         reconnectedToast
                             .transition(.move(edge: .top).combined(with: .opacity))
                     }
-                    
+
                     Spacer()
                 }
+                .animation(.spring(response: 0.3), value: viewModel.notificationPermissionDenied)
                 .animation(.spring(response: 0.3), value: viewModel.isOffline)
                 .animation(.spring(response: 0.3), value: showReconnectedToast)
             }
@@ -210,6 +220,21 @@ struct ConversationsListView: View {
                     }
                 }
             }
+            .task {
+                // Story 2.10a AC 13: Check notification permission status on view load
+                await viewModel.checkNotificationPermissionStatus()
+            }
+            .onAppear {
+                // Story 2.11 - AC #14: Start timestamp update timer (60 seconds)
+                Timer.scheduledTimer(withTimeInterval: 60.0, repeats: true) { _ in
+                    // Toggle trigger to force view refresh (updates relative timestamps)
+                    timestampRefreshTrigger.toggle()
+                }
+            }
+            .onChange(of: timestampRefreshTrigger) { _ in
+                // View re-renders when trigger changes, updating relative timestamps
+                // ("2m ago" → "3m ago", etc.)
+            }
         }
     }
     
@@ -217,11 +242,11 @@ struct ConversationsListView: View {
         List(viewModel.conversations) { conversation in
             Button(action: {
                 print("🔴 [Button Tap] User tapped conversation: \(conversation.id)")
-                
+
                 // Get participants from users dictionary (single source of truth)
                 let participants = viewModel.getParticipants(for: conversation)
                 print("  📊 Found \(participants.count) participants")
-                
+
                 // Create ChatViewModel
                 let chatVM = DIContainer.shared.makeChatViewModel(
                     conversationId: conversation.id,
@@ -229,7 +254,7 @@ struct ConversationsListView: View {
                     initialConversation: conversation,
                     initialParticipants: participants
                 )
-                
+
                 // Set single state object - keeps everything in sync
                 chatContext = ChatContext(
                     conversation: conversation,
@@ -247,6 +272,15 @@ struct ConversationsListView: View {
                 )
             }
             .buttonStyle(PlainButtonStyle())
+            .onAppear {
+                // Story 2.11 - AC #3: Pagination trigger
+                // Load more when user scrolls to last conversation
+                if conversation.id == viewModel.conversations.last?.id {
+                    Task {
+                        await viewModel.loadMoreConversations()
+                    }
+                }
+            }
         }
         .listStyle(PlainListStyle())
         .sheet(item: $chatContext) { context in
@@ -286,7 +320,30 @@ struct ConversationsListView: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel("No conversations. Tap New Conversation to start chatting.")
     }
-    
+
+    // Story 2.10a AC 11-12: Permission denied banner
+    private var permissionDeniedBanner: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "bell.slash")
+                .foregroundColor(.orange)
+            Text("Enable notifications in Settings to stay updated")
+                .font(.caption)
+                .foregroundColor(.secondary)
+            Spacer()
+            Button("Open Settings") {
+                if let url = URL(string: UIApplication.openSettingsURLString) {
+                    UIApplication.shared.open(url)
+                }
+            }
+            .font(.caption)
+            .foregroundColor(.blue)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(Color.orange.opacity(0.1))
+        .accessibilityLabel("Notifications disabled. Open Settings to enable.")
+    }
+
     private var offlineToast: some View {
         HStack(spacing: 8) {
             Image(systemName: "wifi.slash")

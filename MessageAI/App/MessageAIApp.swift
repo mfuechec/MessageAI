@@ -9,7 +9,6 @@
 import SwiftUI
 import FirebaseMessaging
 import FirebaseAuth
-import FirebaseFirestore
 import UserNotifications
 
 // MARK: - AppDelegate for Push Notifications
@@ -23,7 +22,10 @@ import UserNotifications
 /// - Handle notification taps for deep linking
 /// - Suppress notifications when user is viewing the conversation
 class AppDelegate: NSObject, UIApplicationDelegate, MessagingDelegate, UNUserNotificationCenterDelegate {
-    
+
+    // MARK: - Dependencies (Story 2.10 QA Fix - Use repository pattern)
+    var userRepository: UserRepositoryProtocol?
+
     func application(
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil
@@ -69,6 +71,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, MessagingDelegate, UNUserNot
     /// Saves FCM token to Firestore user document with retry logic
     ///
     /// Story 2.10a: Implements exponential backoff retry (3 attempts: 1s, 2s, 4s)
+    /// Story 2.10 QA Fix: Uses UserRepositoryProtocol instead of direct Firestore access
     /// Token is used by Cloud Functions to send push notifications
     /// to specific devices when messages arrive.
     private func saveFCMToken(_ token: String) async {
@@ -77,17 +80,18 @@ class AppDelegate: NSObject, UIApplicationDelegate, MessagingDelegate, UNUserNot
             return
         }
 
-        let db = Firestore.firestore()
+        guard let repository = userRepository else {
+            print("❌ [QA FIX] UserRepository not injected - cannot save FCM token")
+            return
+        }
+
         var retryCount = 0
         let maxRetries = 3
 
         while retryCount < maxRetries {
             do {
-                try await db.collection("users").document(userId).updateData([
-                    "fcmToken": token,
-                    "fcmTokenUpdatedAt": FieldValue.serverTimestamp()
-                ])
-                print("✅ FCM token saved to Firestore for user: \(userId)")
+                try await repository.updateFCMToken(token, userId: userId)
+                print("✅ [QA FIX] FCM token saved via repository for user: \(userId)")
                 return  // Success - exit retry loop
 
             } catch {
@@ -206,14 +210,14 @@ class AppDelegate: NSObject, UIApplicationDelegate, MessagingDelegate, UNUserNot
 
 @main
 struct MessageAIApp: App {
-    
+
     // AppDelegate for push notification handling
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
-    
+
     /// Authentication ViewModel for managing user sign-in/sign-up state
     /// StateObject ensures ViewModel persists across app lifecycle
     @StateObject private var authViewModel = DIContainer.shared.makeAuthViewModel()
-    
+
     /// Initialize Firebase on app launch
     /// Explicitly call configure() to set up Firebase with environment-specific settings
     init() {
@@ -221,6 +225,9 @@ struct MessageAIApp: App {
 
         // Clean up expired temporary images from previous sessions (Story 2.7)
         ImageCacheManager.cleanupExpiredImages()
+
+        // Story 2.10 QA Fix: Inject UserRepository into AppDelegate
+        appDelegate.userRepository = DIContainer.shared.userRepository
     }
     
     var body: some Scene {
