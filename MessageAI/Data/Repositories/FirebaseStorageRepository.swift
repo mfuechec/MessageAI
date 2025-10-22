@@ -14,30 +14,40 @@ class FirebaseStorageRepository: StorageRepositoryProtocol {
     private let storage = Storage.storage()
     
     func uploadProfileImage(_ image: UIImage, userId: String) async throws -> String {
+        print("🔵 [StorageRepo] uploadProfileImage called for user: \(userId)")
+        
         // Convert image to JPEG data
         guard let imageData = image.jpegData(compressionQuality: 0.7) else {
-            print("❌ Failed to convert image to data")
+            print("❌ [StorageRepo] Failed to convert image to data")
             throw StorageError.imageProcessingFailed
         }
         
-        print("📤 Uploading profile image for user: \(userId), size: \(imageData.count) bytes")
+        print("📤 [StorageRepo] Uploading profile image for user: \(userId), size: \(imageData.count) bytes")
         
         // Create storage reference
         let storageRef = storage.reference()
-        let profileImageRef = storageRef.child("users/\(userId)/profile.jpg")
+        let storagePath = "profile-images/\(userId)/profile.jpg"
+        let profileImageRef = storageRef.child(storagePath)
+        
+        print("🔵 [StorageRepo] Storage path: \(storagePath)")
+        print("🔵 [StorageRepo] Full storage ref: \(profileImageRef.fullPath)")
         
         // Set metadata
         let metadata = StorageMetadata()
         metadata.contentType = "image/jpeg"
         
         do {
+            print("🔵 [StorageRepo] Calling putDataAsync...")
             // Upload the file
             let uploadMetadata = try await profileImageRef.putDataAsync(imageData, metadata: metadata)
-            print("✅ Profile image uploaded for user: \(userId), path: \(uploadMetadata.path ?? "unknown")")
+            print("✅ [StorageRepo] Profile image uploaded for user: \(userId)")
+            print("✅ [StorageRepo] Upload path: \(uploadMetadata.path ?? "unknown")")
+            print("✅ [StorageRepo] Upload bucket: \(uploadMetadata.bucket ?? "unknown")")
             
             // Get download URL
+            print("🔵 [StorageRepo] Getting download URL...")
             let downloadURL = try await profileImageRef.downloadURL()
-            print("✅ Download URL obtained: \(downloadURL.absoluteString)")
+            print("✅ [StorageRepo] Download URL obtained: \(downloadURL.absoluteString)")
             
             return downloadURL.absoluteString
         } catch let error as NSError {

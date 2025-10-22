@@ -98,5 +98,52 @@ final class UserTests: XCTestCase {
         // Then: They should be equal
         XCTAssertEqual(user1, user2)
     }
+    
+    // MARK: - FCM Token Tests (Story 2.10)
+    
+    func testUserWithFCMToken() throws {
+        // Given: User with FCM token
+        let tokenDate = Date()
+        let user = User(
+            id: "user-1",
+            email: "test@example.com",
+            displayName: "Test User",
+            fcmToken: "test-fcm-token-12345",
+            fcmTokenUpdatedAt: tokenDate
+        )
+        
+        // When: Encode and decode
+        let encoder = JSONEncoder()
+        let data = try encoder.encode(user)
+        
+        let decoder = JSONDecoder()
+        let decodedUser = try decoder.decode(User.self, from: data)
+        
+        // Then: FCM token should be preserved
+        XCTAssertEqual(decodedUser.fcmToken, "test-fcm-token-12345")
+        XCTAssertEqual(decodedUser.fcmTokenUpdatedAt, tokenDate)
+    }
+    
+    func testUserWithoutFCMToken() throws {
+        // Given: User without FCM token (backward compatibility)
+        let user = User(
+            id: "user-1",
+            email: "test@example.com",
+            displayName: "Test User"
+        )
+        
+        // When: Encode and decode
+        let encoder = JSONEncoder()
+        let data = try encoder.encode(user)
+        
+        let decoder = JSONDecoder()
+        let decodedUser = try decoder.decode(User.self, from: data)
+        
+        // Then: Should decode successfully with nil token
+        XCTAssertNil(decodedUser.fcmToken)
+        XCTAssertNil(decodedUser.fcmTokenUpdatedAt)
+        XCTAssertEqual(decodedUser.id, "user-1")
+        XCTAssertEqual(decodedUser.email, "test@example.com")
+    }
 }
 

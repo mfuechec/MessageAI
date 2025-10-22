@@ -337,8 +337,8 @@ Stories that can be implemented simultaneously (no dependencies):
 - ⚠️ **Story 2.0** - Blocks Stories 2.1+ (conversation creation)
 
 ### External (Third-Party Services)
-- ⚠️ **Firebase Cloud Functions** - Required for Story 2.11 (push notifications)
-- ⚠️ **APNs Certificate** - Required for Story 2.11
+- ✅ **Firebase Cloud Functions** - Complete (setup by user for Story 2.10)
+- ✅ **APNs Certificate** - Complete (setup by user for Story 2.10)
 - ⚠️ **TestFlight Access** - Required for Story 2.12
 - ⚠️ **Beta Testers** - Required for Story 2.12
 
@@ -406,12 +406,12 @@ Stories that can be implemented simultaneously (no dependencies):
 - ✅ **Epic 1 Complete** - Done (Stories 1.1-1.10)
 - ✅ **94 Unit Tests Passing** - Verified
 - ✅ **Firebase Emulator Working** - Tested
-- ⚠️ **Cloud Functions Setup** - Not yet done (needed for Story 2.10)
-- ⚠️ **APNs Certificate** - Not yet done (needed for Story 2.10)
+- ✅ **Cloud Functions Setup** - Complete (user setup for Story 2.10)
+- ✅ **APNs Certificate** - Complete (user setup for Story 2.10)
 
 ### Story-Specific Blockers
 - **Story 2.8** - Blocked by Story 2.7 (shared upload infrastructure)
-- **Story 2.10** - Blocked by Cloud Functions deployment
+- **Story 2.10** - ✅ Unblocked (Cloud Functions + APNs complete)
 - **Story 2.12** - Blocked by TestFlight access
 
 ---

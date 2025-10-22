@@ -113,14 +113,29 @@ final class FirebaseUserRepository: UserRepositoryProtocol {
     
     func updateUser(_ user: User) async throws {
         do {
+            print("🔵 [FirebaseUserRepo] updateUser called for user ID: \(user.id)")
+            print("🔵 [FirebaseUserRepo] User email: \(user.email)")
+            print("🔵 [FirebaseUserRepo] User displayName: \(user.displayName)")
+            print("🔵 [FirebaseUserRepo] User profileImageURL: \(String(describing: user.profileImageURL))")
+            
             let data = try Firestore.Encoder.default.encode(user)
+            print("🔵 [FirebaseUserRepo] Encoded data keys: \(data.keys.sorted())")
+            if let profileURL = data["profileImageURL"] {
+                print("🔵 [FirebaseUserRepo] Encoded profileImageURL value: \(profileURL)")
+            } else {
+                print("⚠️ [FirebaseUserRepo] profileImageURL NOT in encoded data!")
+            }
+            
+            print("🔵 [FirebaseUserRepo] Calling Firestore setData for document: users/\(user.id)")
             try await db.collection("users").document(user.id).setData(data)
-            print("✅ User updated: \(user.id)")
+            print("✅ [FirebaseUserRepo] User updated: \(user.id)")
+            print("✅ [FirebaseUserRepo] Firestore write completed successfully")
         } catch let error as EncodingError {
-            print("❌ Update user failed (encoding): \(error.localizedDescription)")
+            print("❌ [FirebaseUserRepo] Update user failed (encoding): \(error.localizedDescription)")
             throw RepositoryError.encodingError(error)
         } catch {
-            print("❌ Update user failed: \(error.localizedDescription)")
+            print("❌ [FirebaseUserRepo] Update user failed: \(error.localizedDescription)")
+            print("❌ [FirebaseUserRepo] Error type: \(type(of: error))")
             throw RepositoryError.networkError(error)
         }
     }

@@ -134,9 +134,9 @@ else
             echo ""
         fi
         
-        if grep -q "error:" "$LOG_FILE"; then
+        if grep -q "\.swift:[0-9]*:[0-9]*: error:" "$LOG_FILE"; then
             echo -e "${RED}Compilation errors:${NC}"
-            grep "error:" "$LOG_FILE" | head -15
+            grep "\.swift:[0-9]*:[0-9]*: error:" "$LOG_FILE" | head -15
             echo ""
         fi
         

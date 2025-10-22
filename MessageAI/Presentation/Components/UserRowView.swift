@@ -41,6 +41,7 @@ struct UserRowView: View {
                         }
                     }
                 }
+                .id(user.id)  // Force unique identity per user to prevent image caching issues
             } else {
                 let _ = print("ℹ️ [UserRow] No image for \(user.displayName), showing initials")
                 initialsCircle

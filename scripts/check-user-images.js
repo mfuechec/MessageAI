@@ -61,7 +61,7 @@ async function checkUserImages() {
         console.log(`   ✅ profileImageURL: ${user.profileImageURL.substring(0, 80)}...`);
         
         // Check if file exists in Storage
-        const storagePath = `users/${userId}/profile.jpg`;
+        const storagePath = `profile-images/${userId}/profile.jpg`;
         try {
           const bucket = storage.bucket();
           const file = bucket.file(storagePath);
@@ -82,7 +82,7 @@ async function checkUserImages() {
         console.log(`   ⚠️  No profileImageURL field in Firestore`);
         
         // Check if file exists in Storage anyway
-        const storagePath = `users/${userId}/profile.jpg`;
+        const storagePath = `profile-images/${userId}/profile.jpg`;
         try {
           const bucket = storage.bucket();
           const file = bucket.file(storagePath);

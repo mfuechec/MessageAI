@@ -70,6 +70,37 @@ struct ConversationsListView: View {
                     .accessibilityLabel("Logout")
                 }
                 
+                // DEBUG: Test notification button (remove in production)
+                #if DEBUG
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button(action: {
+                        Task {
+                            // Test with first conversation if available
+                            if let firstConv = viewModel.conversations.first {
+                                await LocalNotificationHelper.sendTestNotification(
+                                    conversationId: firstConv.id,
+                                    senderName: "Test User",
+                                    messageText: "This is a test notification!",
+                                    delay: 5.0
+                                )
+                            } else {
+                                // No conversations yet, create a test one
+                                await LocalNotificationHelper.sendTestNotification(
+                                    conversationId: "test-conv-123",
+                                    senderName: "Alice",
+                                    messageText: "Hey! This is a test message.",
+                                    delay: 5.0
+                                )
+                            }
+                        }
+                    }) {
+                        Image(systemName: "bell.badge.fill")
+                            .foregroundColor(.orange)
+                    }
+                    .accessibilityLabel("Send Test Notification")
+                }
+                #endif
+                
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button(action: {
                         showNewConversation = true
@@ -116,6 +147,39 @@ struct ConversationsListView: View {
                         )
                         // Reset for next time
                         newConversationViewModel.selectedConversation = nil
+                    }
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("OpenConversation"))) { notification in
+                // Deep linking from push notification tap
+                if let conversationId = notification.userInfo?["conversationId"] as? String {
+                    print("📲 Deep link notification received for conversation: \(conversationId)")
+                    
+                    // Find conversation in current list
+                    if let conversation = viewModel.conversations.first(where: { $0.id == conversationId }) {
+                        print("✅ Found conversation in list")
+                        
+                        // Get participants
+                        let participants = viewModel.getParticipants(for: conversation)
+                        print("✅ Found \(participants.count) participants")
+                        
+                        // Create ChatViewModel
+                        let chatVM = DIContainer.shared.makeChatViewModel(
+                            conversationId: conversation.id,
+                            currentUserId: authViewModel.currentUser?.id ?? "",
+                            initialConversation: conversation,
+                            initialParticipants: participants
+                        )
+                        
+                        // Open chat
+                        chatContext = ChatContext(
+                            conversation: conversation,
+                            chatViewModel: chatVM,
+                            participants: participants
+                        )
+                        print("✅ Chat opened via deep link")
+                    } else {
+                        print("⚠️ Conversation not found in list (may still be loading)")
                     }
                 }
             }

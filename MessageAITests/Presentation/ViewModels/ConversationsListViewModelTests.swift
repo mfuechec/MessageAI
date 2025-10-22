@@ -464,5 +464,128 @@ final class ConversationsListViewModelTests: XCTestCase {
         // Then: Default state is online (not offline)
         XCTAssertFalse(sut.isOffline)
     }
+    
+    // MARK: - Badge Count Tests (Story 2.10)
+    
+    func testBadgeCountUpdatesSingleConversation() async throws {
+        // Given: Mock repository returns conversation with unread count
+        let conversation = Conversation(
+            id: "conv-1",
+            participantIds: ["user-1", "user-2"],
+            lastMessage: "Test message",
+            lastMessageTimestamp: Date(),
+            unreadCounts: ["user-1": 3],
+            createdAt: Date(),
+            isGroup: false
+        )
+        mockConversationRepo.mockConversations = [conversation]
+        
+        // When: ViewModel loads conversations
+        sut = ConversationsListViewModel(
+            conversationRepository: mockConversationRepo,
+            userRepository: mockUserRepo,
+            currentUserId: "user-1"
+        )
+        
+        // Give time for observation to trigger
+        try await Task.sleep(nanoseconds: 100_000_000)
+        
+        // Then: Conversations should be loaded
+        XCTAssertEqual(sut.conversations.count, 1)
+        XCTAssertEqual(sut.conversations[0].unreadCount(for: "user-1"), 3)
+        
+        // Note: UIApplication.applicationIconBadgeNumber is set in updateBadgeCount()
+        // but cannot be verified in unit tests (requires UI testing or manual verification)
+    }
+    
+    func testBadgeCountUpdatesMultipleConversations() async throws {
+        // Given: Multiple conversations with different unread counts
+        let conv1 = Conversation(
+            id: "conv-1",
+            participantIds: ["user-1", "user-2"],
+            lastMessage: "Message 1",
+            lastMessageTimestamp: Date(),
+            unreadCounts: ["user-1": 2],
+            createdAt: Date(),
+            isGroup: false
+        )
+        let conv2 = Conversation(
+            id: "conv-2",
+            participantIds: ["user-1", "user-3"],
+            lastMessage: "Message 2",
+            lastMessageTimestamp: Date(),
+            unreadCounts: ["user-1": 5],
+            createdAt: Date(),
+            isGroup: false
+        )
+        let conv3 = Conversation(
+            id: "conv-3",
+            participantIds: ["user-1", "user-4"],
+            lastMessage: "Message 3",
+            lastMessageTimestamp: Date(),
+            unreadCounts: ["user-1": 1],
+            createdAt: Date(),
+            isGroup: false
+        )
+        mockConversationRepo.mockConversations = [conv1, conv2, conv3]
+        
+        // When: ViewModel loads conversations
+        sut = ConversationsListViewModel(
+            conversationRepository: mockConversationRepo,
+            userRepository: mockUserRepo,
+            currentUserId: "user-1"
+        )
+        
+        // Give time for observation to trigger
+        try await Task.sleep(nanoseconds: 100_000_000)
+        
+        // Then: All conversations loaded
+        XCTAssertEqual(sut.conversations.count, 3)
+        
+        // Verify each conversation's unread count
+        let totalUnread = sut.conversations.reduce(0) { $0 + $1.unreadCount(for: "user-1") }
+        XCTAssertEqual(totalUnread, 8) // 2 + 5 + 1
+        
+        // Note: Badge count = 8 would be set in UIApplication
+    }
+    
+    func testBadgeCountZeroWhenAllRead() async throws {
+        // Given: Conversations with zero unread counts
+        let conv1 = Conversation(
+            id: "conv-1",
+            participantIds: ["user-1", "user-2"],
+            lastMessage: "Read message",
+            lastMessageTimestamp: Date(),
+            unreadCounts: ["user-1": 0],
+            createdAt: Date(),
+            isGroup: false
+        )
+        let conv2 = Conversation(
+            id: "conv-2",
+            participantIds: ["user-1", "user-3"],
+            lastMessage: "Another read message",
+            lastMessageTimestamp: Date(),
+            unreadCounts: ["user-1": 0],
+            createdAt: Date(),
+            isGroup: false
+        )
+        mockConversationRepo.mockConversations = [conv1, conv2]
+        
+        // When: ViewModel loads conversations
+        sut = ConversationsListViewModel(
+            conversationRepository: mockConversationRepo,
+            userRepository: mockUserRepo,
+            currentUserId: "user-1"
+        )
+        
+        // Give time for observation to trigger
+        try await Task.sleep(nanoseconds: 100_000_000)
+        
+        // Then: All messages are read
+        let totalUnread = sut.conversations.reduce(0) { $0 + $1.unreadCount(for: "user-1") }
+        XCTAssertEqual(totalUnread, 0)
+        
+        // Note: Badge count = 0 would be set in UIApplication (clears badge)
+    }
 }
 

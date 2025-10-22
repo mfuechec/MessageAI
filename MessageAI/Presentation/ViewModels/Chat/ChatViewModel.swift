@@ -4,6 +4,13 @@ import Combine
 /// ViewModel for managing chat messages and message sending
 @MainActor
 class ChatViewModel: ObservableObject {
+    
+    // MARK: - Static Properties (for notification suppression)
+    
+    /// Tracks the conversation ID that the user is currently viewing
+    /// Used to suppress push notifications for messages in the active conversation
+    static var currentlyViewingConversationId: String?
+    
     // MARK: - Published Properties
     
     @Published var messages: [Message] = []
@@ -352,6 +359,7 @@ class ChatViewModel: ObservableObject {
         guard !trimmedText.isEmpty else {
             errorMessage = "Message cannot be empty"
             print("⚠️ Edit rejected: empty text")
+            cancelEdit()
             return
         }
         
@@ -359,6 +367,7 @@ class ChatViewModel: ObservableObject {
         guard trimmedText.count <= 10000 else {
             errorMessage = "Message is too long. Please keep it under 10,000 characters."
             print("❌ Edit rejected: message too long (\(trimmedText.count) chars)")
+            cancelEdit()
             return
         }
         
@@ -591,6 +600,28 @@ class ChatViewModel: ObservableObject {
         )
         print("✅ [updateConversationAfterDelete] Firestore update completed")
         print("  💡 ConversationsListViewModel listener should fire now...")
+    }
+    
+    // MARK: - Lifecycle Methods (for notification suppression)
+    
+    /// Called when ChatView appears
+    ///
+    /// Sets the static currentlyViewingConversationId to suppress
+    /// push notifications for messages in this conversation.
+    func onAppear() {
+        ChatViewModel.currentlyViewingConversationId = conversationId
+        print("👀 Now viewing conversation: \(conversationId)")
+    }
+    
+    /// Called when ChatView disappears
+    ///
+    /// Clears the static currentlyViewingConversationId to allow
+    /// push notifications again when user leaves the conversation.
+    func onDisappear() {
+        if ChatViewModel.currentlyViewingConversationId == conversationId {
+            ChatViewModel.currentlyViewingConversationId = nil
+            print("👋 Left conversation: \(conversationId)")
+        }
     }
 }
 

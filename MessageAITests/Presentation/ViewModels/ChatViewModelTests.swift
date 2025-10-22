@@ -619,6 +619,7 @@ final class ChatViewModelTests: XCTestCase {
         
         // Simulate network failure
         mockMessageRepo.shouldFail = true
+        mockMessageRepo.mockError = RepositoryError.networkError(NSError(domain: "test", code: -1))
         
         // When
         await sut.saveEdit()
@@ -627,7 +628,7 @@ final class ChatViewModelTests: XCTestCase {
         XCTAssertEqual(sut.messages[0].text, "Original")
         XCTAssertFalse(sut.messages[0].isEdited)
         XCTAssertNotNil(sut.errorMessage)
-        XCTAssertTrue(sut.errorMessage?.contains("Failed to edit") ?? false)
+        XCTAssertTrue(sut.errorMessage?.contains("No internet connection") ?? false)
     }
     
     func testShowEditHistory_OpensModal() async throws {
@@ -934,6 +935,53 @@ final class ChatViewModelTests: XCTestCase {
             priorityReason: nil,
             schemaVersion: 1
         )
+    }
+    
+    // MARK: - Conversation Tracking Tests (Story 2.10)
+    
+    func testCurrentlyViewingConversationTracking() async throws {
+        // Given: No conversation is being viewed
+        XCTAssertNil(ChatViewModel.currentlyViewingConversationId)
+        
+        // When: onAppear is called
+        sut.onAppear()
+        
+        // Then: Conversation ID should be set
+        XCTAssertEqual(ChatViewModel.currentlyViewingConversationId, "test-conv")
+        
+        // When: onDisappear is called
+        sut.onDisappear()
+        
+        // Then: Conversation ID should be cleared
+        XCTAssertNil(ChatViewModel.currentlyViewingConversationId)
+    }
+    
+    func testCurrentlyViewingConversationMultipleChats() async throws {
+        // Given: First chat view appears
+        sut.onAppear()
+        XCTAssertEqual(ChatViewModel.currentlyViewingConversationId, "test-conv")
+        
+        // When: Second chat view appears (new conversation)
+        let sut2 = ChatViewModel(
+            conversationId: "test-conv-2",
+            currentUserId: "user1",
+            messageRepository: mockMessageRepo,
+            conversationRepository: mockConversationRepo,
+            userRepository: mockUserRepo
+        )
+        sut2.onAppear()
+        
+        // Then: Should track second conversation
+        XCTAssertEqual(ChatViewModel.currentlyViewingConversationId, "test-conv-2")
+        
+        // When: Second chat disappears
+        sut2.onDisappear()
+        
+        // Then: Should clear (not revert to first)
+        XCTAssertNil(ChatViewModel.currentlyViewingConversationId)
+        
+        // Cleanup
+        sut.onDisappear()
     }
 }
 

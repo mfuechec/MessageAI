@@ -8,6 +8,9 @@
 
 import Foundation
 import Combine
+import UserNotifications
+import FirebaseAuth
+import FirebaseFirestore
 
 /// ViewModel for managing authentication state and user sign-in/sign-up flows
 ///
@@ -148,6 +151,37 @@ class AuthViewModel: ObservableObject {
         } catch {
             // Silently fail - user can retry or sign out
             print("Failed to refresh user: \(error)")
+        }
+    }
+    
+    // MARK: - Notification Permissions
+    
+    /// Requests notification permissions from the user
+    ///
+    /// Should be called after successful authentication and profile setup
+    /// to avoid permission fatigue during onboarding.
+    ///
+    /// Flow:
+    /// 1. Request authorization for alerts, sounds, and badges
+    /// 2. If granted, register for remote notifications
+    /// 3. If denied, user can still use app (just won't get push notifications)
+    func requestNotificationPermissions() async {
+        let center = UNUserNotificationCenter.current()
+        
+        do {
+            let granted = try await center.requestAuthorization(options: [.alert, .sound, .badge])
+            
+            if granted {
+                print("✅ Notification permission granted")
+                // Register for remote notifications on main thread (UIApplication requirement)
+                await MainActor.run {
+                    UIApplication.shared.registerForRemoteNotifications()
+                }
+            } else {
+                print("⚠️ Notification permission denied by user")
+            }
+        } catch {
+            print("❌ Notification permission error: \(error)")
         }
     }
     

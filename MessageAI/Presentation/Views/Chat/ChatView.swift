@@ -103,6 +103,9 @@ struct ChatView: View {
             Text(viewModel.errorMessage ?? "An error occurred")
         }
         .onAppear {
+            // Track that user is viewing this conversation (for notification suppression)
+            viewModel.onAppear()
+            
             // Set title immediately from initial data if available
             if let conversation = initialConversation, let participants = initialParticipants {
                 setTitle(conversation: conversation, participants: participants)
@@ -115,6 +118,10 @@ struct ChatView: View {
         }
         .onChange(of: viewModel.participants) { _ in
             updateConversationTitle()
+        }
+        .onDisappear {
+            // Clear conversation tracking when user leaves (allows notifications again)
+            viewModel.onDisappear()
         }
     }
     

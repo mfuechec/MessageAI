@@ -140,7 +140,8 @@ class DIContainer {
             conversationRepository: conversationRepository,
             userRepository: userRepository,
             currentUserId: currentUserId,
-            networkMonitor: networkMonitor
+            networkMonitor: networkMonitor,
+            messageRepository: messageRepository  // For notification simulation in DEBUG
         )
     }
     

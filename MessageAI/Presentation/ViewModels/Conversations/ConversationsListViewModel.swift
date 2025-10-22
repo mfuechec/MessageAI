@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import UIKit
 
 /// ViewModel for managing conversations list display and real-time updates
 @MainActor
@@ -20,13 +21,18 @@ class ConversationsListViewModel: ObservableObject {
     private let networkMonitor: any NetworkMonitorProtocol
     private var cancellables = Set<AnyCancellable>()
     
+    #if DEBUG
+    private var notificationSimulator: NotificationSimulator?
+    #endif
+    
     // MARK: - Initialization
     
     init(
         conversationRepository: ConversationRepositoryProtocol,
         userRepository: UserRepositoryProtocol,
         currentUserId: String,
-        networkMonitor: any NetworkMonitorProtocol = NetworkMonitor()
+        networkMonitor: any NetworkMonitorProtocol = NetworkMonitor(),
+        messageRepository: MessageRepositoryProtocol? = nil
     ) {
         self.conversationRepository = conversationRepository
         self.userRepository = userRepository
@@ -35,6 +41,20 @@ class ConversationsListViewModel: ObservableObject {
         
         observeConversations()
         observeNetworkStatus()
+        
+        #if DEBUG
+        // Enable notification simulation in DEBUG builds (for simulator testing)
+        if let messageRepo = messageRepository {
+            notificationSimulator = NotificationSimulator(
+                conversationRepository: conversationRepository,
+                messageRepository: messageRepo,
+                userRepository: userRepository,
+                currentUserId: currentUserId
+            )
+            notificationSimulator?.start()
+            print("🔔 Notification simulator enabled (messages will trigger notifications)")
+        }
+        #endif
     }
     
     // MARK: - Real-Time Observations
@@ -60,6 +80,7 @@ class ConversationsListViewModel: ObservableObject {
                 }
                 
                 self.conversations = sortedConversations
+                self.updateBadgeCount()  // Update app badge with total unread count
                 self.loadParticipantUsers(from: conversations)
             }
             .store(in: &cancellables)
@@ -70,6 +91,25 @@ class ConversationsListViewModel: ObservableObject {
             let timestamp1 = conv1.lastMessageTimestamp ?? conv1.createdAt
             let timestamp2 = conv2.lastMessageTimestamp ?? conv2.createdAt
             return timestamp1 > timestamp2
+        }
+    }
+    
+    /// Updates the app icon badge count with total unread messages
+    ///
+    /// Calculates the sum of unreadCount across all conversations
+    /// and updates UIApplication.shared.applicationIconBadgeNumber.
+    ///
+    /// Note: Badge count requires notification permissions to display.
+    /// If user denied permissions, badge won't show (but still updates).
+    private func updateBadgeCount() {
+        let unreadCount = conversations.reduce(0) { count, conversation in
+            count + conversation.unreadCount(for: currentUserId)
+        }
+        
+        // Must update badge on main thread
+        DispatchQueue.main.async {
+            UIApplication.shared.applicationIconBadgeNumber = unreadCount
+            print("🔔 Badge count updated: \(unreadCount)")
         }
     }
     

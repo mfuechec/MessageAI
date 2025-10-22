@@ -28,6 +28,7 @@ struct User: Codable, Equatable, Identifiable, Hashable {
     var lastSeen: Date
     let createdAt: Date
     var fcmToken: String?
+    var fcmTokenUpdatedAt: Date?
     var timezone: String?
     var locale: String?
     var preferredLanguage: String?
@@ -77,6 +78,7 @@ struct User: Codable, Equatable, Identifiable, Hashable {
         lastSeen: Date = Date(),
         createdAt: Date = Date(),
         fcmToken: String? = nil,
+        fcmTokenUpdatedAt: Date? = nil,
         timezone: String? = nil,
         locale: String? = nil,
         preferredLanguage: String? = nil,
@@ -90,6 +92,7 @@ struct User: Codable, Equatable, Identifiable, Hashable {
         self.lastSeen = lastSeen
         self.createdAt = createdAt
         self.fcmToken = fcmToken
+        self.fcmTokenUpdatedAt = fcmTokenUpdatedAt
         self.timezone = timezone
         self.locale = locale
         self.preferredLanguage = preferredLanguage

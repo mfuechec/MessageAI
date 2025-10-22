@@ -57,7 +57,7 @@ async function fixProfileURLs() {
       }
       
       // Check if file exists in Storage
-      const storagePath = `users/${userId}/profile.jpg`;
+      const storagePath = `profile-images/${userId}/profile.jpg`;
       try {
         const bucket = storage.bucket();
         const file = bucket.file(storagePath);

@@ -16,8 +16,8 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
     // Allow authenticated users to upload their own profile images
-    match /users/{userId}/profile.jpg {
-      allow read: if true; // Anyone can read profile images
+    match /profile-images/{userId}/{filename} {
+      allow read: if request.auth != null; // Authenticated users can read profile images
       allow write: if request.auth != null && request.auth.uid == userId;
     }
     
@@ -37,7 +37,7 @@ service firebase.storage {
 
 ### What These Rules Do:
 
-1. **Profile Images** (`users/{userId}/profile.jpg`):
+1. **Profile Images** (`profile-images/{userId}/profile.jpg`):
    - ✅ Anyone can read (public profile images)
    - ✅ Only the user themselves can upload their own profile image
    - ✅ Prevents users from uploading images for other users
@@ -65,7 +65,7 @@ service firebase.storage {
 ### In Firebase Console:
 
 1. **Storage** → Files tab
-2. Look for: `users/{your-user-id}/profile.jpg`
+2. Look for: `profile-images/{your-user-id}/profile.jpg`
 3. Click file to see details and download URL
 
 ### In Firestore:
