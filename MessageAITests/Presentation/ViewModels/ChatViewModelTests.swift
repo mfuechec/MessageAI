@@ -8,18 +8,20 @@ final class ChatViewModelTests: XCTestCase {
     var mockMessageRepo: MockMessageRepository!
     var mockConversationRepo: MockConversationRepository!
     var mockUserRepo: MockUserRepository!
-    
+    var mockStorageRepo: MockStorageRepository!
+
     override func setUp() async throws {
         try await super.setUp()
-        
+
         // Clear failed message store to prevent test pollution
         let store = FailedMessageStore()
         store.clearAll()
-        
+
         mockMessageRepo = MockMessageRepository()
         mockConversationRepo = MockConversationRepository()
         mockUserRepo = MockUserRepository()
-        
+        mockStorageRepo = MockStorageRepository()
+
         // Set up default mock conversation
         mockConversationRepo.mockConversation = Conversation(
             id: "test-conv",
@@ -30,13 +32,14 @@ final class ChatViewModelTests: XCTestCase {
             createdAt: Date(),
             isGroup: false
         )
-        
+
         sut = ChatViewModel(
             conversationId: "test-conv",
             currentUserId: "user1",
             messageRepository: mockMessageRepo,
             conversationRepository: mockConversationRepo,
-            userRepository: mockUserRepo
+            userRepository: mockUserRepo,
+            storageRepository: mockStorageRepo
         )
         
         // Small delay to allow initialization
@@ -48,6 +51,7 @@ final class ChatViewModelTests: XCTestCase {
         mockMessageRepo = nil
         mockConversationRepo = nil
         mockUserRepo = nil
+        mockStorageRepo = nil
         try await super.tearDown()
     }
     
@@ -71,7 +75,8 @@ final class ChatViewModelTests: XCTestCase {
             currentUserId: "user1",
             messageRepository: mockMessageRepo,
             conversationRepository: mockConversationRepo,
-            userRepository: mockUserRepo
+            userRepository: mockUserRepo,
+            storageRepository: mockStorageRepo
         )
         
         // Give time for observation to complete
@@ -319,7 +324,8 @@ final class ChatViewModelTests: XCTestCase {
             currentUserId: "user1",
             messageRepository: mockMessageRepo,
             conversationRepository: mockConversationRepo,
-            userRepository: mockUserRepo
+            userRepository: mockUserRepo,
+            storageRepository: mockStorageRepo
         )
         
         // Give time for async loading
@@ -380,7 +386,8 @@ final class ChatViewModelTests: XCTestCase {
             currentUserId: "user1",
             messageRepository: mockMessageRepo,
             conversationRepository: mockConversationRepo,
-            userRepository: mockUserRepo
+            userRepository: mockUserRepo,
+            storageRepository: mockStorageRepo
         )
         
         // Wait for async init to complete
@@ -413,7 +420,8 @@ final class ChatViewModelTests: XCTestCase {
             currentUserId: "user1",
             messageRepository: mockMessageRepo,
             conversationRepository: mockConversationRepo,
-            userRepository: mockUserRepo
+            userRepository: mockUserRepo,
+            storageRepository: mockStorageRepo
         )
         
         // Wait for async init to complete
@@ -456,7 +464,8 @@ final class ChatViewModelTests: XCTestCase {
             currentUserId: "user1",
             messageRepository: mockMessageRepo,
             conversationRepository: mockConversationRepo,
-            userRepository: mockUserRepo
+            userRepository: mockUserRepo,
+            storageRepository: mockStorageRepo
         )
         
         // Wait for async participant loading
@@ -974,7 +983,8 @@ final class ChatViewModelTests: XCTestCase {
             currentUserId: "user1",
             messageRepository: mockMessageRepo,
             conversationRepository: mockConversationRepo,
-            userRepository: mockUserRepo
+            userRepository: mockUserRepo,
+            storageRepository: mockStorageRepo
         )
         sut2.onAppear()
         

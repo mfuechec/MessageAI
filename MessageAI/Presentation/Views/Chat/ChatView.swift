@@ -1,6 +1,7 @@
 import SwiftUI
 import MessageKit
 import InputBarAccessoryView
+import Kingfisher
 
 /// Main chat view displaying messages for a conversation
 struct ChatView: View {
@@ -166,6 +167,16 @@ struct ChatView: View {
             }
         } message: {
             Text(viewModel.errorMessage ?? "An error occurred")
+        }
+        // Image Picker Sheet
+        .sheet(isPresented: $viewModel.isImagePickerPresented) {
+            ImagePicker(selectedImage: $viewModel.selectedImage)
+        }
+        .onChange(of: viewModel.selectedImage) { oldValue, newValue in
+            if let image = newValue {
+                viewModel.sendImageMessage(image: image)
+                viewModel.selectedImage = nil  // Clear after sending
+            }
         }
         .onAppear {
             // Track that user is viewing this conversation (for notification suppression)
@@ -334,6 +345,7 @@ struct MessageKitWrapper: UIViewControllerRepresentable {
         vc.messagesCollectionView.messagesLayoutDelegate = context.coordinator
         vc.messagesCollectionView.messagesDisplayDelegate = context.coordinator
         vc.messageInputBar.delegate = context.coordinator
+        context.coordinator.messagesCollectionView = vc.messagesCollectionView
         
         // Initialize messageCount to current count to prevent 0 -> N flash
         vc.messageCount = viewModel.messages.count
@@ -422,10 +434,11 @@ struct MessageKitWrapper: UIViewControllerRepresentable {
     class Coordinator: NSObject, MessagesDataSource, MessagesLayoutDelegate, MessagesDisplayDelegate, InputBarAccessoryViewDelegate {
         let viewModel: ChatViewModel
         var isNearBottom: Bool = true
-        
+        weak var messagesCollectionView: MessagesCollectionView?
+
         // Image cache: [userId: downloadedImage]
         private var avatarImageCache: [String: UIImage] = [:]
-        
+
         init(viewModel: ChatViewModel) {
             self.viewModel = viewModel
             super.init()
@@ -719,7 +732,65 @@ struct MessageKitWrapper: UIViewControllerRepresentable {
         func footerViewSize(for section: Int, in messagesCollectionView: MessagesCollectionView) -> CGSize {
             return CGSize(width: 0, height: 8)
         }
-        
+
+        func configureMediaMessageImageView(_ imageView: UIImageView, for message: MessageType, at indexPath: IndexPath, in messagesCollectionView: MessagesCollectionView) {
+            guard let messageKitMessage = message as? MessageKitMessage,
+                  case .photo(let mediaItem) = messageKitMessage.kind,
+                  let url = mediaItem.url else {
+                return
+            }
+
+            // Use Kingfisher for async image loading
+            imageView.kf.setImage(
+                with: url,
+                placeholder: UIImage(systemName: "photo"),
+                options: [
+                    .transition(.fade(0.2)),
+                    .cacheOriginalImage
+                ]
+            )
+
+            // Show upload progress overlay if uploading
+            if let domainMessage = viewModel.messages[safe: indexPath.section],
+               let progress = viewModel.uploadProgress[domainMessage.id] {
+                addProgressOverlay(to: imageView, progress: progress)
+            }
+        }
+
+        func didTapImage(in cell: MessageCollectionViewCell) {
+            guard let collectionView = messagesCollectionView,
+                  let indexPath = collectionView.indexPath(for: cell),
+                  let message = viewModel.messages[safe: indexPath.section],
+                  let attachment = message.attachments.first else {
+                return
+            }
+
+            // TODO: Open full-screen image viewer
+            print("📷 Tapped image: \(attachment.url)")
+        }
+
+        private func addProgressOverlay(to imageView: UIImageView, progress: Double) {
+            // Remove existing overlay
+            imageView.subviews.forEach { $0.removeFromSuperview() }
+
+            // Create progress view
+            let overlayView = UIView(frame: imageView.bounds)
+            overlayView.backgroundColor = UIColor.black.withAlphaComponent(0.5)
+
+            let progressView = UIProgressView(progressViewStyle: .default)
+            progressView.progress = Float(progress)
+            progressView.translatesAutoresizingMaskIntoConstraints = false
+
+            overlayView.addSubview(progressView)
+            imageView.addSubview(overlayView)
+
+            NSLayoutConstraint.activate([
+                progressView.centerXAnchor.constraint(equalTo: overlayView.centerXAnchor),
+                progressView.centerYAnchor.constraint(equalTo: overlayView.centerYAnchor),
+                progressView.widthAnchor.constraint(equalTo: overlayView.widthAnchor, multiplier: 0.6)
+            ])
+        }
+
         // MARK: - InputBarAccessoryViewDelegate
         
         func inputBar(_ inputBar: InputBarAccessoryView, didPressSendButtonWith text: String) {
@@ -772,6 +843,8 @@ struct MessageKitWrapper: UIViewControllerRepresentable {
                 return ("✓✓", .systemBlue)
             case .failed:
                 return ("⚠️ Failed - Tap to retry", .systemRed)
+            case .queued:
+                return ("⏳ Queued", .secondaryLabel)
             }
         }
     }
@@ -936,20 +1009,32 @@ class CustomMessagesViewController: MessagesViewController {
         messageInputBar.inputTextView.placeholder = "Message"
         messageInputBar.sendButton.setTitle("Send", for: .normal)
         messageInputBar.sendButton.setTitleColor(.systemBlue, for: .normal)
-        
+
         // Send message on Enter key (instead of newline)
         messageInputBar.inputTextView.keyboardType = .default
         messageInputBar.inputTextView.returnKeyType = .send
         messageInputBar.inputTextView.delegate = self
-        
+
         // Override default behavior to send on Enter
         messageInputBar.shouldManageSendButtonEnabledState = true
         messageInputBar.inputTextView.textContainerInset = UIEdgeInsets(top: 8, left: 12, bottom: 8, right: 12)
-        
+
+        // Add attachment button (paperclip icon)
+        let attachmentButton = InputBarButtonItem()
+        attachmentButton.setSize(CGSize(width: 36, height: 36), animated: false)
+        attachmentButton.setImage(UIImage(systemName: "paperclip"), for: .normal)
+        attachmentButton.tintColor = .systemBlue
+        attachmentButton.onTouchUpInside { [weak self] _ in
+            self?.viewModel?.selectImage()
+        }
+        messageInputBar.setLeftStackViewWidthConstant(to: 36, animated: false)
+        messageInputBar.setStackViewItems([attachmentButton], forStack: .left, animated: false)
+
         // Accessibility
         messageInputBar.inputTextView.accessibilityLabel = "Message input"
         messageInputBar.inputTextView.accessibilityHint = "Enter your message"
         messageInputBar.sendButton.accessibilityLabel = "Send message"
+        attachmentButton.accessibilityLabel = "Attach image"
     }
     
     func showEmptyState() {
@@ -995,6 +1080,14 @@ extension CustomMessagesViewController: UITextViewDelegate {
 struct Sender: SenderType {
     var senderId: String
     var displayName: String
+}
+
+// MARK: - Array Extension
+
+extension Array {
+    subscript(safe index: Int) -> Element? {
+        return indices.contains(index) ? self[index] : nil
+    }
 }
 
 // MARK: - Preview

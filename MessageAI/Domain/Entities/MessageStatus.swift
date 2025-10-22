@@ -7,12 +7,14 @@ enum MessageStatus: String, Codable {
     case delivered
     case read
     case failed
-    
+    case queued  // For offline uploads waiting for network
+
     /// Sort order for status progression (0 = earliest, 3 = final)
     var sortOrder: Int {
         switch self {
         case .sending: return 0
         case .failed: return 0
+        case .queued: return 0
         case .sent: return 1
         case .delivered: return 2
         case .read: return 3

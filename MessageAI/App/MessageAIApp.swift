@@ -195,6 +195,9 @@ struct MessageAIApp: App {
     /// Explicitly call configure() to set up Firebase with environment-specific settings
     init() {
         FirebaseService.shared.configure()
+
+        // Clean up expired temporary images from previous sessions (Story 2.7)
+        ImageCacheManager.cleanupExpiredImages()
     }
     
     var body: some Scene {

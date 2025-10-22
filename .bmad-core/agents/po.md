@@ -37,6 +37,7 @@ agent:
   id: po
   title: Product Owner
   icon: 📝
+  tabName: PO - Story {story}
   whenToUse: Use for backlog management, story refinement, acceptance criteria, sprint planning, and prioritization decisions
   customization: null
 persona:

@@ -1,5 +1,27 @@
 import Foundation
 import Combine
+import UIKit
+import FirebaseFirestore
+
+/// Metadata for queued offline uploads (stored in UserDefaults)
+struct OfflineUploadMetadata: Codable {
+    let messageId: String
+    let conversationId: String
+    let timestamp: Date
+    let filePath: String  // Relative path from temp directory
+}
+
+/// Error types for image upload operations
+enum ImageUploadError: LocalizedError {
+    case invalidImageData
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidImageData:
+            return "Invalid image data"
+        }
+    }
+}
 
 /// ViewModel for managing chat messages and message sending
 @MainActor
@@ -49,6 +71,13 @@ class ChatViewModel: ObservableObject {
     // Typing indicator state
     @Published var typingUserNames: [String] = []
 
+    // Image upload state
+    @Published var uploadProgress: [String: Double] = [:]
+    @Published var uploadErrors: [String: String] = [:]
+    @Published var isImagePickerPresented: Bool = false
+    @Published var selectedImage: UIImage?
+    @Published var selectedImageURL: String?  // For full-screen viewer
+
     // Track loading states separately
     private var messagesLoaded: Bool = false
     private var participantsLoaded: Bool = false
@@ -63,6 +92,7 @@ class ChatViewModel: ObservableObject {
     private let messageRepository: MessageRepositoryProtocol
     private let conversationRepository: ConversationRepositoryProtocol
     private let userRepository: UserRepositoryProtocol
+    private let storageRepository: StorageRepositoryProtocol
     private let networkMonitor: any NetworkMonitorProtocol
     private var cancellables = Set<AnyCancellable>()
     private let failedMessageStore = FailedMessageStore()
@@ -72,7 +102,10 @@ class ChatViewModel: ObservableObject {
     private var typingAutoStopTimer: Timer?
     private var isCurrentlyTyping: Bool = false
     private var lastTypingUpdateTime: Date = .distantPast
-    
+
+    // Offline queue management
+    private let offlineQueueKey = "offlineImageUploads_metadata"
+
     // MARK: - Initialization
     
     init(
@@ -81,6 +114,7 @@ class ChatViewModel: ObservableObject {
         messageRepository: MessageRepositoryProtocol,
         conversationRepository: ConversationRepositoryProtocol,
         userRepository: UserRepositoryProtocol,
+        storageRepository: StorageRepositoryProtocol,
         networkMonitor: any NetworkMonitorProtocol = NetworkMonitor(),
         initialConversation: Conversation? = nil,
         initialParticipants: [User]? = nil
@@ -90,6 +124,7 @@ class ChatViewModel: ObservableObject {
         self.messageRepository = messageRepository
         self.conversationRepository = conversationRepository
         self.userRepository = userRepository
+        self.storageRepository = storageRepository
         self.networkMonitor = networkMonitor
         
         // If we have initial data, use it immediately (no loading needed for participants)
@@ -113,6 +148,7 @@ class ChatViewModel: ObservableObject {
         // Always observe messages (async)
         observeMessages()
         observeTypingUsers()
+        observeNetworkStatus()
         setupNetworkMonitoring()
     }
     
@@ -732,6 +768,13 @@ class ChatViewModel: ObservableObject {
         // Clear typing indicator when leaving chat
         stopTyping()
 
+        // Cancel all active uploads
+        for messageId in uploadProgress.keys {
+            Task {
+                try? await storageRepository.cancelUpload(for: messageId)
+            }
+        }
+
         if ChatViewModel.currentlyViewingConversationId == conversationId {
             ChatViewModel.currentlyViewingConversationId = nil
             print("👋 Left conversation: \(conversationId)")
@@ -1044,6 +1087,309 @@ class ChatViewModel: ObservableObject {
                 self.typingUserNames = names
             }
             .store(in: &cancellables)
+    }
+
+    // MARK: - Image Upload Methods
+
+    /// Open image picker
+    func selectImage() {
+        isImagePickerPresented = true
+    }
+
+    /// Send image message with compression and upload
+    func sendImageMessage(image: UIImage) {
+        Task {
+            let messageId = UUID().uuidString
+
+            // Step 1: Compress image
+            guard let compressedImage = ImageCompressor.compress(
+                image: image,
+                maxSizeBytes: 2 * 1024 * 1024
+            ) else {
+                errorMessage = "Unable to compress image to required size. Please select a different image."
+                return
+            }
+
+            guard let imageData = compressedImage.jpegData(compressionQuality: 0.8) else {
+                errorMessage = "Unable to process image."
+                return
+            }
+
+            // Step 2: Save to temporary storage for retry capability
+            do {
+                _ = try ImageCacheManager.saveTemporaryImage(imageData, forMessageId: messageId)
+            } catch {
+                print("⚠️ Failed to save temporary image: \(error)")
+                errorMessage = "Failed to save image temporarily."
+                return
+            }
+
+            // Step 3: Create optimistic message with caption support
+            let caption = messageText  // Capture current text for caption
+            let message = Message(
+                id: messageId,
+                conversationId: conversationId,
+                senderId: currentUserId,
+                text: caption,  // Include caption (empty string if no caption)
+                timestamp: Date(),
+                status: .sending,
+                statusUpdatedAt: Date(),
+                attachments: []  // Will be populated after upload
+            )
+
+            messages.append(message)
+            uploadProgress[messageId] = 0.0
+            messageText = ""  // Clear text input after creating message
+
+            // Step 4: Upload image in background
+            await performImageUpload(messageId: messageId, imageData: imageData)
+        }
+    }
+
+    /// Perform the actual image upload (extracted for reuse in retry)
+    private func performImageUpload(messageId: String, imageData: Data) async {
+        do {
+            // Convert Data back to UIImage for upload
+            guard let image = UIImage(data: imageData) else {
+                throw ImageUploadError.invalidImageData
+            }
+
+            // Upload to Firebase Storage
+            let attachment = try await storageRepository.uploadMessageImage(
+                image,
+                conversationId: conversationId,
+                messageId: messageId
+            ) { progress in
+                Task { @MainActor in
+                    self.uploadProgress[messageId] = progress
+                }
+            }
+
+            // Update message with attachment
+            guard let index = messages.firstIndex(where: { $0.id == messageId }) else {
+                return
+            }
+
+            var updatedMessage = messages[index]
+            updatedMessage.attachments = [attachment]
+            updatedMessage.status = .sent
+            updatedMessage.statusUpdatedAt = Date()
+
+            // Save to Firestore
+            try await messageRepository.sendMessage(updatedMessage)
+
+            // Update local array
+            messages[index] = updatedMessage
+
+            // Clean up
+            uploadProgress.removeValue(forKey: messageId)
+            uploadErrors.removeValue(forKey: messageId)
+            ImageCacheManager.deleteTemporaryImage(forMessageId: messageId)
+            removeFromOfflineQueue(messageId: messageId)
+
+            print("✅ Image message sent: \(messageId)")
+
+        } catch {
+            print("❌ Image upload failed: \(error.localizedDescription)")
+
+            // Check if error is due to network unavailability
+            let isOfflineError = (error as NSError).code == NSURLErrorNotConnectedToInternet ||
+                                 (error as NSError).code == FirestoreErrorCode.unavailable.rawValue
+
+            if isOfflineError {
+                // Queue for retry when online
+                queueOfflineUpload(messageId: messageId, imageData: imageData)
+
+                // Update UI to show queued status
+                if let index = messages.firstIndex(where: { $0.id == messageId }) {
+                    messages[index].status = .queued
+                }
+
+                uploadProgress.removeValue(forKey: messageId)
+                // Don't set uploadErrors - queued uploads will auto-retry
+
+            } else {
+                // Non-network error (permissions, quota, etc.) - show retry button
+                if let index = messages.firstIndex(where: { $0.id == messageId }) {
+                    messages[index].status = .failed
+                }
+
+                uploadProgress.removeValue(forKey: messageId)
+                uploadErrors[messageId] = "Failed to upload image. Tap to retry."
+            }
+        }
+    }
+
+    /// Retry failed image upload (loads from temp storage)
+    func retryImageUpload(messageId: String) {
+        Task {
+            // Load image data from temporary storage
+            guard let imageData = ImageCacheManager.loadTemporaryImage(forMessageId: messageId) else {
+                errorMessage = "Image no longer available. Please send again."
+
+                // Remove failed message if image is gone
+                messages.removeAll { $0.id == messageId }
+                uploadErrors.removeValue(forKey: messageId)
+                return
+            }
+
+            // Reset error state
+            uploadErrors.removeValue(forKey: messageId)
+
+            // Update message status back to sending
+            if let index = messages.firstIndex(where: { $0.id == messageId }) {
+                messages[index].status = .sending
+            }
+
+            // Retry upload with cached image data
+            await performImageUpload(messageId: messageId, imageData: imageData)
+        }
+    }
+
+    /// Cancel in-progress upload
+    func cancelImageUpload(messageId: String) {
+        Task {
+            do {
+                try await storageRepository.cancelUpload(for: messageId)
+
+                // Remove message from list
+                messages.removeAll { $0.id == messageId }
+                uploadProgress.removeValue(forKey: messageId)
+                uploadErrors.removeValue(forKey: messageId)
+
+                print("✅ Upload cancelled: \(messageId)")
+            } catch {
+                print("❌ Failed to cancel upload: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    // MARK: - Offline Queue Management
+
+    /// Save failed upload to offline queue (uses file system)
+    private func queueOfflineUpload(messageId: String, imageData: Data) {
+        do {
+            // Save image data to temporary storage (already done via ImageCacheManager)
+            // File was saved earlier in sendImageMessage(), just reference it
+
+            // Create metadata
+            let metadata = OfflineUploadMetadata(
+                messageId: messageId,
+                conversationId: conversationId,
+                timestamp: Date(),
+                filePath: "\(messageId).jpg"  // Filename in temp directory
+            )
+
+            // Load existing queue
+            var queue = loadOfflineQueue()
+            queue.append(metadata)
+
+            // Save metadata to UserDefaults (small JSON, not image data)
+            if let encoded = try? JSONEncoder().encode(queue) {
+                UserDefaults.standard.set(encoded, forKey: offlineQueueKey)
+                print("📦 Queued offline upload: \(messageId) (\(queue.count) in queue)")
+            }
+
+        } catch {
+            print("❌ Failed to queue offline upload: \(error)")
+        }
+    }
+
+    /// Load offline queue metadata from UserDefaults
+    private func loadOfflineQueue() -> [OfflineUploadMetadata] {
+        guard let data = UserDefaults.standard.data(forKey: offlineQueueKey),
+              let queue = try? JSONDecoder().decode([OfflineUploadMetadata].self, from: data) else {
+            return []
+        }
+        return queue
+    }
+
+    /// Save offline queue metadata to UserDefaults
+    private func saveOfflineQueue(_ queue: [OfflineUploadMetadata]) {
+        if let encoded = try? JSONEncoder().encode(queue) {
+            UserDefaults.standard.set(encoded, forKey: offlineQueueKey)
+        }
+    }
+
+    /// Retry all queued uploads when online (loads from file system)
+    private func retryOfflineUploads() {
+        let queue = loadOfflineQueue()
+
+        guard !queue.isEmpty else {
+            return
+        }
+
+        print("📤 Retrying \(queue.count) offline uploads")
+
+        Task {
+            var successfulUploads: [String] = []
+
+            for metadata in queue {
+                // Load image data from temporary storage
+                guard let imageData = ImageCacheManager.loadTemporaryImage(forMessageId: metadata.messageId) else {
+                    print("⚠️ Image data not found for \(metadata.messageId), removing from queue")
+                    successfulUploads.append(metadata.messageId)
+                    continue
+                }
+
+                // Only retry uploads for THIS conversation
+                guard metadata.conversationId == conversationId else {
+                    continue  // Leave in queue for other conversations
+                }
+
+                // Retry upload
+                await performImageUpload(messageId: metadata.messageId, imageData: imageData)
+
+                // Check if upload succeeded (no error in uploadErrors)
+                if uploadErrors[metadata.messageId] == nil {
+                    successfulUploads.append(metadata.messageId)
+                }
+            }
+
+            // Remove successful uploads from queue
+            if !successfulUploads.isEmpty {
+                var updatedQueue = queue.filter { !successfulUploads.contains($0.messageId) }
+                saveOfflineQueue(updatedQueue)
+                print("✅ Removed \(successfulUploads.count) successful uploads from queue")
+            }
+        }
+    }
+
+    /// Remove message from offline queue
+    private func removeFromOfflineQueue(messageId: String) {
+        var queue = loadOfflineQueue()
+        queue.removeAll { $0.messageId == messageId }
+        saveOfflineQueue(queue)
+        // Note: Temp file deleted separately in performImageUpload()
+    }
+
+    /// Get count of queued uploads for this conversation
+    func getQueuedUploadCount() -> Int {
+        let queue = loadOfflineQueue()
+        return queue.filter { $0.conversationId == conversationId }.count
+    }
+
+    /// Observe network status and retry uploads
+    private func observeNetworkStatus() {
+        networkMonitor.isConnectedPublisher
+            .sink { [weak self] (isConnected: Bool) in
+                if isConnected {
+                    self?.retryOfflineUploads()
+                }
+            }
+            .store(in: &cancellables)
+    }
+
+    // MARK: - Full-Screen Image Viewer
+
+    /// Full-screen image viewer presentation (called by MessageKit tap)
+    func presentFullScreenImage(url: String) {
+        selectedImageURL = url
+    }
+
+    /// Dismiss full-screen image viewer
+    func dismissFullScreenImage() {
+        selectedImageURL = nil
     }
 }
 

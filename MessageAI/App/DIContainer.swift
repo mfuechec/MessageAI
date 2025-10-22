@@ -126,6 +126,7 @@ class DIContainer {
             messageRepository: messageRepository,
             conversationRepository: conversationRepository,
             userRepository: userRepository,
+            storageRepository: storageRepository,
             networkMonitor: networkMonitor,
             initialConversation: initialConversation,
             initialParticipants: initialParticipants

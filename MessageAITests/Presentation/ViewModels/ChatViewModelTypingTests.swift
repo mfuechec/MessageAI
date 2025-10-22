@@ -41,6 +41,7 @@ final class ChatViewModelTypingTests: XCTestCase {
             messageRepository: mockMessageRepo,
             conversationRepository: mockConversationRepo,
             userRepository: mockUserRepo,
+            storageRepository: MockStorageRepository(),
             networkMonitor: mockNetworkMonitor
         )
 
