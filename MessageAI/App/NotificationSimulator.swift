@@ -173,7 +173,7 @@ class NotificationSimulator: ObservableObject {
                 }
                 
                 // Check if user is viewing this conversation
-                let isViewingConversation = ChatViewModel.currentlyViewingConversationId == conversation.id
+                let isViewingConversation = AppState.shared.currentlyViewingConversationId == conversation.id
                 if isViewingConversation {
                     print("🔔 [NotificationSimulator] Skipping notification (user viewing conversation)")
                     return

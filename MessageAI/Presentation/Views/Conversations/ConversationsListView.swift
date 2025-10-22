@@ -177,7 +177,36 @@ struct ConversationsListView: View {
                         )
                         print("✅ Chat opened via deep link")
                     } else {
-                        print("⚠️ Conversation not found in list (may still be loading)")
+                        // Story 2.10a: Fallback - fetch conversation if not loaded yet
+                        print("⚠️ Conversation not found in list - fetching from Firestore...")
+                        Task {
+                            do {
+                                let (conversation, participants) = try await viewModel.fetchConversationWithParticipants(id: conversationId)
+
+                                await MainActor.run {
+                                    // Create ChatViewModel
+                                    let chatVM = DIContainer.shared.makeChatViewModel(
+                                        conversationId: conversation.id,
+                                        currentUserId: authViewModel.currentUser?.id ?? "",
+                                        initialConversation: conversation,
+                                        initialParticipants: participants
+                                    )
+
+                                    // Open chat
+                                    chatContext = ChatContext(
+                                        conversation: conversation,
+                                        chatViewModel: chatVM,
+                                        participants: participants
+                                    )
+                                    print("✅ Chat opened via deep link (fetched from Firestore)")
+                                }
+                            } catch {
+                                await MainActor.run {
+                                    viewModel.errorMessage = "This conversation is no longer available"
+                                    print("❌ Failed to fetch conversation for deep link: \(error.localizedDescription)")
+                                }
+                            }
+                        }
                     }
                 }
             }

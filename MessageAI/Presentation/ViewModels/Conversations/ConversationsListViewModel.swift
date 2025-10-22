@@ -148,7 +148,26 @@ class ConversationsListViewModel: ObservableObject {
             }
             .store(in: &cancellables)
     }
-    
+
+    // MARK: - Deep Link Support (Story 2.10a)
+
+    /// Fetch conversation and participants by ID (for deep linking when not in loaded list)
+    ///
+    /// Used when user taps notification before conversation list has loaded.
+    /// Fetches conversation and its participants from Firestore.
+    /// - Returns: Tuple of (conversation, participants)
+    func fetchConversationWithParticipants(id: String) async throws -> (Conversation, [User]) {
+        do {
+            let conversation = try await conversationRepository.getConversation(id: id)
+            let participants = try await userRepository.getUsers(ids: conversation.participantIds)
+            print("✅ Fetched conversation and \(participants.count) participants for deep link: \(id)")
+            return (conversation, participants)
+        } catch {
+            print("❌ Failed to fetch conversation \(id): \(error.localizedDescription)")
+            throw error
+        }
+    }
+
     // MARK: - Display Helper Methods
     
     func displayName(for conversation: Conversation) -> String {

@@ -953,30 +953,30 @@ final class ChatViewModelTests: XCTestCase {
         )
     }
     
-    // MARK: - Conversation Tracking Tests (Story 2.10)
-    
+    // MARK: - Conversation Tracking Tests (Story 2.10a - Updated for AppState)
+
     func testCurrentlyViewingConversationTracking() async throws {
         // Given: No conversation is being viewed
-        XCTAssertNil(ChatViewModel.currentlyViewingConversationId)
-        
+        XCTAssertNil(AppState.shared.currentlyViewingConversationId)
+
         // When: onAppear is called
         sut.onAppear()
-        
+
         // Then: Conversation ID should be set
-        XCTAssertEqual(ChatViewModel.currentlyViewingConversationId, "test-conv")
-        
+        XCTAssertEqual(AppState.shared.currentlyViewingConversationId, "test-conv")
+
         // When: onDisappear is called
         sut.onDisappear()
-        
+
         // Then: Conversation ID should be cleared
-        XCTAssertNil(ChatViewModel.currentlyViewingConversationId)
+        XCTAssertNil(AppState.shared.currentlyViewingConversationId)
     }
     
     func testCurrentlyViewingConversationMultipleChats() async throws {
         // Given: First chat view appears
         sut.onAppear()
-        XCTAssertEqual(ChatViewModel.currentlyViewingConversationId, "test-conv")
-        
+        XCTAssertEqual(AppState.shared.currentlyViewingConversationId, "test-conv")
+
         // When: Second chat view appears (new conversation)
         let sut2 = ChatViewModel(
             conversationId: "test-conv-2",
@@ -987,16 +987,16 @@ final class ChatViewModelTests: XCTestCase {
             storageRepository: mockStorageRepo
         )
         sut2.onAppear()
-        
+
         // Then: Should track second conversation
-        XCTAssertEqual(ChatViewModel.currentlyViewingConversationId, "test-conv-2")
-        
+        XCTAssertEqual(AppState.shared.currentlyViewingConversationId, "test-conv-2")
+
         // When: Second chat disappears
         sut2.onDisappear()
-        
+
         // Then: Should clear (not revert to first)
-        XCTAssertNil(ChatViewModel.currentlyViewingConversationId)
-        
+        XCTAssertNil(AppState.shared.currentlyViewingConversationId)
+
         // Cleanup
         sut.onDisappear()
     }

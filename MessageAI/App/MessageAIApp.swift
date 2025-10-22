@@ -66,8 +66,9 @@ class AppDelegate: NSObject, UIApplicationDelegate, MessagingDelegate, UNUserNot
         }
     }
     
-    /// Saves FCM token to Firestore user document
+    /// Saves FCM token to Firestore user document with retry logic
     ///
+    /// Story 2.10a: Implements exponential backoff retry (3 attempts: 1s, 2s, 4s)
     /// Token is used by Cloud Functions to send push notifications
     /// to specific devices when messages arrive.
     private func saveFCMToken(_ token: String) async {
@@ -75,17 +76,33 @@ class AppDelegate: NSObject, UIApplicationDelegate, MessagingDelegate, UNUserNot
             print("⚠️ No authenticated user - FCM token not saved")
             return
         }
-        
+
         let db = Firestore.firestore()
-        
-        do {
-            try await db.collection("users").document(userId).updateData([
-                "fcmToken": token,
-                "fcmTokenUpdatedAt": FieldValue.serverTimestamp()
-            ])
-            print("✅ FCM token saved to Firestore for user: \(userId)")
-        } catch {
-            print("❌ Failed to save FCM token: \(error.localizedDescription)")
+        var retryCount = 0
+        let maxRetries = 3
+
+        while retryCount < maxRetries {
+            do {
+                try await db.collection("users").document(userId).updateData([
+                    "fcmToken": token,
+                    "fcmTokenUpdatedAt": FieldValue.serverTimestamp()
+                ])
+                print("✅ FCM token saved to Firestore for user: \(userId)")
+                return  // Success - exit retry loop
+
+            } catch {
+                retryCount += 1
+
+                if retryCount < maxRetries {
+                    // Exponential backoff: 1s, 2s, 4s
+                    let delay = UInt64(pow(2.0, Double(retryCount - 1)) * 1_000_000_000)
+                    try? await Task.sleep(nanoseconds: delay)
+                    print("⚠️ FCM token save failed (attempt \(retryCount)/\(maxRetries)), retrying...")
+                } else {
+                    print("❌ Failed to save FCM token after \(maxRetries) attempts: \(error.localizedDescription)")
+                    // Token will be retried on next app launch
+                }
+            }
         }
     }
     
@@ -106,17 +123,23 @@ class AppDelegate: NSObject, UIApplicationDelegate, MessagingDelegate, UNUserNot
         print("🔔 Foreground notification received:")
         print("   Title: \(notification.request.content.title)")
         print("   Body: \(notification.request.content.body)")
-        
-        // Check if user is currently viewing this conversation
+
+        // Check if user is currently viewing this conversation (using AppState)
         if let conversationId = userInfo["conversationId"] as? String {
-            let isViewingConversation = ChatViewModel.currentlyViewingConversationId == conversationId
-            
-            if isViewingConversation {
-                // User is viewing conversation - don't show notification
-                print("   ⏭️ Suppressed (user viewing conversation)")
-                completionHandler([])
-                return
+            Task { @MainActor in
+                let isViewingConversation = AppState.shared.currentlyViewingConversationId == conversationId
+
+                if isViewingConversation {
+                    // User is viewing conversation - don't show notification
+                    print("   ⏭️ Suppressed (user viewing conversation)")
+                    completionHandler([])
+                } else {
+                    // Show banner notification with sound and badge
+                    print("   ✅ Showing notification banner")
+                    completionHandler([.banner, .sound, .badge])
+                }
             }
+            return
         }
         
         // Show banner notification with sound and badge

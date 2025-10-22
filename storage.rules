@@ -26,11 +26,12 @@ service firebase.storage {
     
     // Document attachments: /documents/{conversationId}/{messageId}/{filename}
     match /documents/{conversationId}/{messageId}/{filename} {
-      // Allow upload if authenticated and participant (with 10MB limit)
-      allow write: if isAuthenticated() 
+      // Allow upload if authenticated and participant (with 10MB limit and PDF only)
+      allow write: if isAuthenticated()
         && isParticipant(conversationId)
-        && request.resource.size < 10 * 1024 * 1024;
-      
+        && request.resource.size < 10 * 1024 * 1024
+        && request.resource.contentType == 'application/pdf';
+
       // Allow read if authenticated and participant
       allow read: if isAuthenticated() && isParticipant(conversationId);
     }

@@ -127,7 +127,32 @@ class AuthViewModel: ObservableObject {
     }
     
     /// Signs out the current user
+    ///
+    /// Story 2.10a: Cleans up FCM token and app state on sign-out
+    /// to prevent cross-user notification leakage
     func signOut() async {
+        // Step 1: Clear FCM token from Firestore (Story 2.10a)
+        // Prevents old user from receiving notifications after new user signs in
+        if let userId = currentUser?.id {
+            do {
+                let db = Firestore.firestore()
+                try await db.collection("users").document(userId).updateData([
+                    "fcmToken": FieldValue.delete(),
+                    "fcmTokenUpdatedAt": FieldValue.delete()
+                ])
+                print("✅ FCM token removed for user: \(userId)")
+            } catch {
+                print("⚠️ Failed to remove FCM token: \(error.localizedDescription)")
+                // Don't block sign-out if this fails
+            }
+        }
+
+        // Step 2: Clear app state (Story 2.10a)
+        await MainActor.run {
+            AppState.shared.clearState()
+        }
+
+        // Step 3: Sign out from Firebase Auth (existing logic)
         do {
             try await authRepository.signOut()
             currentUser = nil

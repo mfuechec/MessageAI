@@ -45,7 +45,11 @@ struct QuickLookPreview: UIViewControllerRepresentable {
         }
 
         func previewController(_ controller: QLPreviewController, previewItemAt index: Int) -> QLPreviewItem {
-            return localFileURL! as QLPreviewItem
+            guard let url = localFileURL else {
+                // Return empty URL if download failed
+                return URL(fileURLWithPath: "") as QLPreviewItem
+            }
+            return url as QLPreviewItem
         }
 
         // MARK: - File Download

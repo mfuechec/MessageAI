@@ -27,12 +27,6 @@ enum ImageUploadError: LocalizedError {
 @MainActor
 class ChatViewModel: ObservableObject {
     
-    // MARK: - Static Properties (for notification suppression)
-    
-    /// Tracks the conversation ID that the user is currently viewing
-    /// Used to suppress push notifications for messages in the active conversation
-    static var currentlyViewingConversationId: String?
-    
     // MARK: - Published Properties
 
     @Published var messages: [Message] = []
@@ -227,9 +221,9 @@ class ChatViewModel: ObservableObject {
                 self.messages = mergedMessages
                 self.messagesLoaded = true
                 self.updateLoadingState()
-                
+
                 // Mark messages as read when they load (if user is viewing)
-                if ChatViewModel.currentlyViewingConversationId == self.conversationId {
+                if AppState.shared.currentlyViewingConversationId == self.conversationId {
                     print("📖 [ChatViewModel] Messages loaded while viewing - marking as read")
                     Task {
                         await self.markMessagesAsRead()
@@ -767,21 +761,21 @@ class ChatViewModel: ObservableObject {
     }
     
     // MARK: - Lifecycle Methods (for notification suppression)
-    
+
     /// Called when ChatView appears
     ///
-    /// Sets the static currentlyViewingConversationId to suppress
+    /// Sets AppState.currentlyViewingConversationId to suppress
     /// push notifications for messages in this conversation.
     /// Also marks unread messages as read.
     func onAppear() {
-        ChatViewModel.currentlyViewingConversationId = conversationId
+        AppState.shared.currentlyViewingConversationId = conversationId
         print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
         print("👀 [LIFECYCLE] ChatView.onAppear()")
         print("   Conversation ID: \(conversationId)")
         print("   Current User: \(currentUserId)")
         print("   Messages loaded: \(messages.count)")
         print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-        
+
         // Mark messages as read (AC #1, #5)
         Task {
             await markMessagesAsRead()
@@ -790,7 +784,7 @@ class ChatViewModel: ObservableObject {
     
     /// Called when ChatView disappears
     ///
-    /// Clears the static currentlyViewingConversationId to allow
+    /// Clears AppState.currentlyViewingConversationId to allow
     /// push notifications again when user leaves the conversation.
     func onDisappear() {
         // Clear typing indicator when leaving chat
@@ -803,8 +797,8 @@ class ChatViewModel: ObservableObject {
             }
         }
 
-        if ChatViewModel.currentlyViewingConversationId == conversationId {
-            ChatViewModel.currentlyViewingConversationId = nil
+        if AppState.shared.currentlyViewingConversationId == conversationId {
+            AppState.shared.currentlyViewingConversationId = nil
             print("👋 Left conversation: \(conversationId)")
         }
     }

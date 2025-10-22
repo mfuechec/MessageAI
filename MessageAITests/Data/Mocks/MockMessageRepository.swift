@@ -44,7 +44,7 @@ class MockMessageRepository: MessageRepositoryProtocol {
 
         // Story 2.9: Conditional failure based on message ID
         if let failId = shouldFailMessageId, message.id == failId {
-            throw mockError ?? RepositoryError.networkError("Mock network error")
+            throw mockError ?? RepositoryError.messageNotFound("Mock send failure for message \(failId)")
         }
 
         if shouldFail {
