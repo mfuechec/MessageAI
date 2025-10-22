@@ -85,6 +85,11 @@ class ChatViewModel: ObservableObject {
     // Track loading states separately
     private var messagesLoaded: Bool = false
     private var participantsLoaded: Bool = false
+
+    // Pagination state (Story 2.11)
+    @Published var isLoadingMore: Bool = false
+    @Published var hasMoreMessages: Bool = true
+    private let pageSize = 50
     
     // MARK: - Public Properties
     
@@ -422,10 +427,50 @@ class ChatViewModel: ObservableObject {
         errorMessage = nil
     }
     
-    /// Loads more messages for pagination (stub for future implementation)
+    /// Loads more messages for pagination (Story 2.11)
     func loadMoreMessages() async {
-        // Pagination implementation deferred to Story 2.x (Performance Optimization)
-        // For MVP, all messages are loaded via the real-time listener
+        guard !isLoadingMore && hasMoreMessages else {
+            print("⚠️ [Pagination] Cannot load more: isLoadingMore=\(isLoadingMore), hasMoreMessages=\(hasMoreMessages)")
+            return
+        }
+
+        // Get the oldest message ID as pagination cursor
+        guard let oldestMessage = messages.first else {
+            print("⚠️ [Pagination] No messages in array, cannot paginate")
+            hasMoreMessages = false
+            return
+        }
+
+        print("📄 [Pagination] Loading more messages before \(oldestMessage.id.prefix(8))...")
+        isLoadingMore = true
+
+        do {
+            let olderMessages = try await messageRepository.loadMoreMessages(
+                conversationId: conversationId,
+                lastMessageId: oldestMessage.id,
+                limit: pageSize
+            )
+
+            print("📄 [Pagination] Loaded \(olderMessages.count) older messages")
+
+            // If we got fewer messages than the page size, we've reached the end
+            if olderMessages.count < pageSize {
+                hasMoreMessages = false
+                print("📄 [Pagination] Reached end of messages")
+            }
+
+            // Prepend older messages to the beginning of the array
+            if !olderMessages.isEmpty {
+                messages.insert(contentsOf: olderMessages, at: 0)
+                print("📄 [Pagination] Total messages now: \(messages.count)")
+            }
+
+        } catch {
+            print("❌ [Pagination] Failed to load more messages: \(error)")
+            errorMessage = "Failed to load older messages. Please try again."
+        }
+
+        isLoadingMore = false
     }
     
     // MARK: - Group Chat Helpers
@@ -766,6 +811,7 @@ class ChatViewModel: ObservableObject {
     ///
     /// Sets AppState.currentlyViewingConversationId to suppress
     /// push notifications for messages in this conversation.
+    /// Also syncs to Firestore for Cloud Function notification suppression (Story 2.10 QA Fix).
     /// Also marks unread messages as read.
     func onAppear() {
         AppState.shared.currentlyViewingConversationId = conversationId
@@ -775,6 +821,17 @@ class ChatViewModel: ObservableObject {
         print("   Current User: \(currentUserId)")
         print("   Messages loaded: \(messages.count)")
         print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+
+        // Sync to Firestore for Cloud Function notification suppression (Story 2.10 QA Fix)
+        Task {
+            do {
+                try await userRepository.updateCurrentConversation(conversationId: conversationId)
+                print("✅ [QA FIX] Synced currentConversationId to Firestore: \(conversationId)")
+            } catch {
+                print("⚠️ [QA FIX] Failed to sync currentConversationId to Firestore: \(error)")
+                // Non-critical - AppDelegate foreground suppression still works
+            }
+        }
 
         // Mark messages as read (AC #1, #5)
         Task {
@@ -786,6 +843,7 @@ class ChatViewModel: ObservableObject {
     ///
     /// Clears AppState.currentlyViewingConversationId to allow
     /// push notifications again when user leaves the conversation.
+    /// Also clears from Firestore for Cloud Function notification logic (Story 2.10 QA Fix).
     func onDisappear() {
         // Clear typing indicator when leaving chat
         stopTyping()
@@ -800,6 +858,17 @@ class ChatViewModel: ObservableObject {
         if AppState.shared.currentlyViewingConversationId == conversationId {
             AppState.shared.currentlyViewingConversationId = nil
             print("👋 Left conversation: \(conversationId)")
+
+            // Clear from Firestore for Cloud Function notification logic (Story 2.10 QA Fix)
+            Task {
+                do {
+                    try await userRepository.updateCurrentConversation(conversationId: nil)
+                    print("✅ [QA FIX] Cleared currentConversationId from Firestore")
+                } catch {
+                    print("⚠️ [QA FIX] Failed to clear currentConversationId from Firestore: \(error)")
+                    // Non-critical
+                }
+            }
         }
     }
     

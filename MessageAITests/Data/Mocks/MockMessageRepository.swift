@@ -133,11 +133,11 @@ class MockMessageRepository: MessageRepositoryProtocol {
         markMessagesAsReadCalled = true
         capturedReadMessageIds = messageIds
         capturedReadUserId = userId
-        
+
         if shouldFail {
             throw mockError ?? RepositoryError.messageNotFound("Mock error")
         }
-        
+
         // Update messages in mockMessages for testing
         for messageId in messageIds {
             if let index = mockMessages.firstIndex(where: { $0.id == messageId }) {
@@ -152,7 +152,26 @@ class MockMessageRepository: MessageRepositoryProtocol {
             }
         }
     }
-    
+
+    func loadMoreMessages(conversationId: String, lastMessageId: String, limit: Int) async throws -> [Message] {
+        capturedConversationId = conversationId
+        capturedMessageId = lastMessageId
+        capturedLimit = limit
+
+        if shouldFail {
+            throw mockError ?? RepositoryError.networkError(NSError(domain: "test", code: -1))
+        }
+
+        // Find the index of the last message
+        guard let lastIndex = mockMessages.firstIndex(where: { $0.id == lastMessageId }) else {
+            return []  // Last message not found, return empty
+        }
+
+        // Return messages before the last message (older messages)
+        let olderMessages = Array(mockMessages[0..<lastIndex].suffix(limit))
+        return olderMessages
+    }
+
     // MARK: - Helper Methods
     
     /// Resets all tracking and configurable properties

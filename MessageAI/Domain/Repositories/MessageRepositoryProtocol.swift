@@ -40,5 +40,13 @@ protocol MessageRepositoryProtocol {
     ///   - messageIds: Array of message IDs to mark as read
     ///   - userId: The user ID marking messages as read
     func markMessagesAsRead(messageIds: [String], userId: String) async throws
+
+    /// Load more messages for pagination (Story 2.11)
+    /// - Parameters:
+    ///   - conversationId: The conversation ID
+    ///   - lastMessageId: The ID of the last message loaded (for pagination cursor)
+    ///   - limit: Maximum number of messages to fetch
+    /// - Returns: Array of older messages
+    func loadMoreMessages(conversationId: String, lastMessageId: String, limit: Int) async throws -> [Message]
 }
 

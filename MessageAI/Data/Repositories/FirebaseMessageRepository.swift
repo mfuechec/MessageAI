@@ -42,16 +42,18 @@ final class FirebaseMessageRepository: MessageRepositoryProtocol {
     // MARK: - MessageRepositoryProtocol
     
     func sendMessage(_ message: Message) async throws {
-        do {
-            let data = try Firestore.Encoder.default.encode(message)
-            try await db.collection("messages").document(message.id).setData(data)
-            print("✅ Message sent: \(message.id)")
-        } catch let error as EncodingError {
-            print("❌ Send message failed (encoding): \(error.localizedDescription)")
-            throw RepositoryError.encodingError(error)
-        } catch {
-            print("❌ Send message failed: \(error.localizedDescription)")
-            throw RepositoryError.networkError(error)
+        try await NetworkRetryPolicy.retry {
+            do {
+                let data = try Firestore.Encoder.default.encode(message)
+                try await self.db.collection("messages").document(message.id).setData(data)
+                print("✅ Message sent: \(message.id)")
+            } catch let error as EncodingError {
+                print("❌ Send message failed (encoding): \(error.localizedDescription)")
+                throw RepositoryError.encodingError(error)
+            } catch {
+                print("❌ Send message failed: \(error.localizedDescription)")
+                throw RepositoryError.networkError(error)
+            }
         }
     }
     
@@ -123,57 +125,61 @@ final class FirebaseMessageRepository: MessageRepositoryProtocol {
     }
     
     func editMessage(id: String, newText: String) async throws {
-        do {
-            // Fetch current message to get previous text for history
-            let document = try await db.collection("messages").document(id).getDocument()
-            guard let data = document.data(),
-                  let currentText = data["text"] as? String else {
-                throw RepositoryError.messageNotFound(id)
+        try await NetworkRetryPolicy.retry {
+            do {
+                // Fetch current message to get previous text for history
+                let document = try await self.db.collection("messages").document(id).getDocument()
+                guard let data = document.data(),
+                      let currentText = data["text"] as? String else {
+                    throw RepositoryError.messageNotFound(id)
+                }
+
+                // Create edit history entry with previous text
+                let editEntry = MessageEdit(
+                    text: currentText,
+                    editedAt: Date()
+                )
+                let editData = try Firestore.Encoder.default.encode(editEntry)
+
+                try await self.db.collection("messages").document(id).updateData([
+                    "text": newText,
+                    "isEdited": true,
+                    "editHistory": FieldValue.arrayUnion([editData])
+                ])
+                print("✅ Message edited: \(id)")
+            } catch let error as RepositoryError {
+                throw error
+            } catch let error as EncodingError {
+                print("❌ Edit message failed (encoding): \(error.localizedDescription)")
+                throw RepositoryError.encodingError(error)
+            } catch {
+                print("❌ Edit message failed: \(error.localizedDescription)")
+                throw RepositoryError.networkError(error)
             }
-            
-            // Create edit history entry with previous text
-            let editEntry = MessageEdit(
-                text: currentText,
-                editedAt: Date()
-            )
-            let editData = try Firestore.Encoder.default.encode(editEntry)
-            
-            try await db.collection("messages").document(id).updateData([
-                "text": newText,
-                "isEdited": true,
-                "editHistory": FieldValue.arrayUnion([editData])
-            ])
-            print("✅ Message edited: \(id)")
-        } catch let error as RepositoryError {
-            throw error
-        } catch let error as EncodingError {
-            print("❌ Edit message failed (encoding): \(error.localizedDescription)")
-            throw RepositoryError.encodingError(error)
-        } catch {
-            print("❌ Edit message failed: \(error.localizedDescription)")
-            throw RepositoryError.networkError(error)
         }
     }
     
     func deleteMessage(id: String) async throws {
-        do {
-            // Get current user ID for deletedBy field
-            guard let currentUserId = Auth.auth().currentUser?.uid else {
-                throw RepositoryError.unauthorized
+        try await NetworkRetryPolicy.retry {
+            do {
+                // Get current user ID for deletedBy field
+                guard let currentUserId = Auth.auth().currentUser?.uid else {
+                    throw RepositoryError.unauthorized
+                }
+
+                try await self.db.collection("messages").document(id).updateData([
+                    "isDeleted": true,
+                    "text": "", // Remove text for privacy compliance
+                    "deletedAt": FieldValue.serverTimestamp(),
+                    "deletedBy": currentUserId
+                ])
+                print("✅ Message deleted: \(id)")
+            } catch let error as RepositoryError {
+                throw error
+            } catch {
+                print("❌ Delete message failed: \(error.localizedDescription)")
+                throw RepositoryError.networkError(error)
             }
-            
-            try await db.collection("messages").document(id).updateData([
-                "isDeleted": true,
-                "text": "", // Remove text for privacy compliance
-                "deletedAt": FieldValue.serverTimestamp(),
-                "deletedBy": currentUserId
-            ])
-            print("✅ Message deleted: \(id)")
-        } catch let error as RepositoryError {
-            throw error
-        } catch {
-            print("❌ Delete message failed: \(error.localizedDescription)")
-            throw RepositoryError.networkError(error)
         }
     }
     
@@ -216,6 +222,44 @@ final class FirebaseMessageRepository: MessageRepositoryProtocol {
             print("❌ [REPOSITORY] Failed to mark messages as read: \(error)")
             print("   Error details: \(error.localizedDescription)")
             print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+            throw RepositoryError.networkError(error)
+        }
+    }
+
+    func loadMoreMessages(conversationId: String, lastMessageId: String, limit: Int) async throws -> [Message] {
+        print("📄 [REPOSITORY] loadMoreMessages: conversationId=\(conversationId), lastMessageId=\(lastMessageId.prefix(8))..., limit=\(limit)")
+
+        do {
+            // First, get the last message document to use as cursor
+            let lastMessageDoc = try await db.collection("messages")
+                .document(lastMessageId)
+                .getDocument()
+
+            guard lastMessageDoc.exists else {
+                print("❌ Last message not found: \(lastMessageId)")
+                return []
+            }
+
+            // Query for older messages (using timestamp DESC order, so "before" means startAfter)
+            let snapshot = try await db.collection("messages")
+                .whereField("conversationId", isEqualTo: conversationId)
+                .order(by: "timestamp", descending: true)  // DESC to get older first
+                .start(afterDocument: lastMessageDoc)
+                .limit(to: limit)
+                .getDocuments()
+
+            let messages = snapshot.documents.compactMap { doc -> Message? in
+                try? Firestore.Decoder.default.decode(Message.self, from: doc.data())
+            }
+
+            // Reverse to maintain chronological order (oldest first)
+            let sortedMessages = messages.sorted { $0.timestamp < $1.timestamp }
+
+            print("✅ [REPOSITORY] Loaded \(sortedMessages.count) older messages")
+            return sortedMessages
+
+        } catch {
+            print("❌ [REPOSITORY] loadMoreMessages failed: \(error)")
             throw RepositoryError.networkError(error)
         }
     }
