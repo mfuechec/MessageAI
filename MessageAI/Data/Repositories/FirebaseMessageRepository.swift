@@ -176,5 +176,48 @@ final class FirebaseMessageRepository: MessageRepositoryProtocol {
             throw RepositoryError.networkError(error)
         }
     }
+    
+    func markMessagesAsRead(messageIds: [String], userId: String) async throws {
+        guard !messageIds.isEmpty else {
+            print("📖 [REPOSITORY] No messages to mark as read")
+            return
+        }
+        
+        print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        print("📖 [REPOSITORY] markMessagesAsRead()")
+        print("   User ID: \(userId.prefix(10))...")
+        print("   Message Count: \(messageIds.count)")
+        
+        // Use batch write for atomic operation (AC #4)
+        let batch = db.batch()
+        
+        for messageId in messageIds {
+            print("   📝 Batching update for message: \(messageId.prefix(12))...")
+            let messageRef = db.collection("messages").document(messageId)
+            
+            let updates: [String: Any] = [
+                "readBy": FieldValue.arrayUnion([userId]),
+                "readCount": FieldValue.increment(Int64(1)),
+                "status": MessageStatus.read.rawValue,
+                "statusUpdatedAt": FieldValue.serverTimestamp()
+            ]
+            
+            print("      Updates: readBy+=[\(userId.prefix(8))...], readCount+1, status=read")
+            
+            batch.updateData(updates, forDocument: messageRef)
+        }
+        
+        do {
+            print("   🔄 Committing batch to Firestore...")
+            try await batch.commit()
+            print("✅ [REPOSITORY] Successfully marked \(messageIds.count) messages as read in Firestore")
+            print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        } catch {
+            print("❌ [REPOSITORY] Failed to mark messages as read: \(error)")
+            print("   Error details: \(error.localizedDescription)")
+            print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+            throw RepositoryError.networkError(error)
+        }
+    }
 }
 

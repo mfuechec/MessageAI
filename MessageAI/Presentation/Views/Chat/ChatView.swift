@@ -26,9 +26,14 @@ struct ChatView: View {
     var body: some View {
         ZStack {
             // Always show content (MessageKit handles empty state)
-            MessageKitWrapper(viewModel: viewModel, conversationTitle: $conversationTitle)
-                .edgesIgnoringSafeArea(.bottom)
-            
+            VStack(spacing: 0) {
+                MessageKitWrapper(viewModel: viewModel, conversationTitle: $conversationTitle)
+                    .edgesIgnoringSafeArea(.bottom)
+
+                // Typing indicator (shows above input bar)
+                TypingIndicatorView(typingUserNames: viewModel.typingUserNames)
+            }
+
             // Only show loading overlay if we DON'T have initial data
             // (i.e., when opening conversation without cached data)
             if viewModel.isLoading && !viewModel.isSending && initialConversation == nil {
@@ -730,6 +735,11 @@ struct MessageKitWrapper: UIViewControllerRepresentable {
         func inputBar(_ inputBar: InputBarAccessoryView, textViewTextDidChangeTo text: String) {
             // Auto-enable send button when there's text
             inputBar.sendButton.isEnabled = !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+
+            // Trigger typing indicator when text changes
+            if !text.isEmpty {
+                viewModel.startTyping()
+            }
         }
         
         // MARK: - Scroll Detection

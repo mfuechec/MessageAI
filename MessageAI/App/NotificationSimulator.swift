@@ -50,6 +50,27 @@ class NotificationSimulator: ObservableObject {
     
     private var isEnabled = true // Can be toggled
     
+    // UserDefaults key for tracking notified messages
+    private var notifiedMessagesKey: String {
+        "notifiedMessages_\(currentUserId)"
+    }
+    
+    /// Set of message IDs that we've already notified the user about
+    private var notifiedMessageIds: Set<String> {
+        get {
+            if let data = UserDefaults.standard.data(forKey: notifiedMessagesKey),
+               let ids = try? JSONDecoder().decode(Set<String>.self, from: data) {
+                return ids
+            }
+            return []
+        }
+        set {
+            if let data = try? JSONEncoder().encode(newValue) {
+                UserDefaults.standard.set(data, forKey: notifiedMessagesKey)
+            }
+        }
+    }
+    
     init(
         conversationRepository: ConversationRepositoryProtocol,
         messageRepository: MessageRepositoryProtocol,
@@ -69,6 +90,9 @@ class NotificationSimulator: ObservableObject {
         print("🔔 [NotificationSimulator] Started (DEBUG mode)")
         print("   Will trigger local notifications for incoming messages")
         
+        // Clean up old notified messages (keep only most recent 100)
+        cleanupOldNotifiedMessages()
+        
         // Watch all conversations
         conversationRepository.observeConversations(userId: currentUserId)
             .sink { [weak self] conversations in
@@ -80,6 +104,29 @@ class NotificationSimulator: ObservableObject {
                 }
             }
             .store(in: &cancellables)
+    }
+    
+    /// Cleans up old notified messages to prevent UserDefaults from growing indefinitely
+    /// Keeps only the most recent 100 message IDs
+    private func cleanupOldNotifiedMessages() {
+        var notifiedIds = notifiedMessageIds
+        
+        // Only cleanup if we have more than 100 entries
+        if notifiedIds.count > 100 {
+            // Keep most recent 100
+            // Since we can't sort a Set directly and don't have timestamps,
+            // we'll just remove enough to get back to 100
+            let idsToKeep = 100
+            let idsToRemove = notifiedIds.count - idsToKeep
+            
+            // Remove oldest entries (arbitrarily, since we don't track timestamps)
+            for id in notifiedIds.prefix(idsToRemove) {
+                notifiedIds.remove(id)
+            }
+            
+            notifiedMessageIds = notifiedIds
+            print("🔔 [NotificationSimulator] Cleaned up old notified messages (kept \(idsToKeep))")
+        }
     }
     
     /// Stops the simulator
@@ -112,12 +159,29 @@ class NotificationSimulator: ObservableObject {
                     return
                 }
                 
+                // Check if user has already read this message
+                if latestMessage.readBy.contains(self.currentUserId) {
+                    print("🔔 [NotificationSimulator] Skipping notification (message already read)")
+                    return
+                }
+                
+                // Check if we've already notified about this message
+                var notifiedIds = self.notifiedMessageIds
+                if notifiedIds.contains(latestMessage.id) {
+                    print("🔔 [NotificationSimulator] Skipping notification (already notified)")
+                    return
+                }
+                
                 // Check if user is viewing this conversation
                 let isViewingConversation = ChatViewModel.currentlyViewingConversationId == conversation.id
                 if isViewingConversation {
                     print("🔔 [NotificationSimulator] Skipping notification (user viewing conversation)")
                     return
                 }
+                
+                // Mark as notified BEFORE triggering (prevent duplicates)
+                notifiedIds.insert(latestMessage.id)
+                self.notifiedMessageIds = notifiedIds
                 
                 // Trigger local notification
                 print("🔔 [NotificationSimulator] New message detected! Triggering notification...")

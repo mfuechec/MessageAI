@@ -75,9 +75,14 @@ fastlane/test_output
 *.gcno
 *.profdata
 
-# Cursor/Claude AI settings (user-specific)
+# Cursor AI settings (user-specific)
 .cursor/
-.claude/
+
+# Claude Code settings
+# Track shared settings and hooks, ignore personal preferences
+.claude/settings.local.json
+.claude/cache/
+.claude/logs/
 
 # AI Debug Logs
 .ai/

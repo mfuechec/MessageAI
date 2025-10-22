@@ -34,5 +34,11 @@ protocol MessageRepositoryProtocol {
     /// Soft delete a message (sets isDeleted flag)
     /// - Parameter id: The message ID to delete
     func deleteMessage(id: String) async throws
+    
+    /// Mark messages as read by a specific user
+    /// - Parameters:
+    ///   - messageIds: Array of message IDs to mark as read
+    ///   - userId: The user ID marking messages as read
+    func markMessagesAsRead(messageIds: [String], userId: String) async throws
 }
 

@@ -1,0 +1,235 @@
+# SwiftLint Configuration for MessageAI
+# Enforces Clean Architecture and Swift coding standards
+
+# ============================================================
+# Paths
+# ============================================================
+
+included:
+  - MessageAI
+  - MessageAITests
+
+excluded:
+  - MessageAI/Resources
+  - MessageAI.xcodeproj
+  - .build
+  - DerivedData
+  - Pods
+  - vendor
+
+# ============================================================
+# Analyzer Rules (require full compilation - disabled for hooks)
+# ============================================================
+
+analyzer_rules:
+  - unused_declaration
+  - unused_import
+
+# ============================================================
+# Enabled Rules
+# ============================================================
+
+opt_in_rules:
+  - array_init
+  - closure_end_indentation
+  - closure_spacing
+  - contains_over_first_not_nil
+  - empty_count
+  - empty_string
+  - explicit_init
+  - fatal_error_message
+  - first_where
+  - force_unwrapping  # NO force unwrapping in production code
+  - implicitly_unwrapped_optional
+  - multiline_arguments
+  - multiline_parameters
+  - operator_usage_whitespace
+  - overridden_super_call
+  - redundant_nil_coalescing
+  - sorted_first_last
+  - unneeded_parentheses_in_closure_argument
+  - vertical_whitespace_closing_braces
+
+# ============================================================
+# Disabled Rules
+# ============================================================
+
+disabled_rules:
+  - todo  # TODOs are fine for tracking work
+  - trailing_whitespace  # Let editors handle this
+
+# ============================================================
+# Rule Configurations
+# ============================================================
+
+# Line Length (max 120 characters)
+line_length:
+  warning: 120
+  error: 150
+  ignores_comments: true
+  ignores_urls: true
+
+# Function Body Length (max 50 lines per coding standards)
+function_body_length:
+  warning: 50
+  error: 75
+
+# Type Body Length (max 300 lines)
+type_body_length:
+  warning: 300
+  error: 400
+
+# File Length (max 500 lines - encourage modular design)
+file_length:
+  warning: 500
+  error: 750
+  ignore_comment_only_lines: true
+
+# Cyclomatic Complexity (max 10 per coding standards)
+cyclomatic_complexity:
+  warning: 10
+  error: 15
+  ignores_case_statements: false
+
+# Nesting Depth (max 3 levels - encourage guard statements)
+nesting:
+  type_level:
+    warning: 2
+    error: 3
+  function_level:
+    warning: 3
+    error: 5
+
+# Identifier Name Rules
+identifier_name:
+  min_length:
+    warning: 2
+    error: 1
+  max_length:
+    warning: 50
+    error: 60
+  excluded:
+    - id
+    - db
+    - ui
+    - to
+    - at
+    - in
+    - on
+  allowed_symbols: []
+
+# Type Name Rules
+type_name:
+  min_length:
+    warning: 3
+    error: 2
+  max_length:
+    warning: 50
+    error: 60
+  excluded: []
+  allowed_symbols: []
+  validates_start_with_lowercase: false
+
+# Force Unwrapping (FORBIDDEN in production code)
+force_unwrapping:
+  severity: error
+
+# Force Cast (FORBIDDEN)
+force_cast:
+  severity: error
+
+# Force Try (FORBIDDEN)
+force_try:
+  severity: error
+
+# Implicitly Unwrapped Optional (discouraged)
+implicitly_unwrapped_optional:
+  severity: warning
+  mode: all_except_iboutlets
+
+# Large Tuple (max 3 elements - use struct instead)
+large_tuple:
+  warning: 3
+  error: 4
+
+# Function Parameter Count (max 5 parameters)
+function_parameter_count:
+  warning: 5
+  error: 7
+  ignores_default_parameters: true
+
+# Trailing Comma (required in multi-line arrays/dicts)
+trailing_comma:
+  mandatory_comma: true
+
+# Vertical Whitespace (max 1 blank line)
+vertical_whitespace:
+  max_empty_lines: 1
+
+# ============================================================
+# Custom Rules
+# ============================================================
+
+custom_rules:
+
+  # No Firebase in Domain layer
+  no_firebase_in_domain:
+    name: "No Firebase in Domain Layer"
+    regex: "MessageAI/Domain/.*import Firebase"
+    message: "Firebase imports are FORBIDDEN in Domain layer. Domain must be pure Swift."
+    severity: error
+
+  # No UIKit in Domain layer
+  no_uikit_in_domain:
+    name: "No UIKit in Domain Layer"
+    regex: "MessageAI/Domain/.*import UIKit"
+    message: "UIKit imports are FORBIDDEN in Domain layer. Domain must be framework-independent."
+    severity: error
+
+  # ViewModels must use @MainActor
+  viewmodel_main_actor:
+    name: "ViewModels Must Use @MainActor"
+    regex: "class\\s+\\w+ViewModel.*ObservableObject(?!.*@MainActor)"
+    message: "ViewModels MUST be marked with @MainActor for Swift 6 concurrency safety."
+    severity: warning
+
+  # Prefer async/await over completion handlers
+  prefer_async_await:
+    name: "Prefer async/await over completion handlers"
+    regex: "func\\s+\\w+.*completion:\\s*@escaping"
+    message: "Use async/await instead of completion handlers for modern Swift concurrency."
+    severity: warning
+
+  # No direct Firestore usage in Presentation layer
+  no_firestore_in_presentation:
+    name: "No Direct Firestore in Presentation"
+    regex: "MessageAI/Presentation/.*Firestore\\.firestore\\(\\)"
+    message: "Use repository protocols instead of direct Firestore access in Presentation layer."
+    severity: error
+
+  # Use FieldValue.serverTimestamp()
+  use_server_timestamp:
+    name: "Use Server Timestamps"
+    regex: "\"timestamp\".*Date\\(\\)"
+    message: "Use FieldValue.serverTimestamp() instead of Date() to prevent clock skew."
+    severity: warning
+
+  # Empty catch blocks
+  no_empty_catch:
+    name: "No Empty Catch Blocks"
+    regex: "catch\\s*\\{\\s*\\}"
+    message: "Empty catch blocks hide errors. Always provide user feedback or log errors."
+    severity: warning
+
+# ============================================================
+# Reporter (output format)
+# ============================================================
+
+reporter: "emoji"  # Options: xcode, json, csv, checkstyle, emoji, markdown, junit
+
+# ============================================================
+# Warnings Treated as Errors (strict mode)
+# ============================================================
+
+# Uncomment for CI/CD strict enforcement
+# strict: true

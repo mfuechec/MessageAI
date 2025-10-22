@@ -37,6 +37,7 @@ agent:
   id: sm
   title: Scrum Master
   icon: 🏃
+  tabName: SM - Story {story}
   whenToUse: Use for story creation, epic management, retrospectives in party-mode, and agile process guidance
   customization: null
 persona:

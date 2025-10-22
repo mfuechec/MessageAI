@@ -1,0 +1,128 @@
+{
+  "description": "MessageAI project settings for Claude Code - enforces Clean Architecture boundaries and security",
+
+  "toolPermissions": {
+    "Read": {
+      "allow": [
+        "MessageAI/**",
+        "MessageAITests/**",
+        "docs/**",
+        "scripts/**",
+        "*.md",
+        "*.swift",
+        "firestore.rules",
+        "firestore.indexes.json"
+      ],
+      "deny": [
+        "**/*.plist",
+        "**/GoogleService-Info*.plist",
+        "**/secrets/**",
+        "**/node_modules/**",
+        "**/.env*",
+        "**/firebase-admin-key*.json",
+        "**/*.xcuserstate",
+        "**/*.xcworkspace/xcuserdata/**",
+        "**/DerivedData/**",
+        "**/.build/**"
+      ]
+    },
+
+    "Write": {
+      "allow": [
+        "MessageAI/**/*.swift",
+        "MessageAITests/**/*.swift",
+        "docs/**/*.md",
+        "scripts/**/*.sh",
+        "*.md"
+      ],
+      "deny": [
+        "**/*.plist",
+        "**/GoogleService-Info*.plist",
+        "MessageAI/App/Config.swift",
+        "**/secrets/**",
+        "**/.env*",
+        "**/firebase-admin-key*.json",
+        "**/xcuserdata/**",
+        "**/DerivedData/**",
+        "**/.build/**"
+      ]
+    },
+
+    "Edit": {
+      "allow": [
+        "MessageAI/**/*.swift",
+        "MessageAITests/**/*.swift",
+        "docs/**/*.md",
+        "firestore.rules",
+        "firestore.indexes.json",
+        "*.md"
+      ],
+      "deny": [
+        "**/*.plist",
+        "**/GoogleService-Info*.plist",
+        "MessageAI/App/Config.swift",
+        "**/secrets/**",
+        "**/.env*",
+        "**/firebase-admin-key*.json"
+      ]
+    },
+
+    "Bash": {
+      "allow": [
+        "git *",
+        "./scripts/*.sh*",
+        "xcodebuild*",
+        "swift*",
+        "firebase *",
+        "npm *",
+        "ls*",
+        "find*",
+        "grep*",
+        "cat*",
+        "head*",
+        "tail*",
+        "mkdir*",
+        "pwd",
+        "which*"
+      ],
+      "deny": [
+        "rm -rf *",
+        "sudo *",
+        "chmod 777*",
+        "curl * | sh",
+        "wget * | sh",
+        "eval*",
+        "*> /etc/*",
+        "firebase deploy --project messageai-prod*"
+      ]
+    }
+  },
+
+  "environmentVariables": {
+    "PROJECT_NAME": "MessageAI",
+    "ARCHITECTURE": "Clean Architecture + MVVM",
+    "MIN_IOS_VERSION": "15.0",
+    "SWIFT_VERSION": "5.9",
+    "TEST_COVERAGE_TARGET": "70",
+    "DEFAULT_SIMULATOR": "iPhone 17 Pro"
+  },
+
+  "hooks": {
+    "preToolUse": [
+      {
+        "toolName": "Write",
+        "toolParamMatcher": {
+          "file_path": "\\.swift$"
+        },
+        "command": "./.claude/hooks/validate-swift.sh \"$TOOL_PARAM_file_path\" \"$TOOL_PARAM_content\""
+      },
+      {
+        "toolName": "Edit",
+        "toolParamMatcher": {
+          "file_path": "\\.swift$"
+        },
+        "command": "./.claude/hooks/validate-swift.sh \"$TOOL_PARAM_file_path\" \"$TOOL_PARAM_new_string\""
+      }
+    ]
+  }
+}

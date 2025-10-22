@@ -211,13 +211,36 @@ final class FirebaseConversationRepository: ConversationRepositoryProtocol {
         do {
             print("🔄 [FirebaseConversationRepository] Updating conversation: \(id)")
             print("  📝 Updates: \(updates)")
-            
+
             try await db.collection("conversations").document(id).updateData(updates)
-            
+
             print("✅ [FirebaseConversationRepository] Firestore updateData() completed")
             print("  💡 Snapshot listener should trigger for all participants...")
         } catch {
             print("❌ [FirebaseConversationRepository] Update conversation failed: \(error.localizedDescription)")
+            throw RepositoryError.networkError(error)
+        }
+    }
+
+    func updateTypingState(conversationId: String, userId: String, isTyping: Bool) async throws {
+        do {
+            let conversationRef = db.collection("conversations").document(conversationId)
+
+            if isTyping {
+                // Add user to typingUsers array (no duplicates thanks to arrayUnion)
+                try await conversationRef.updateData([
+                    "typingUsers": FieldValue.arrayUnion([userId])
+                ])
+                print("✅ Added \(userId) to typingUsers in conversation \(conversationId)")
+            } else {
+                // Remove user from typingUsers array
+                try await conversationRef.updateData([
+                    "typingUsers": FieldValue.arrayRemove([userId])
+                ])
+                print("✅ Removed \(userId) from typingUsers in conversation \(conversationId)")
+            }
+        } catch {
+            print("❌ Failed to update typing state: \(error.localizedDescription)")
             throw RepositoryError.networkError(error)
         }
     }

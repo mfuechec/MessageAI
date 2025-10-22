@@ -14,6 +14,7 @@ class MockConversationRepository: ConversationRepositoryProtocol {
     var updateUnreadCountCalled = false
     var markAsReadCalled = false
     var updateConversationCalled = false
+    var updateTypingStateCalled = false
     
     // MARK: - Configurable Return Values
     
@@ -29,6 +30,8 @@ class MockConversationRepository: ConversationRepositoryProtocol {
     var capturedParticipantIds: [String]?
     var capturedUnreadCount: Int?
     var capturedUpdates: [String: Any]?
+    var capturedTypingUserId: String?
+    var capturedIsTyping: Bool?
     
     // MARK: - ConversationRepositoryProtocol Implementation
     
@@ -113,12 +116,23 @@ class MockConversationRepository: ConversationRepositoryProtocol {
         updateConversationCalled = true
         capturedConversationId = id
         capturedUpdates = updates
-        
+
         if shouldFail, let error = mockError {
             throw error
         }
     }
-    
+
+    func updateTypingState(conversationId: String, userId: String, isTyping: Bool) async throws {
+        updateTypingStateCalled = true
+        capturedConversationId = conversationId
+        capturedTypingUserId = userId
+        capturedIsTyping = isTyping
+
+        if shouldFail, let error = mockError {
+            throw error
+        }
+    }
+
     // MARK: - Reset
     
     func reset() {
@@ -129,17 +143,20 @@ class MockConversationRepository: ConversationRepositoryProtocol {
         updateUnreadCountCalled = false
         markAsReadCalled = false
         updateConversationCalled = false
-        
+        updateTypingStateCalled = false
+
         mockConversations = []
         mockConversation = nil
         mockError = nil
         shouldFail = false
-        
+
         capturedUserId = nil
         capturedConversationId = nil
         capturedParticipantIds = nil
         capturedUnreadCount = nil
         capturedUpdates = nil
+        capturedTypingUserId = nil
+        capturedIsTyping = nil
     }
 }
 

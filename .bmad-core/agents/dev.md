@@ -40,6 +40,7 @@ agent:
   id: dev
   title: Full Stack Developer
   icon: 💻
+  tabName: Dev - Story {story}
   whenToUse: 'Use for code implementation, debugging, refactoring, and development best practices'
   customization:
 

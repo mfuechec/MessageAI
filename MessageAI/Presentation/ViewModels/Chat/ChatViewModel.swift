@@ -45,7 +45,10 @@ class ChatViewModel: ObservableObject {
     // Failed message handling
     @Published var retryingMessageId: String?  // Track retry in progress
     @Published var failedMessageTapped: Message?
-    
+
+    // Typing indicator state
+    @Published var typingUserNames: [String] = []
+
     // Track loading states separately
     private var messagesLoaded: Bool = false
     private var participantsLoaded: Bool = false
@@ -63,6 +66,12 @@ class ChatViewModel: ObservableObject {
     private let networkMonitor: any NetworkMonitorProtocol
     private var cancellables = Set<AnyCancellable>()
     private let failedMessageStore = FailedMessageStore()
+
+    // Typing indicator private state
+    private var typingThrottleTimer: Timer?
+    private var typingAutoStopTimer: Timer?
+    private var isCurrentlyTyping: Bool = false
+    private var lastTypingUpdateTime: Date = .distantPast
     
     // MARK: - Initialization
     
@@ -100,9 +109,10 @@ class ChatViewModel: ObservableObject {
         
         // Load failed messages from local persistence
         loadFailedMessages()
-        
+
         // Always observe messages (async)
         observeMessages()
+        observeTypingUsers()
         setupNetworkMonitoring()
     }
     
@@ -229,6 +239,9 @@ class ChatViewModel: ObservableObject {
     
     /// Sends a message with input validation and optimistic UI
     func sendMessage() async {
+        // Clear typing indicator immediately
+        stopTyping()
+
         // 1. Sanitize and validate input
         let trimmedText = messageText.trimmingCharacters(in: .whitespacesAndNewlines)
         
@@ -716,6 +729,9 @@ class ChatViewModel: ObservableObject {
     /// Clears the static currentlyViewingConversationId to allow
     /// push notifications again when user leaves the conversation.
     func onDisappear() {
+        // Clear typing indicator when leaving chat
+        stopTyping()
+
         if ChatViewModel.currentlyViewingConversationId == conversationId {
             ChatViewModel.currentlyViewingConversationId = nil
             print("👋 Left conversation: \(conversationId)")
@@ -940,6 +956,94 @@ class ChatViewModel: ObservableObject {
         var failedMessage = message
         failedMessage.status = .failed
         failedMessageStore.save(failedMessage)
+    }
+
+    // MARK: - Typing Indicator Methods
+
+    /// Start typing indicator (throttled to max 1 update per second)
+    func startTyping() {
+        let now = Date()
+        let timeSinceLastUpdate = now.timeIntervalSince(lastTypingUpdateTime)
+
+        // Throttle: Only send update if > 1 second since last update
+        guard timeSinceLastUpdate >= 1.0 else {
+            // Reset auto-stop timer even if throttled
+            resetAutoStopTimer()
+            return
+        }
+
+        // Send typing state to Firestore
+        Task {
+            do {
+                try await conversationRepository.updateTypingState(
+                    conversationId: conversationId,
+                    userId: currentUserId,
+                    isTyping: true
+                )
+                lastTypingUpdateTime = Date()
+                isCurrentlyTyping = true
+            } catch {
+                print("⚠️ Failed to set typing state: \(error.localizedDescription)")
+            }
+        }
+
+        // Reset auto-stop timer (3 seconds)
+        resetAutoStopTimer()
+    }
+
+    /// Stop typing indicator
+    func stopTyping() {
+        guard isCurrentlyTyping else { return }
+
+        Task {
+            do {
+                try await conversationRepository.updateTypingState(
+                    conversationId: conversationId,
+                    userId: currentUserId,
+                    isTyping: false
+                )
+                isCurrentlyTyping = false
+            } catch {
+                print("⚠️ Failed to clear typing state: \(error.localizedDescription)")
+            }
+        }
+
+        // Invalidate timers
+        typingAutoStopTimer?.invalidate()
+        typingAutoStopTimer = nil
+    }
+
+    /// Reset auto-stop timer (called on each keystroke)
+    private func resetAutoStopTimer() {
+        typingAutoStopTimer?.invalidate()
+        typingAutoStopTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: false) { [weak self] _ in
+            self?.stopTyping()
+        }
+    }
+
+    /// Observe typing users in real-time
+    private func observeTypingUsers() {
+        // Listen to conversation changes
+        conversationRepository.observeConversations(userId: currentUserId)
+            .compactMap { [weak self] (conversations: [Conversation]) -> Conversation? in
+                guard let self = self else { return nil }
+                return conversations.first { $0.id == self.conversationId }
+            }
+            .sink { [weak self] (conversation: Conversation) in
+                guard let self = self else { return }
+
+                // Filter out current user (don't show "You are typing...")
+                let otherUsersTyping = conversation.typingUsers.filter { $0 != self.currentUserId }
+
+                // Map user IDs to display names
+                let names = otherUsersTyping.compactMap { userId in
+                    self.users[userId]?.displayName
+                }
+
+                // Format names for display
+                self.typingUserNames = names
+            }
+            .store(in: &cancellables)
     }
 }
 

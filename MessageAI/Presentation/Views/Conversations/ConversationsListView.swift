@@ -22,6 +22,9 @@ struct ConversationsListView: View {
     @StateObject private var newConversationViewModel: NewConversationViewModel
     @EnvironmentObject private var authViewModel: AuthViewModel
     
+    // Toast notification state
+    @State private var showReconnectedToast = false
+    
     // CRITICAL: Use single state object to prevent desynchronization
     @State private var chatContext: ChatContext? {
         didSet {
@@ -54,12 +57,38 @@ struct ConversationsListView: View {
                     conversationsList
                 }
                 
-                // Offline banner
-                if viewModel.isOffline {
-                    offlineBanner
+                // Toast notifications
+                VStack {
+                    if viewModel.isOffline {
+                        offlineToast
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                    }
+                    
+                    if showReconnectedToast {
+                        reconnectedToast
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                    }
+                    
+                    Spacer()
                 }
+                .animation(.spring(response: 0.3), value: viewModel.isOffline)
+                .animation(.spring(response: 0.3), value: showReconnectedToast)
             }
             .navigationTitle("Messages")
+            .onChange(of: viewModel.isOffline) { newValue in
+                if !newValue {
+                    // Reconnected - show reconnected toast briefly
+                    showReconnectedToast = true
+                    
+                    // Auto-dismiss reconnected toast after 2 seconds
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                        showReconnectedToast = false
+                    }
+                } else {
+                    // Went offline - hide reconnected toast if showing
+                    showReconnectedToast = false
+                }
+            }
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button("Logout") {
@@ -69,37 +98,6 @@ struct ConversationsListView: View {
                     }
                     .accessibilityLabel("Logout")
                 }
-                
-                // DEBUG: Test notification button (remove in production)
-                #if DEBUG
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: {
-                        Task {
-                            // Test with first conversation if available
-                            if let firstConv = viewModel.conversations.first {
-                                await LocalNotificationHelper.sendTestNotification(
-                                    conversationId: firstConv.id,
-                                    senderName: "Test User",
-                                    messageText: "This is a test notification!",
-                                    delay: 5.0
-                                )
-                            } else {
-                                // No conversations yet, create a test one
-                                await LocalNotificationHelper.sendTestNotification(
-                                    conversationId: "test-conv-123",
-                                    senderName: "Alice",
-                                    messageText: "Hey! This is a test message.",
-                                    delay: 5.0
-                                )
-                            }
-                        }
-                    }) {
-                        Image(systemName: "bell.badge.fill")
-                            .foregroundColor(.orange)
-                    }
-                    .accessibilityLabel("Send Test Notification")
-                }
-                #endif
                 
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button(action: {
@@ -260,21 +258,44 @@ struct ConversationsListView: View {
         .accessibilityLabel("No conversations. Tap New Conversation to start chatting.")
     }
     
-    private var offlineBanner: some View {
-        VStack {
-            HStack {
-                Image(systemName: "wifi.slash")
-                Text("You're offline")
-                    .font(.subheadline)
-            }
-            .foregroundColor(.white)
-            .padding(.vertical, 8)
-            .frame(maxWidth: .infinity)
-            .background(Color.orange)
-            
-            Spacer()
+    private var offlineToast: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "wifi.slash")
+                .font(.caption)
+            Text("You're offline")
+                .font(.caption)
+                .fontWeight(.medium)
         }
-        .accessibilityLabel("Offline mode. Some features may be unavailable.")
+        .foregroundColor(.white)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(
+            Capsule()
+                .fill(Color.orange)
+        )
+        .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
+        .padding(.top, 8)
+        .accessibilityLabel("Offline mode")
+    }
+    
+    private var reconnectedToast: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "wifi")
+                .font(.caption)
+            Text("Back online")
+                .font(.caption)
+                .fontWeight(.medium)
+        }
+        .foregroundColor(.white)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(
+            Capsule()
+                .fill(Color.green)
+        )
+        .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
+        .padding(.top, 8)
+        .accessibilityLabel("Back online")
     }
 }
 

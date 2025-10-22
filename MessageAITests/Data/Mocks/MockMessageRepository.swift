@@ -12,6 +12,7 @@ class MockMessageRepository: MessageRepositoryProtocol {
     var updateMessageStatusCalled = false
     var editMessageCalled = false
     var deleteMessageCalled = false
+    var markMessagesAsReadCalled = false
     var shouldFail = false
     
     // MARK: - Configurable Properties
@@ -29,6 +30,8 @@ class MockMessageRepository: MessageRepositoryProtocol {
     var capturedEditMessageId: String?
     var capturedEditNewText: String?
     var capturedDeleteMessageId: String?
+    var capturedReadMessageIds: [String]?
+    var capturedReadUserId: String?
     
     // MARK: - MessageRepositoryProtocol Implementation
     
@@ -118,6 +121,30 @@ class MockMessageRepository: MessageRepositoryProtocol {
         }
     }
     
+    func markMessagesAsRead(messageIds: [String], userId: String) async throws {
+        markMessagesAsReadCalled = true
+        capturedReadMessageIds = messageIds
+        capturedReadUserId = userId
+        
+        if shouldFail {
+            throw mockError ?? RepositoryError.messageNotFound("Mock error")
+        }
+        
+        // Update messages in mockMessages for testing
+        for messageId in messageIds {
+            if let index = mockMessages.firstIndex(where: { $0.id == messageId }) {
+                var message = mockMessages[index]
+                if !message.readBy.contains(userId) {
+                    message.readBy.append(userId)
+                    message.readCount += 1
+                }
+                message.status = .read
+                message.statusUpdatedAt = Date()
+                mockMessages[index] = message
+            }
+        }
+    }
+    
     // MARK: - Helper Methods
     
     /// Resets all tracking and configurable properties
@@ -128,6 +155,7 @@ class MockMessageRepository: MessageRepositoryProtocol {
         updateMessageStatusCalled = false
         editMessageCalled = false
         deleteMessageCalled = false
+        markMessagesAsReadCalled = false
         shouldFail = false
         mockMessages = []
         mockError = nil
@@ -139,6 +167,8 @@ class MockMessageRepository: MessageRepositoryProtocol {
         capturedEditMessageId = nil
         capturedEditNewText = nil
         capturedDeleteMessageId = nil
+        capturedReadMessageIds = nil
+        capturedReadUserId = nil
     }
 }
 

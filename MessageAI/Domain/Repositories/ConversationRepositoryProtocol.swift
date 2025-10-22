@@ -42,5 +42,12 @@ protocol ConversationRepositoryProtocol {
     ///   - id: The conversation ID
     ///   - updates: Dictionary of field names to values
     func updateConversation(id: String, updates: [String: Any]) async throws
+
+    /// Update typing state for current user in conversation
+    /// - Parameters:
+    ///   - conversationId: The conversation ID
+    ///   - userId: The user ID
+    ///   - isTyping: True if user is typing, false if stopped
+    func updateTypingState(conversationId: String, userId: String, isTyping: Bool) async throws
 }
 
