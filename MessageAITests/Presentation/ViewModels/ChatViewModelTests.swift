@@ -11,6 +11,11 @@ final class ChatViewModelTests: XCTestCase {
     
     override func setUp() async throws {
         try await super.setUp()
+        
+        // Clear failed message store to prevent test pollution
+        let store = FailedMessageStore()
+        store.clearAll()
+        
         mockMessageRepo = MockMessageRepository()
         mockConversationRepo = MockConversationRepository()
         mockUserRepo = MockUserRepository()
@@ -206,10 +211,11 @@ final class ChatViewModelTests: XCTestCase {
         
         // Then
         XCTAssertNotNil(sut.errorMessage)
-        XCTAssertTrue(sut.errorMessage?.contains("Failed to send message") ?? false)
+        XCTAssertEqual(sut.messages.count, 1) // Message kept with .failed status
+        XCTAssertEqual(sut.messages.first?.status, .failed)
     }
     
-    func testSendMessage_Failure_RemovesOptimisticMessage() async throws {
+    func testSendMessage_Failure_KeepsMessageWithFailedStatus() async throws {
         // Given
         sut.messageText = "Hello"
         mockMessageRepo.shouldFail = true
@@ -218,7 +224,8 @@ final class ChatViewModelTests: XCTestCase {
         await sut.sendMessage()
         
         // Then
-        XCTAssertEqual(sut.messages.count, 0) // Optimistic message was removed
+        XCTAssertEqual(sut.messages.count, 1) // Message kept with .failed status
+        XCTAssertEqual(sut.messages.first?.status, .failed)
     }
     
     func testSendMessage_SetsSendingStatus() async throws {
@@ -982,6 +989,252 @@ final class ChatViewModelTests: XCTestCase {
         
         // Cleanup
         sut.onDisappear()
+    }
+    
+    // MARK: - Read Receipts Tests (Story 2.5)
+    
+    func testMarkMessagesAsRead_FiltersOwnMessages() async throws {
+        // Given: 5 messages - 2 from current user, 3 from others
+        let ownMessage1 = createTestMessage(id: "own1", text: "My message 1", senderId: "user1")
+        let ownMessage2 = createTestMessage(id: "own2", text: "My message 2", senderId: "user1")
+        let otherMessage1 = Message(id: "other1", conversationId: "test-conv", senderId: "user2", text: "Other 1", readBy: [], readCount: 0)
+        let otherMessage2 = Message(id: "other2", conversationId: "test-conv", senderId: "user2", text: "Other 2", readBy: [], readCount: 0)
+        let otherMessage3 = Message(id: "other3", conversationId: "test-conv", senderId: "user2", text: "Other 3", readBy: [], readCount: 0)
+        
+        sut.messages = [ownMessage1, otherMessage1, ownMessage2, otherMessage2, otherMessage3]
+        
+        // When: markMessagesAsRead is called
+        await sut.markMessagesAsRead()
+        
+        // Then: Only 3 messages should be marked (own messages excluded)
+        XCTAssertTrue(mockMessageRepo.markMessagesAsReadCalled)
+        XCTAssertEqual(mockMessageRepo.capturedReadMessageIds?.count, 3)
+        XCTAssertEqual(Set(mockMessageRepo.capturedReadMessageIds ?? []), Set(["other1", "other2", "other3"]))
+    }
+    
+    func testMarkMessagesAsRead_AlreadyRead() async throws {
+        // Given: All messages already read by current user
+        let message1 = Message(id: "msg1", conversationId: "test-conv", senderId: "user2", text: "Hello", readBy: ["user1"], readCount: 1)
+        let message2 = Message(id: "msg2", conversationId: "test-conv", senderId: "user2", text: "Hi", readBy: ["user1"], readCount: 1)
+        
+        sut.messages = [message1, message2]
+        
+        // When: markMessagesAsRead is called
+        await sut.markMessagesAsRead()
+        
+        // Then: Repository should NOT be called (no unread messages)
+        XCTAssertFalse(mockMessageRepo.markMessagesAsReadCalled)
+    }
+    
+    func testMarkMessagesAsRead_OptimisticUI() async throws {
+        // Given: 2 unread messages from others
+        let message1 = Message(id: "msg1", conversationId: "test-conv", senderId: "user2", text: "Hello", status: .delivered, readBy: [], readCount: 0)
+        let message2 = Message(id: "msg2", conversationId: "test-conv", senderId: "user2", text: "Hi", status: .delivered, readBy: [], readCount: 0)
+        
+        sut.messages = [message1, message2]
+        
+        // When: markMessagesAsRead is called
+        await sut.markMessagesAsRead()
+        
+        // Then: Local messages array should be updated immediately
+        XCTAssertTrue(sut.messages[0].readBy.contains("user1"))
+        XCTAssertEqual(sut.messages[0].readCount, 1)
+        XCTAssertEqual(sut.messages[0].status, .read)
+        
+        XCTAssertTrue(sut.messages[1].readBy.contains("user1"))
+        XCTAssertEqual(sut.messages[1].readCount, 1)
+        XCTAssertEqual(sut.messages[1].status, .read)
+    }
+    
+    func testMarkMessagesAsRead_CallsRepository() async throws {
+        // Given: 2 unread messages
+        let message1 = Message(id: "msg1", conversationId: "test-conv", senderId: "user2", text: "Hello", readBy: [], readCount: 0)
+        let message2 = Message(id: "msg2", conversationId: "test-conv", senderId: "user2", text: "Hi", readBy: [], readCount: 0)
+        
+        sut.messages = [message1, message2]
+        
+        // When: markMessagesAsRead is called
+        await sut.markMessagesAsRead()
+        
+        // Then: Repository should be called with correct parameters
+        XCTAssertTrue(mockMessageRepo.markMessagesAsReadCalled)
+        XCTAssertEqual(mockMessageRepo.capturedReadMessageIds?.count, 2)
+        XCTAssertEqual(mockMessageRepo.capturedReadUserId, "user1")
+        XCTAssertTrue(mockMessageRepo.capturedReadMessageIds?.contains("msg1") ?? false)
+        XCTAssertTrue(mockMessageRepo.capturedReadMessageIds?.contains("msg2") ?? false)
+    }
+    
+    func testOnAppear_CallsMarkMessagesAsRead() async throws {
+        // Given: 1 unread message
+        let message = Message(id: "msg1", conversationId: "test-conv", senderId: "user2", text: "Hello", readBy: [], readCount: 0)
+        sut.messages = [message]
+        
+        // When: onAppear is called
+        sut.onAppear()
+        
+        // Give time for async task to complete
+        try await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
+        
+        // Then: Messages should be marked as read
+        XCTAssertTrue(mockMessageRepo.markMessagesAsReadCalled)
+        XCTAssertEqual(mockMessageRepo.capturedReadMessageIds?.count, 1)
+    }
+    
+    func testMarkMessagesAsRead_StatusTransition() async throws {
+        // Given: Message with .delivered status
+        let message = Message(id: "msg1", conversationId: "test-conv", senderId: "user2", text: "Hello", status: .delivered, readBy: [], readCount: 0)
+        sut.messages = [message]
+        
+        // When: markMessagesAsRead is called
+        await sut.markMessagesAsRead()
+        
+        // Then: Status should upgrade to .read
+        XCTAssertEqual(sut.messages[0].status, .read)
+    }
+    
+    func testOnReadReceiptTapped() async throws {
+        // Given: A message
+        let message = createTestMessage(id: "msg1", text: "Hello", senderId: "user1")
+        
+        // When: onReadReceiptTapped is called
+        sut.onReadReceiptTapped(message)
+        
+        // Then: readReceiptTapped should be set
+        XCTAssertNotNil(sut.readReceiptTapped)
+        XCTAssertEqual(sut.readReceiptTapped?.id, "msg1")
+    }
+    
+    // MARK: - Failed Message Retry Tests (Story 2.4)
+    
+    func testSendMessageFailure_MarksAsFailed() async throws {
+        // Given: Repository configured to fail
+        mockMessageRepo.shouldFail = true
+        mockMessageRepo.mockError = RepositoryError.networkError(NSError(domain: "test", code: -1))
+        sut.messageText = "This will fail"
+        
+        // When: Send message
+        await sut.sendMessage()
+        
+        // Then: Message should be in array with .failed status
+        XCTAssertEqual(sut.messages.count, 1)
+        XCTAssertEqual(sut.messages.first?.status, .failed)
+        XCTAssertEqual(sut.messages.first?.text, "This will fail")
+        XCTAssertNotNil(sut.errorMessage)
+    }
+    
+    func testRetryMessage_Success() async throws {
+        // Given: A failed message in the array
+        let failedMessage = Message(
+            id: "msg-failed",
+            conversationId: "test-conv",
+            senderId: "user1",
+            text: "Failed message",
+            status: .failed
+        )
+        sut.messages = [failedMessage]
+        
+        // Configure repository to succeed
+        mockMessageRepo.shouldFail = false
+        
+        // When: Retry the message
+        await sut.retryMessage(failedMessage)
+        
+        // Then: Message status should be .sent
+        XCTAssertEqual(sut.messages.count, 1)
+        XCTAssertEqual(sut.messages.first?.status, .sent)
+        XCTAssertTrue(mockMessageRepo.sendMessageCalled)
+    }
+    
+    func testRetryMessage_Failure() async throws {
+        // Given: A failed message
+        let failedMessage = Message(
+            id: "msg-failed",
+            conversationId: "test-conv",
+            senderId: "user1",
+            text: "Failed message",
+            status: .failed
+        )
+        sut.messages = [failedMessage]
+        
+        // Configure repository to fail again
+        mockMessageRepo.shouldFail = true
+        mockMessageRepo.mockError = RepositoryError.networkError(NSError(domain: "test", code: -1))
+        
+        // When: Retry the message
+        await sut.retryMessage(failedMessage)
+        
+        // Then: Message status should still be .failed
+        XCTAssertEqual(sut.messages.count, 1)
+        XCTAssertEqual(sut.messages.first?.status, .failed)
+        XCTAssertNotNil(sut.errorMessage)
+    }
+    
+    func testDeleteFailedMessage() async throws {
+        // Given: A failed message in the array
+        let failedMessage = Message(
+            id: "msg-failed",
+            conversationId: "test-conv",
+            senderId: "user1",
+            text: "Failed message",
+            status: .failed
+        )
+        sut.messages = [failedMessage]
+        
+        // When: Delete the failed message
+        sut.deleteFailedMessage(failedMessage)
+        
+        // Then: Message should be removed from array
+        XCTAssertEqual(sut.messages.count, 0)
+    }
+    
+    func testOnFailedMessageTapped() async throws {
+        // Given: A failed message
+        let failedMessage = Message(
+            id: "msg-failed",
+            conversationId: "test-conv",
+            senderId: "user1",
+            text: "Failed message",
+            status: .failed
+        )
+        
+        // When: Tap the failed message
+        sut.onFailedMessageTapped(failedMessage)
+        
+        // Then: failedMessageTapped should be set
+        XCTAssertNotNil(sut.failedMessageTapped)
+        XCTAssertEqual(sut.failedMessageTapped?.id, "msg-failed")
+    }
+    
+    func testMapErrorToUserMessage_NetworkError() async throws {
+        // Given: Network error
+        mockMessageRepo.shouldFail = true
+        mockMessageRepo.mockError = RepositoryError.networkError(NSError(domain: "test", code: -1))
+        sut.messageText = "Test"
+        
+        // When: Send message (fails)
+        await sut.sendMessage()
+        
+        // Then: User-friendly error message
+        XCTAssertTrue(sut.errorMessage?.contains("internet") ?? false)
+        XCTAssertTrue(sut.errorMessage?.contains("retry") ?? false)
+    }
+    
+    func testMultipleFailedMessages() async throws {
+        // Given: Multiple send failures
+        mockMessageRepo.shouldFail = true
+        mockMessageRepo.mockError = RepositoryError.networkError(NSError(domain: "test", code: -1))
+        
+        // When: Send 3 messages
+        sut.messageText = "Message 1"
+        await sut.sendMessage()
+        sut.messageText = "Message 2"
+        await sut.sendMessage()
+        sut.messageText = "Message 3"
+        await sut.sendMessage()
+        
+        // Then: All 3 should be in array with .failed status
+        XCTAssertEqual(sut.messages.count, 3)
+        XCTAssertTrue(sut.messages.allSatisfy { $0.status == .failed })
     }
 }
 

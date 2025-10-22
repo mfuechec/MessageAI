@@ -7,6 +7,11 @@ struct ChatView: View {
     @ObservedObject var viewModel: ChatViewModel
     @State private var conversationTitle: String = "Chat"
     @State private var showGroupMemberList = false
+    @State private var showFailedMessageAlert = false
+    @State private var selectedFailedMessage: Message?
+    
+    // Toast notification state
+    @State private var showReconnectedToast = false
     
     // Optional initial data to avoid loading delay
     let initialConversation: Conversation?
@@ -33,13 +38,22 @@ struct ChatView: View {
                     .background(Color(.systemBackground))
             }
             
-            // Offline banner
-            if viewModel.isOffline {
-                VStack {
-                    offlineBanner
-                    Spacer()
+            // Toast notifications
+            VStack {
+                if viewModel.isOffline {
+                    offlineToast
+                        .transition(.move(edge: .top).combined(with: .opacity))
                 }
+                
+                if showReconnectedToast {
+                    reconnectedToast
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
+                
+                Spacer()
             }
+            .animation(.spring(response: 0.3), value: viewModel.isOffline)
+            .animation(.spring(response: 0.3), value: showReconnectedToast)
             
             // Edit mode overlay
             if viewModel.isEditingMessage {
@@ -47,6 +61,24 @@ struct ChatView: View {
             }
         }
         .navigationBarTitleDisplayMode(.inline)
+        .onChange(of: viewModel.isOffline) { newValue in
+            print("🔴 [ChatView] onChange fired: isOffline=\(newValue)")
+            
+            if !newValue {
+                // Reconnected - show reconnected toast briefly
+                print("   → Showing reconnected toast")
+                showReconnectedToast = true
+                
+                // Auto-dismiss reconnected toast after 2 seconds
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                    print("   → Auto-dismissing reconnected toast")
+                    showReconnectedToast = false
+                }
+            } else {
+                // Went offline - hide reconnected toast if showing
+                showReconnectedToast = false
+            }
+        }
         .toolbar {
             ToolbarItem(placement: .principal) {
                 if viewModel.isGroupConversation {
@@ -75,6 +107,13 @@ struct ChatView: View {
                 EditHistoryView(message: message)
             }
         }
+        .sheet(item: $viewModel.readReceiptTapped) { message in
+            ReadReceiptDetailView(
+                message: message,
+                participants: viewModel.participants,
+                currentUserId: viewModel.currentUserId
+            )
+        }
         // Delete Confirmation Alert
         .alert("Delete this message for everyone?", isPresented: $viewModel.showDeleteConfirmation) {
             Button("Cancel", role: .cancel) {
@@ -90,6 +129,27 @@ struct ChatView: View {
             .accessibilityLabel("Delete message for everyone")
         } message: {
             Text("This message will be deleted for all participants. This action cannot be undone.")
+        }
+        // Failed Message Alert
+        .alert("Message Failed", isPresented: $showFailedMessageAlert, presenting: selectedFailedMessage) { message in
+            Button("Retry", role: .none) {
+                Task {
+                    await viewModel.retryMessage(message)
+                }
+            }
+            Button("Delete", role: .destructive) {
+                viewModel.deleteFailedMessage(message)
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: { message in
+            Text("This message failed to send. Would you like to retry or delete it?")
+        }
+        .onChange(of: viewModel.failedMessageTapped) { message in
+            if let message = message {
+                selectedFailedMessage = message
+                showFailedMessageAlert = true
+                viewModel.failedMessageTapped = nil  // Clear
+            }
         }
         // Error Alert
         .alert("Error", isPresented: Binding(
@@ -214,6 +274,46 @@ struct ChatView: View {
             let otherUser = participants.first { $0.id != currentUserId }
             conversationTitle = otherUser?.truncatedDisplayName ?? "Chat"
         }
+    }
+    
+    private var offlineToast: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "wifi.slash")
+                .font(.caption)
+            Text("You're offline")
+                .font(.caption)
+                .fontWeight(.medium)
+        }
+        .foregroundColor(.white)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(
+            Capsule()
+                .fill(Color.orange)
+        )
+        .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
+        .padding(.top, 8)
+        .accessibilityLabel("Offline mode")
+    }
+    
+    private var reconnectedToast: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "wifi")
+                .font(.caption)
+            Text("Back online")
+                .font(.caption)
+                .fontWeight(.medium)
+        }
+        .foregroundColor(.white)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(
+            Capsule()
+                .fill(Color.green)
+        )
+        .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
+        .padding(.top, 8)
+        .accessibilityLabel("Back online")
     }
 }
 
@@ -563,7 +663,7 @@ struct MessageKitWrapper: UIViewControllerRepresentable {
             if isCurrentUser {
                 // Get status icon and color
                 let (statusText, statusColor) = statusIconAndColor(for: actualMessage.status)
-                
+
                 // Add status icon with appropriate color
                 let statusString = NSAttributedString(
                     string: " " + statusText,
@@ -572,7 +672,7 @@ struct MessageKitWrapper: UIViewControllerRepresentable {
                         .foregroundColor: statusColor
                     ]
                 )
-                
+
                 result.append(statusString)
             }
             
@@ -615,6 +715,11 @@ struct MessageKitWrapper: UIViewControllerRepresentable {
             }
         }
         
+        func inputBar(_ inputBar: InputBarAccessoryView, textViewTextDidChangeTo text: String) {
+            // Auto-enable send button when there's text
+            inputBar.sendButton.isEnabled = !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+        
         // MARK: - Scroll Detection
         
         func scrollViewDidScroll(_ scrollView: UIScrollView) {
@@ -644,7 +749,7 @@ struct MessageKitWrapper: UIViewControllerRepresentable {
             case .read:
                 return ("✓✓", .systemBlue)
             case .failed:
-                return ("⚠", .systemRed)
+                return ("⚠️ Failed - Tap to retry", .systemRed)
             }
         }
     }
@@ -689,6 +794,9 @@ class CustomMessagesViewController: MessagesViewController {
             print("⬇️ [CustomMessagesViewController] Scrolling to latest message")
             messagesCollectionView.scrollToLastItem(animated: false)
         }
+        
+        // Auto-focus text input for immediate typing
+        messageInputBar.inputTextView.becomeFirstResponder()
     }
     
     private func configureMessageCollectionView() {
@@ -731,8 +839,38 @@ class CustomMessagesViewController: MessagesViewController {
         
         let message = viewModel.messages[indexPath.section]
         
-        // Only allow editing own messages
+        // Check if this is a tap on read receipt in group chat (AC #7)
+        if viewModel.isGroupConversation && 
+           message.status == .read &&
+           message.senderId == viewModel.currentUserId {
+            
+            // Get the cell to check if tap is in bottom label area (read receipt)
+            if let cell = messagesCollectionView.cellForItem(at: indexPath) as? MessageContentCell {
+                let cellTouchPoint = gesture.location(in: cell)
+                let cellHeight = cell.bounds.height
+                
+                // Check if tap is in bottom 30 points (where read receipt is)
+                if cellTouchPoint.y > cellHeight - 30 {
+                    print("👆 Tapped read receipt for group message: \(message.id)")
+                    Task { @MainActor in
+                        viewModel.onReadReceiptTapped(message)
+                    }
+                    return
+                }
+            }
+        }
+        
+        // Only allow actions on own messages
         guard message.senderId == viewModel.currentUserId else {
+            return
+        }
+        
+        // Check if this is a failed message - handle retry/delete
+        if message.status == .failed {
+            print("⚠️ Tapped failed message: \(message.id)")
+            Task { @MainActor in
+                viewModel.onFailedMessageTapped(message)
+            }
             return
         }
         
@@ -777,6 +915,15 @@ class CustomMessagesViewController: MessagesViewController {
         messageInputBar.sendButton.setTitle("Send", for: .normal)
         messageInputBar.sendButton.setTitleColor(.systemBlue, for: .normal)
         
+        // Send message on Enter key (instead of newline)
+        messageInputBar.inputTextView.keyboardType = .default
+        messageInputBar.inputTextView.returnKeyType = .send
+        messageInputBar.inputTextView.delegate = self
+        
+        // Override default behavior to send on Enter
+        messageInputBar.shouldManageSendButtonEnabledState = true
+        messageInputBar.inputTextView.textContainerInset = UIEdgeInsets(top: 8, left: 12, bottom: 8, right: 12)
+        
         // Accessibility
         messageInputBar.inputTextView.accessibilityLabel = "Message input"
         messageInputBar.inputTextView.accessibilityHint = "Enter your message"
@@ -802,6 +949,23 @@ class CustomMessagesViewController: MessagesViewController {
     
     // Note: MessageKit handles taps via didTapMessage delegate method in Coordinator
     // Custom tap handling is done there
+}
+
+// MARK: - UITextViewDelegate (for Enter key handling)
+
+extension CustomMessagesViewController: UITextViewDelegate {
+    func textView(_ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String) -> Bool {
+        // Check if Enter/Return key was pressed
+        if text == "\n" {
+            // Trigger send button if there's text
+            let currentText = textView.text ?? ""
+            if !currentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                messageInputBar.sendButton.sendActions(for: .touchUpInside)
+            }
+            return false // Prevent newline insertion
+        }
+        return true
+    }
 }
 
 // MARK: - Sender Helper

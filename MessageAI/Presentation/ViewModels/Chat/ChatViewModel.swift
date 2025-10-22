@@ -12,7 +12,7 @@ class ChatViewModel: ObservableObject {
     static var currentlyViewingConversationId: String?
     
     // MARK: - Published Properties
-    
+
     @Published var messages: [Message] = []
     @Published var messageText: String = ""
     @Published var isLoading: Bool = false
@@ -36,8 +36,15 @@ class ChatViewModel: ObservableObject {
     @Published var showDeleteConfirmation: Bool = false
     @Published var messageToDelete: Message? = nil
     
+    // Read receipt detail state (for group chats)
+    @Published var readReceiptTapped: Message? = nil
+    
     // Force UI refresh for message edits (when count doesn't change)
     @Published var messagesNeedRefresh: Bool = false
+    
+    // Failed message handling
+    @Published var retryingMessageId: String?  // Track retry in progress
+    @Published var failedMessageTapped: Message?
     
     // Track loading states separately
     private var messagesLoaded: Bool = false
@@ -55,6 +62,7 @@ class ChatViewModel: ObservableObject {
     private let userRepository: UserRepositoryProtocol
     private let networkMonitor: any NetworkMonitorProtocol
     private var cancellables = Set<AnyCancellable>()
+    private let failedMessageStore = FailedMessageStore()
     
     // MARK: - Initialization
     
@@ -90,6 +98,9 @@ class ChatViewModel: ObservableObject {
             loadParticipantUsers()
         }
         
+        // Load failed messages from local persistence
+        loadFailedMessages()
+        
         // Always observe messages (async)
         observeMessages()
         setupNetworkMonitoring()
@@ -104,26 +115,63 @@ class ChatViewModel: ObservableObject {
             .sink { [weak self] messages in
                 guard let self = self else { return }
                 print("🔄 [ChatViewModel] Messages updated: \(messages.count) messages")
-                
+
                 let sortedMessages = messages.sorted { $0.timestamp < $1.timestamp }
-                
-                // CRITICAL: Detect if message content changed but count stayed same
-                // This happens when messages are edited or deleted
-                if self.messages.count == sortedMessages.count && self.messages.count > 0 {
-                    // Check if any message content changed (edited or deleted)
-                    let contentChanged = zip(self.messages, sortedMessages).contains { old, new in
-                        old.text != new.text || old.isEdited != new.isEdited || old.isDeleted != new.isDeleted
+
+                // CRITICAL: Preserve local state for failed messages (Story 2.4)
+                // Failed messages never made it to Firestore, so we need to merge them
+                let failedMessages = self.messages.filter { $0.status == .failed }
+                let localMessageMap = Dictionary(uniqueKeysWithValues: self.messages.map { ($0.id, $0) })
+                let firestoreMessageIds = Set(sortedMessages.map { $0.id })
+                let localOnlyFailedMessages = failedMessages.filter { !firestoreMessageIds.contains($0.id) }
+
+                if !localOnlyFailedMessages.isEmpty {
+                    print("💾 [ChatViewModel] Preserving \(localOnlyFailedMessages.count) local-only failed message(s)")
+                }
+
+                // Merge Firestore messages, preserving local .failed status
+                var mergedMessages: [Message] = sortedMessages.map { firestoreMessage in
+                    if let localMessage = localMessageMap[firestoreMessage.id],
+                       localMessage.status == .failed {
+                        return localMessage  // Keep failed status
                     }
-                    
+                    return firestoreMessage
+                }
+
+                // Add local-only failed messages
+                mergedMessages.append(contentsOf: localOnlyFailedMessages)
+                mergedMessages.sort { $0.timestamp < $1.timestamp }
+
+                // CRITICAL: Detect if message content changed but count stayed same
+                // This happens when messages are edited, deleted, or read status changes
+                if self.messages.count == mergedMessages.count && self.messages.count > 0 {
+                    // Check if any message content changed (edited, deleted, or status updated)
+                    let contentChanged = zip(self.messages, mergedMessages).contains { old, new in
+                        old.text != new.text ||
+                        old.isEdited != new.isEdited ||
+                        old.isDeleted != new.isDeleted ||
+                        old.status != new.status ||          // ← Read receipt status changes
+                        old.readBy != new.readBy ||          // ← Read receipt array changes
+                        old.readCount != new.readCount       // ← Read receipt count changes
+                    }
+
                     if contentChanged {
-                        print("📝 [ChatViewModel] Message content changed (edit/delete), forcing UI refresh")
+                        print("📝 [ChatViewModel] Message content changed (edit/delete/status), forcing UI refresh")
                         self.messagesNeedRefresh = true
                     }
                 }
-                
-                self.messages = sortedMessages
+
+                self.messages = mergedMessages
                 self.messagesLoaded = true
                 self.updateLoadingState()
+                
+                // Mark messages as read when they load (if user is viewing)
+                if ChatViewModel.currentlyViewingConversationId == self.conversationId {
+                    print("📖 [ChatViewModel] Messages loaded while viewing - marking as read")
+                    Task {
+                        await self.markMessagesAsRead()
+                    }
+                }
             }
             .store(in: &cancellables)
     }
@@ -166,7 +214,13 @@ class ChatViewModel: ObservableObject {
         networkMonitor.isConnectedPublisher
             .receive(on: DispatchQueue.main)
             .sink { [weak self] isConnected in
-                self?.isOffline = !isConnected
+                guard let self = self else { return }
+                let wasOffline = self.isOffline
+                self.isOffline = !isConnected
+                print("🌐 [ChatViewModel] Network status changed: isConnected=\(isConnected), isOffline=\(self.isOffline)")
+                if wasOffline != self.isOffline {
+                    print("   State changed: wasOffline=\(wasOffline) → isOffline=\(self.isOffline)")
+                }
             }
             .store(in: &cancellables)
     }
@@ -217,27 +271,60 @@ class ChatViewModel: ObservableObject {
         // 4. Send to Firestore
         isSending = true
         defer { isSending = false }
-        
+
         do {
             // Send message
             try await messageRepository.sendMessage(message)
-            
+
             // Update message status to .sent (Firestore listener will handle this)
             if let index = messages.firstIndex(where: { $0.id == message.id }) {
                 var updatedMessage = messages[index]
                 updatedMessage.status = .sent
                 updatedMessage.statusUpdatedAt = Date()
-                messages[index] = updatedMessage
+
+                // Reassign array to trigger @Published
+                var updated = messages
+                updated[index] = updatedMessage
+                messages = updated
             }
-            
+
             // Update conversation's last message fields
             try await updateConversation(with: message)
             
         } catch {
-            // On failure: remove optimistic message, show error
-            messages.removeAll { $0.id == message.id }
-            errorMessage = "Failed to send message: \(error.localizedDescription)"
-            print("Error sending message: \(error)")
+            print("❌ [ChatViewModel] Message send failed: \(error)")
+
+            // On failure: mark message as failed, keep in array
+            if let index = messages.firstIndex(where: { $0.id == message.id }) {
+                var failedMessage = messages[index]
+                failedMessage.status = .failed
+                failedMessage.statusUpdatedAt = Date()
+
+                // Reassign array to trigger @Published
+                var updated = messages
+                updated[index] = failedMessage
+                messages = updated
+
+                print("💾 [ChatViewModel] Message marked as failed and saved locally")
+            }
+
+            // Save failed message to local persistence
+            saveFailedMessageLocally(message)
+
+            // Detect offline state from error (workaround for simulator)
+            // NWPathMonitor doesn't work in simulator with Network Link Conditioner
+            if let nsError = error as? NSError,
+               nsError.domain == NSURLErrorDomain,
+               (nsError.code == NSURLErrorNotConnectedToInternet ||
+                nsError.code == NSURLErrorNetworkConnectionLost ||
+                nsError.code == NSURLErrorTimedOut) {
+                print("🌐 [ChatViewModel] Detected offline state from error (simulator workaround)")
+                isOffline = true
+            }
+
+            // Show user-friendly error
+            errorMessage = mapErrorToUserMessage(error)
+            print("❌ Message failed: \(error)")
         }
     }
     
@@ -608,9 +695,20 @@ class ChatViewModel: ObservableObject {
     ///
     /// Sets the static currentlyViewingConversationId to suppress
     /// push notifications for messages in this conversation.
+    /// Also marks unread messages as read.
     func onAppear() {
         ChatViewModel.currentlyViewingConversationId = conversationId
-        print("👀 Now viewing conversation: \(conversationId)")
+        print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        print("👀 [LIFECYCLE] ChatView.onAppear()")
+        print("   Conversation ID: \(conversationId)")
+        print("   Current User: \(currentUserId)")
+        print("   Messages loaded: \(messages.count)")
+        print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        
+        // Mark messages as read (AC #1, #5)
+        Task {
+            await markMessagesAsRead()
+        }
     }
     
     /// Called when ChatView disappears
@@ -622,6 +720,226 @@ class ChatViewModel: ObservableObject {
             ChatViewModel.currentlyViewingConversationId = nil
             print("👋 Left conversation: \(conversationId)")
         }
+    }
+    
+    // MARK: - Read Receipts
+    
+    /// Triggered when user taps read receipt in group chat (AC #7)
+    func onReadReceiptTapped(_ message: Message) {
+        readReceiptTapped = message
+    }
+    
+    /// Mark all unread messages in conversation as read (AC #1, #4, #5)
+    func markMessagesAsRead() async {
+        print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        print("📖 [READ RECEIPTS] markMessagesAsRead() called")
+        print("   Current User ID: \(currentUserId)")
+        print("   Total Messages: \(messages.count)")
+        
+        // Debug: Show all messages and their read status
+        for (index, msg) in messages.enumerated() {
+            print("   Message [\(index)]: id=\(msg.id.prefix(8))... sender=\(msg.senderId.prefix(8))... status=\(msg.status) readBy=\(msg.readBy.count) users")
+        }
+        
+        // Find messages not yet read by current user (AC #2.3 - filter logic)
+        let unreadMessages = messages.filter { message in
+            !message.readBy.contains(currentUserId) && message.senderId != currentUserId
+        }
+        
+        print("   Unread Messages (not from self): \(unreadMessages.count)")
+        
+        guard !unreadMessages.isEmpty else {
+            print("📖 No unread messages to mark")
+            print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+            return
+        }
+        
+        let messageIds = unreadMessages.map { $0.id }
+        
+        print("📖 Marking \(messageIds.count) messages as read:")
+        for id in messageIds {
+            print("     - \(id.prefix(12))...")
+        }
+        
+        // Optimistic UI: Update local array immediately (AC #9 - fast UX)
+        for id in messageIds {
+            if let index = messages.firstIndex(where: { $0.id == id }) {
+                var updatedMessage = messages[index]
+                let oldStatus = updatedMessage.status
+                
+                // Add current user to readBy array
+                if !updatedMessage.readBy.contains(currentUserId) {
+                    updatedMessage.readBy.append(currentUserId)
+                    updatedMessage.readCount += 1
+                }
+                
+                // Upgrade status to .read if possible (AC #10 - canTransitionTo)
+                if updatedMessage.status.canTransitionTo(.read) {
+                    updatedMessage.status = .read
+                    updatedMessage.statusUpdatedAt = Date()
+                    print("   ✅ Updated message \(id.prefix(8))... status: \(oldStatus) → \(updatedMessage.status)")
+                } else {
+                    print("   ⚠️ Cannot transition message \(id.prefix(8))... from \(oldStatus) to .read")
+                }
+                
+                var updated = messages
+                updated[index] = updatedMessage
+                messages = updated
+            }
+        }
+        
+        print("   Local array updated (optimistic UI)")
+        
+        // Persist to Firestore (offline-queued if no connection) (AC #8)
+        do {
+            print("   🔄 Calling repository.markMessagesAsRead()...")
+            try await messageRepository.markMessagesAsRead(messageIds: messageIds, userId: currentUserId)
+            print("✅ Messages marked as read in Firestore")
+        } catch {
+            // Non-critical error: Firestore listener will eventually sync
+            print("⚠️ Failed to mark messages as read: \(error.localizedDescription)")
+            // Don't rollback optimistic update - read receipts are best-effort
+        }
+        print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+    }
+    
+    // MARK: - Failed Message Retry
+    
+    /// Retry sending a failed message
+    func retryMessage(_ message: Message) async {
+        guard message.status == .failed else {
+            print("⚠️ Cannot retry message that isn't failed")
+            return
+        }
+
+        print("🔄 [ChatViewModel] Retrying message: \(message.id)")
+        retryingMessageId = message.id
+        defer { retryingMessageId = nil }
+
+        // 1. Update status to .sending (optimistic UI)
+        if let index = messages.firstIndex(where: { $0.id == message.id }) {
+            var retryingMessage = messages[index]
+            retryingMessage.status = .sending
+            retryingMessage.statusUpdatedAt = Date()
+
+            var updated = messages
+            updated[index] = retryingMessage
+            messages = updated
+        }
+
+        // 2. Prepare message with .sent status for Firestore
+        var messageToSend = message
+        messageToSend.status = .sent  // Mark as sent BEFORE sending to Firestore
+        messageToSend.statusUpdatedAt = Date()
+
+        // 3. Attempt to send
+        do {
+            try await messageRepository.sendMessage(messageToSend)
+
+            // Success: Update local status to .sent
+            if let index = messages.firstIndex(where: { $0.id == message.id }) {
+                var sentMessage = messages[index]
+                sentMessage.status = .sent
+                sentMessage.statusUpdatedAt = Date()
+
+                var updated = messages
+                updated[index] = sentMessage
+                messages = updated
+            }
+            
+            // Remove from failed messages store
+            failedMessageStore.remove(message.id)
+            
+            // Update conversation
+            try await updateConversation(with: message)
+            
+            print("✅ Retry successful: \(message.id)")
+            
+        } catch {
+            // Retry failed: Mark as failed again
+            if let index = messages.firstIndex(where: { $0.id == message.id }) {
+                var failedMessage = messages[index]
+                failedMessage.status = .failed
+                failedMessage.statusUpdatedAt = Date()
+                
+                var updated = messages
+                updated[index] = failedMessage
+                messages = updated
+            }
+            
+            errorMessage = mapErrorToUserMessage(error)
+            print("❌ Retry failed: \(error)")
+        }
+    }
+    
+    /// Delete a failed message permanently
+    func deleteFailedMessage(_ message: Message) {
+        print("🗑️ Deleting failed message: \(message.id)")
+        
+        // Remove from messages array
+        messages.removeAll { $0.id == message.id }
+        
+        // Remove from local persistence
+        failedMessageStore.remove(message.id)
+        
+        print("✅ Failed message deleted")
+    }
+    
+    /// Triggered when user taps failed message
+    func onFailedMessageTapped(_ message: Message) {
+        failedMessageTapped = message
+    }
+    
+    // MARK: - Failed Message Helpers
+    
+    /// Load failed messages from local persistence on init
+    private func loadFailedMessages() {
+        let failedMessages = failedMessageStore.loadAll()
+        
+        // Filter to only messages for this conversation
+        let conversationFailedMessages = failedMessages.filter { $0.conversationId == conversationId }
+        
+        if !conversationFailedMessages.isEmpty {
+            print("💾 Loaded \(conversationFailedMessages.count) failed message(s) from local storage")
+            
+            // Add to messages array if not already present
+            for failedMessage in conversationFailedMessages {
+                if !messages.contains(where: { $0.id == failedMessage.id }) {
+                    messages.append(failedMessage)
+                }
+            }
+            
+            // Sort by timestamp
+            messages.sort { $0.timestamp < $1.timestamp }
+        }
+    }
+    
+    /// Helper: Map error to user-friendly message
+    private func mapErrorToUserMessage(_ error: Error) -> String {
+        if let repoError = error as? RepositoryError {
+            switch repoError {
+            case .networkError:
+                return "No internet connection. Message will be saved and you can retry later."
+            case .unauthorized:
+                return "Authentication error. Please sign in again."
+            case .encodingError, .decodingError:
+                return "Message format error. Please try again."
+            case .conversationNotFound, .userNotFound, .messageNotFound:
+                return "Conversation not found. Please refresh and try again."
+            case .invalidInput:
+                return "Invalid message. Please try again."
+            case .unknown:
+                return "Failed to send message. Please try again."
+            }
+        }
+        return "Failed to send message: \(error.localizedDescription)"
+    }
+    
+    /// Helper: Save failed message to local storage
+    private func saveFailedMessageLocally(_ message: Message) {
+        var failedMessage = message
+        failedMessage.status = .failed
+        failedMessageStore.save(failedMessage)
     }
 }
 
