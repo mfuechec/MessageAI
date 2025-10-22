@@ -42,7 +42,11 @@ class DIContainer {
     /// Network monitor instance (Story 1.9)
     /// Tracks network connectivity status for offline indicators
     private lazy var networkMonitor: NetworkMonitor = NetworkMonitor()
-    
+
+    /// Offline queue store (Story 2.9)
+    /// Manages persistent storage of queued messages composed while offline
+    private lazy var offlineQueueStore: OfflineQueueStore = OfflineQueueStore()
+
     // MARK: - Repositories
     
     /// Message repository (Story 1.4)
@@ -128,6 +132,7 @@ class DIContainer {
             userRepository: userRepository,
             storageRepository: storageRepository,
             networkMonitor: networkMonitor,
+            offlineQueueStore: offlineQueueStore,  // Story 2.9
             initialConversation: initialConversation,
             initialParticipants: initialParticipants
         )

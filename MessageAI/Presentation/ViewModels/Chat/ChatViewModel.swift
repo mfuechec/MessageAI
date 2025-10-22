@@ -68,6 +68,10 @@ class ChatViewModel: ObservableObject {
     @Published var retryingMessageId: String?  // Track retry in progress
     @Published var failedMessageTapped: Message?
 
+    // Offline queue handling (Story 2.9)
+    @Published var queuedMessages: [Message] = []
+    @Published var showConnectivityToast: Bool = false
+
     // Typing indicator state
     @Published var typingUserNames: [String] = []
 
@@ -95,13 +99,14 @@ class ChatViewModel: ObservableObject {
     // MARK: - Private Properties
     
     private let conversationId: String
-    private let messageRepository: MessageRepositoryProtocol
+    let messageRepository: MessageRepositoryProtocol  // Story 2.9: Expose for OfflineQueueViewModel
     private let conversationRepository: ConversationRepositoryProtocol
     private let userRepository: UserRepositoryProtocol
     private let storageRepository: StorageRepositoryProtocol
     private let networkMonitor: any NetworkMonitorProtocol
     private var cancellables = Set<AnyCancellable>()
     private let failedMessageStore = FailedMessageStore()
+    let offlineQueueStore: OfflineQueueStore  // Story 2.9: Expose for OfflineQueueViewModel
 
     // Typing indicator private state
     private var typingThrottleTimer: Timer?
@@ -122,6 +127,7 @@ class ChatViewModel: ObservableObject {
         userRepository: UserRepositoryProtocol,
         storageRepository: StorageRepositoryProtocol,
         networkMonitor: any NetworkMonitorProtocol = NetworkMonitor(),
+        offlineQueueStore: OfflineQueueStore = OfflineQueueStore(),
         initialConversation: Conversation? = nil,
         initialParticipants: [User]? = nil
     ) {
@@ -132,6 +138,7 @@ class ChatViewModel: ObservableObject {
         self.userRepository = userRepository
         self.storageRepository = storageRepository
         self.networkMonitor = networkMonitor
+        self.offlineQueueStore = offlineQueueStore
         
         // If we have initial data, use it immediately (no loading needed for participants)
         if let conv = initialConversation, let parts = initialParticipants {
@@ -151,11 +158,15 @@ class ChatViewModel: ObservableObject {
         // Load failed messages from local persistence
         loadFailedMessages()
 
+        // Load queued messages from offline queue (Story 2.9)
+        loadQueuedMessages()
+
         // Always observe messages (async)
         observeMessages()
         observeTypingUsers()
         observeNetworkStatus()
         setupNetworkMonitoring()
+        observeConnectivity()  // Story 2.9: Watch for offline → online transitions
     }
     
     // MARK: - Private Methods
@@ -296,14 +307,17 @@ class ChatViewModel: ObservableObject {
             return
         }
         
-        // 2. Create Message entity with .sending status
+        // 2. Check if offline (Story 2.9) - if so, queue message instead of sending
+        let isCurrentlyOffline = !networkMonitor.isConnected
+
+        // 3. Create Message entity with appropriate status
         let message = Message(
             id: UUID().uuidString,
             conversationId: conversationId,
             senderId: currentUserId,
             text: trimmedText,
             timestamp: Date(),
-            status: .sending,
+            status: isCurrentlyOffline ? .queued : .sending,  // Story 2.9: queue if offline
             statusUpdatedAt: Date(),
             attachments: [],
             editHistory: nil,
@@ -318,12 +332,20 @@ class ChatViewModel: ObservableObject {
             priorityReason: nil,
             schemaVersion: 1
         )
-        
-        // 3. Optimistic UI: Append message immediately
+
+        // 4. Optimistic UI: Append message immediately
         messages.append(message)
         messageText = "" // Clear input
-        
-        // 4. Send to Firestore
+
+        // 5. If offline, enqueue and return early (Story 2.9)
+        if isCurrentlyOffline {
+            offlineQueueStore.enqueue(message)
+            queuedMessages.append(message)
+            print("⚠️ [ChatViewModel] Offline: Message queued (\(queuedMessages.count) total)")
+            return
+        }
+
+        // 6. Send to Firestore (only if online)
         isSending = true
         defer { isSending = false }
 
@@ -1005,6 +1027,147 @@ class ChatViewModel: ObservableObject {
         var failedMessage = message
         failedMessage.status = .failed
         failedMessageStore.save(failedMessage)
+    }
+
+    // MARK: - Offline Queue Methods (Story 2.9)
+
+    /// Load queued messages from offline queue for this conversation
+    private func loadQueuedMessages() {
+        let allQueued = offlineQueueStore.loadQueue()
+
+        // Filter to only messages for this conversation
+        let conversationQueued = allQueued.filter { $0.conversationId == conversationId }
+
+        if !conversationQueued.isEmpty {
+            print("📦 [ChatViewModel] Loaded \(conversationQueued.count) queued message(s) from offline queue")
+            queuedMessages = conversationQueued
+
+            // Add to messages array if not already present
+            for queuedMessage in conversationQueued {
+                if !messages.contains(where: { $0.id == queuedMessage.id }) {
+                    messages.append(queuedMessage)
+                }
+            }
+
+            // Sort by timestamp
+            messages.sort { $0.timestamp < $1.timestamp }
+        }
+    }
+
+    /// Observe connectivity changes (Story 2.9)
+    /// Shows toast when transitioning from offline → online with queued messages
+    private func observeConnectivity() {
+        var wasOffline = isOffline
+
+        networkMonitor.isConnectedPublisher
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] isConnected in
+                guard let self = self else { return }
+
+                let isNowOffline = !isConnected
+
+                // Detect offline → online transition
+                if wasOffline && !isNowOffline && !self.queuedMessages.isEmpty {
+                    print("🌐 [ChatViewModel] Connectivity restored with \(self.queuedMessages.count) queued messages")
+                    self.showConnectivityToast = true
+
+                    // Auto-dismiss toast after 10 seconds
+                    Task { @MainActor in
+                        try? await Task.sleep(nanoseconds: 10_000_000_000)  // 10 seconds
+                        self.showConnectivityToast = false
+                    }
+                }
+
+                wasOffline = isNowOffline
+            }
+            .store(in: &cancellables)
+    }
+
+    /// Send all queued messages sequentially (Story 2.9)
+    ///
+    /// Called when user taps "Send All" button in offline banner or connectivity toast.
+    /// Sends messages in FIFO order, continuing even if individual messages fail.
+    func sendAllQueuedMessages() async {
+        guard !queuedMessages.isEmpty else {
+            print("⚠️ [ChatViewModel] sendAllQueuedMessages called but queue is empty")
+            return
+        }
+
+        print("📤 [ChatViewModel] Sending \(queuedMessages.count) queued messages...")
+
+        // Send in order (FIFO)
+        for message in queuedMessages {
+            await sendSingleQueuedMessage(message)
+        }
+
+        print("✅ [ChatViewModel] Finished sending queued messages")
+    }
+
+    /// Send a single queued message (Story 2.9)
+    ///
+    /// Used by OfflineQueueView for per-message send action.
+    /// On success: Removes from queue. On failure: Marks as failed.
+    func sendSingleQueuedMessage(_ message: Message) async {
+        print("📤 [ChatViewModel] Attempting to send queued message \(message.id)")
+
+        // Update status to .sending
+        if let index = messages.firstIndex(where: { $0.id == message.id }) {
+            var updated = messages
+            updated[index].status = .sending
+            updated[index].statusUpdatedAt = Date()
+            messages = updated
+        }
+
+        do {
+            try await messageRepository.sendMessage(message)
+
+            // Success: Remove from queue
+            offlineQueueStore.dequeue(message.id)
+            queuedMessages.removeAll { $0.id == message.id }
+
+            // Update status to .sent
+            if let index = messages.firstIndex(where: { $0.id == message.id }) {
+                var updated = messages
+                updated[index].status = .sent
+                updated[index].statusUpdatedAt = Date()
+                messages = updated
+            }
+
+            // Update conversation's last message
+            try? await updateConversation(with: message)
+
+            print("✅ [ChatViewModel] Successfully sent queued message \(message.id)")
+
+        } catch {
+            print("❌ [ChatViewModel] Failed to send queued message \(message.id): \(error)")
+
+            // Failure: Keep in queue with .failed status
+            if let index = messages.firstIndex(where: { $0.id == message.id }) {
+                var updated = messages
+                updated[index].status = .failed
+                updated[index].statusUpdatedAt = Date()
+                messages = updated
+            }
+
+            // Also update in queue array
+            if let queueIndex = queuedMessages.firstIndex(where: { $0.id == message.id }) {
+                queuedMessages[queueIndex].status = .failed
+                queuedMessages[queueIndex].statusUpdatedAt = Date()
+            }
+
+            errorMessage = "Failed to send message: \(error.localizedDescription)"
+        }
+    }
+
+    /// Delete a queued message (Story 2.9)
+    ///
+    /// Removes from offline queue and messages array.
+    /// Called from OfflineQueueView when user deletes a queued message.
+    func deleteQueuedMessage(_ messageId: String) {
+        offlineQueueStore.dequeue(messageId)
+        queuedMessages.removeAll { $0.id == messageId }
+        messages.removeAll { $0.id == messageId }
+        print("🗑️ [ChatViewModel] Deleted queued message \(messageId)")
     }
 
     // MARK: - Typing Indicator Methods

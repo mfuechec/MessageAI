@@ -5,8 +5,9 @@ import Combine
 /// Mock implementation of MessageRepositoryProtocol for testing
 class MockMessageRepository: MessageRepositoryProtocol {
     // MARK: - Tracking Properties
-    
+
     var sendMessageCalled = false
+    var sendMessageCallCount = 0  // Story 2.9: Track multiple sends
     var observeMessagesCalled = false
     var getMessagesCalled = false
     var updateMessageStatusCalled = false
@@ -14,9 +15,10 @@ class MockMessageRepository: MessageRepositoryProtocol {
     var deleteMessageCalled = false
     var markMessagesAsReadCalled = false
     var shouldFail = false
-    
+    var shouldFailMessageId: String?  // Story 2.9: Fail specific message
+
     // MARK: - Configurable Properties
-    
+
     var mockMessages: [Message] = []
     var mockError: Error?
     
@@ -37,12 +39,18 @@ class MockMessageRepository: MessageRepositoryProtocol {
     
     func sendMessage(_ message: Message) async throws {
         sendMessageCalled = true
+        sendMessageCallCount += 1
         capturedMessage = message
-        
+
+        // Story 2.9: Conditional failure based on message ID
+        if let failId = shouldFailMessageId, message.id == failId {
+            throw mockError ?? RepositoryError.networkError("Mock network error")
+        }
+
         if shouldFail {
             throw mockError ?? RepositoryError.messageNotFound("Mock error")
         }
-        
+
         // Add message to mock messages for observeMessages to return
         mockMessages.append(message)
     }
@@ -150,6 +158,7 @@ class MockMessageRepository: MessageRepositoryProtocol {
     /// Resets all tracking and configurable properties
     func reset() {
         sendMessageCalled = false
+        sendMessageCallCount = 0
         observeMessagesCalled = false
         getMessagesCalled = false
         updateMessageStatusCalled = false
@@ -157,6 +166,7 @@ class MockMessageRepository: MessageRepositoryProtocol {
         deleteMessageCalled = false
         markMessagesAsReadCalled = false
         shouldFail = false
+        shouldFailMessageId = nil
         mockMessages = []
         mockError = nil
         capturedMessage = nil

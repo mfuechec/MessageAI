@@ -10,9 +10,12 @@ struct ChatView: View {
     @State private var showGroupMemberList = false
     @State private var showFailedMessageAlert = false
     @State private var selectedFailedMessage: Message?
-    
+
     // Toast notification state
     @State private var showReconnectedToast = false
+
+    // Offline queue state (Story 2.9)
+    @State private var showOfflineQueue = false
     
     // Optional initial data to avoid loading delay
     let initialConversation: Conversation?
@@ -28,6 +31,18 @@ struct ChatView: View {
         ZStack {
             // Always show content (MessageKit handles empty state)
             VStack(spacing: 0) {
+                // Offline queue banner (Story 2.9)
+                if viewModel.queuedMessages.count > 0 {
+                    OfflineBannerView(
+                        queuedCount: viewModel.queuedMessages.count,
+                        onSendAll: {
+                            Task {
+                                await viewModel.sendAllQueuedMessages()
+                            }
+                        }
+                    )
+                }
+
                 MessageKitWrapper(viewModel: viewModel, conversationTitle: $conversationTitle)
                     .edgesIgnoringSafeArea(.bottom)
 
@@ -50,16 +65,35 @@ struct ChatView: View {
                     offlineToast
                         .transition(.move(edge: .top).combined(with: .opacity))
                 }
-                
+
                 if showReconnectedToast {
                     reconnectedToast
                         .transition(.move(edge: .top).combined(with: .opacity))
                 }
-                
+
+                // Connectivity restored toast (Story 2.9)
+                if viewModel.showConnectivityToast {
+                    ConnectivityToastView(
+                        queuedCount: viewModel.queuedMessages.count,
+                        onAutoSend: {
+                            Task {
+                                await viewModel.sendAllQueuedMessages()
+                                viewModel.showConnectivityToast = false
+                            }
+                        },
+                        onReviewFirst: {
+                            showOfflineQueue = true
+                            viewModel.showConnectivityToast = false
+                        }
+                    )
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                }
+
                 Spacer()
             }
             .animation(.spring(response: 0.3), value: viewModel.isOffline)
             .animation(.spring(response: 0.3), value: showReconnectedToast)
+            .animation(.spring(response: 0.3), value: viewModel.showConnectivityToast)
             
             // Edit mode overlay
             if viewModel.isEditingMessage {
@@ -107,6 +141,16 @@ struct ChatView: View {
         }
         .sheet(isPresented: $showGroupMemberList) {
             GroupMemberListView(participants: viewModel.participants)
+        }
+        .sheet(isPresented: $showOfflineQueue) {
+            // Offline queue view (Story 2.9)
+            // Uses shared instances to ensure queue stays in sync
+            OfflineQueueView(
+                viewModel: OfflineQueueViewModel(
+                    offlineQueueStore: viewModel.offlineQueueStore,
+                    messageRepository: viewModel.messageRepository
+                )
+            )
         }
         .sheet(isPresented: $viewModel.showEditHistoryModal) {
             if let message = viewModel.editHistoryMessage {

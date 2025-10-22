@@ -51,5 +51,13 @@ class MockNetworkMonitor: NetworkMonitorProtocol {
     func reset() {
         isConnected = true
     }
+
+    /// Simulate connectivity change to trigger observers (Story 2.9)
+    func simulateConnectivityChange() {
+        // Toggle to trigger publisher
+        let current = isConnected
+        isConnected = !current
+        isConnected = current
+    }
 }
 
