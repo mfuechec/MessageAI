@@ -95,12 +95,11 @@ class ChatViewModel: ObservableObject {
     private let pageSize = 50
     
     // MARK: - Public Properties
-    
+
     let currentUserId: String  // Exposed for ChatView title filtering
-    
+    let conversationId: String  // Story 3.2: Exposed for SummaryViewModel creation
+
     // MARK: - Private Properties
-    
-    private let conversationId: String
     let messageRepository: MessageRepositoryProtocol  // Story 2.9: Expose for OfflineQueueViewModel
     private let conversationRepository: ConversationRepositoryProtocol
     private let userRepository: UserRepositoryProtocol
@@ -110,13 +109,8 @@ class ChatViewModel: ObservableObject {
     private let failedMessageStore = FailedMessageStore()
     let offlineQueueStore: OfflineQueueStore  // Story 2.9: Expose for OfflineQueueViewModel
 
-    // MARK: - AI Services (Story 3.1 Debug)
-    #if DEBUG
+    // MARK: - AI Services (Story 3.2)
     private let aiService: AIServiceProtocol?
-    @Published var debugAISummary: String?
-    @Published var debugAIError: String?
-    @Published var isTestingAI: Bool = false
-    #endif
 
     // Typing indicator private state
     private var typingThrottleTimer: Timer?
@@ -140,7 +134,7 @@ class ChatViewModel: ObservableObject {
         offlineQueueStore: OfflineQueueStore = OfflineQueueStore(),
         initialConversation: Conversation? = nil,
         initialParticipants: [User]? = nil,
-        aiService: AIServiceProtocol? = nil  // Story 3.1: Optional for debug testing
+        aiService: AIServiceProtocol? = nil  // Story 3.2: Optional AI service
     ) {
         self.conversationId = conversationId
         self.currentUserId = currentUserId
@@ -150,10 +144,7 @@ class ChatViewModel: ObservableObject {
         self.storageRepository = storageRepository
         self.networkMonitor = networkMonitor
         self.offlineQueueStore = offlineQueueStore
-
-        #if DEBUG
         self.aiService = aiService
-        #endif
         
         // If we have initial data, use it immediately (no loading needed for participants)
         if let conv = initialConversation, let parts = initialParticipants {
@@ -1898,76 +1889,5 @@ class ChatViewModel: ObservableObject {
     func dismissFullScreenImage() {
         selectedImageURL = nil
     }
-
-    // MARK: - DEBUG: AI Testing (Story 3.1)
-
-    #if DEBUG
-    /// Test AI summarization (Story 3.1 infrastructure test)
-    func testAISummarization() async {
-        guard let aiService = aiService else {
-            debugAIError = "AI Service not injected. Check DIContainer."
-            return
-        }
-
-        isTestingAI = true
-        debugAISummary = nil
-        debugAIError = nil
-
-        do {
-            print("🧪 [DEBUG] Testing AI summarization for conversation: \(conversationId)")
-
-            let summary = try await aiService.summarizeThread(
-                conversationId: conversationId,
-                messageIds: nil
-            )
-
-            debugAISummary = """
-            ✅ AI SUMMARY TEST SUCCESS
-
-            Summary: \(summary.summary)
-
-            Key Points:
-            \(summary.keyPoints.enumerated().map { "\($0.offset + 1). \($0.element)" }.joined(separator: "\n"))
-
-            Participants: \(summary.participants.joined(separator: ", "))
-            Date Range: \(summary.dateRange)
-            Cached: \(summary.cached ? "Yes" : "No")
-            Generated: \(summary.generatedAt.formatted())
-
-            📝 This is a placeholder response from Story 3.1.
-            Real AI integration will be added in Story 3.5.
-            """
-
-            print("✅ [DEBUG] AI test successful")
-            print("   Summary length: \(summary.summary.count) chars")
-            print("   Key points: \(summary.keyPoints.count)")
-            print("   Cached: \(summary.cached)")
-
-        } catch let error as AIServiceError {
-            debugAIError = """
-            ❌ AI SERVICE ERROR
-
-            \(error.errorDescription ?? "Unknown error")
-
-            Possible causes:
-            • Not authenticated
-            • Not a participant in conversation
-            • Cloud Functions not deployed
-            • Network unavailable
-            """
-            print("❌ [DEBUG] AI test failed: \(error.errorDescription ?? "Unknown")")
-
-        } catch {
-            debugAIError = """
-            ❌ UNEXPECTED ERROR
-
-            \(error.localizedDescription)
-            """
-            print("❌ [DEBUG] AI test failed: \(error)")
-        }
-
-        isTestingAI = false
-    }
-    #endif
 }
 

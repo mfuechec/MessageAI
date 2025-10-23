@@ -17,6 +17,11 @@ struct ChatView: View {
     // Offline queue state (Story 2.9)
     @State private var showOfflineQueue = false
 
+    // AI features state (Story 3.2)
+    @State private var showAIMenu = false
+    @State private var showSummary = false
+    @State private var summaryViewModel: SummaryViewModel?
+
     // Optional initial data to avoid loading delay
     let initialConversation: Conversation?
     let initialParticipants: [User]?
@@ -28,6 +33,12 @@ struct ChatView: View {
     }
 
     var body: some View {
+        contentWithLifecycle
+    }
+
+    // MARK: - Content Building (to reduce type-checking complexity)
+
+    private var mainContent: some View {
         ZStack {
             // Always show content (MessageKit handles empty state)
             VStack(spacing: 0) {
@@ -100,26 +111,12 @@ struct ChatView: View {
                 editModeOverlay
             }
         }
-        .navigationBarTitleDisplayMode(.inline)
-        .onChange(of: viewModel.isOffline) { newValue in
-            print("🔴 [ChatView] onChange fired: isOffline=\(newValue)")
-            
-            if !newValue {
-                // Reconnected - show reconnected toast briefly
-                print("   → Showing reconnected toast")
-                showReconnectedToast = true
-                
-                // Auto-dismiss reconnected toast after 2 seconds
-                DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                    print("   → Auto-dismissing reconnected toast")
-                    showReconnectedToast = false
-                }
-            } else {
-                // Went offline - hide reconnected toast if showing
-                showReconnectedToast = false
-            }
-        }
-        .toolbar {
+    }
+
+    // MARK: - Toolbar Content
+
+    @ToolbarContentBuilder
+    private var toolbarContent: some ToolbarContent {
             ToolbarItem(placement: .principal) {
                 if viewModel.isGroupConversation {
                     // Group: Tappable title to show member list
@@ -139,32 +136,29 @@ struct ChatView: View {
                 }
             }
 
-            // Story 3.1: Debug button temporarily disabled due to SwiftUI compiler complexity issues
-            // Will be re-enabled after view refactoring or in Story 3.2 AI UI
-            // For now, test Cloud Functions directly via Firebase Console
-            /*
-            #if DEBUG
+            // Story 3.2: AI Features Button
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button(action: {
-                    Task {
-                        await viewModel.testAISummarization()
-                    }
+                    showAIMenu = true
                 }) {
-                    if viewModel.isTestingAI {
-                        ProgressView()
-                            .progressViewStyle(CircularProgressViewStyle())
-                    } else {
-                        Image(systemName: "brain")
-                            .foregroundColor(.blue)
-                    }
+                    Image(systemName: "sparkles")
+                        .foregroundColor(.blue)
                 }
-                .disabled(viewModel.isTestingAI)
-                .accessibilityLabel("Test AI Summary")
-                .accessibilityHint("Tests Cloud Functions AI infrastructure")
+                .accessibilityLabel("AI Features")
+                .accessibilityHint("Access AI-powered features like thread summarization")
             }
-            #endif
-            */
-        }
+    }
+
+    private var contentWithToolbar: some View {
+        mainContent
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                toolbarContent
+            }
+    }
+
+    private var contentWithSheets: some View {
+        contentWithToolbar
         .sheet(isPresented: $showGroupMemberList) {
             GroupMemberListView(participants: viewModel.participants)
         }
@@ -189,6 +183,21 @@ struct ChatView: View {
                 participants: viewModel.participants,
                 currentUserId: viewModel.currentUserId
             )
+        }
+        // Story 3.2: AI Features
+        .confirmationDialog("AI Features", isPresented: $showAIMenu) {
+            Button("Summarize Thread") {
+                summaryViewModel = DIContainer.shared.makeSummaryViewModel(
+                    conversationId: viewModel.conversationId
+                )
+                showSummary = true
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Choose an AI feature to use")
+        }
+        .sheet(isPresented: $showSummary) {
+            summarySheetContent
         }
         // Delete Confirmation Alert
         .alert("Delete this message for everyone?", isPresented: $viewModel.showDeleteConfirmation) {
@@ -238,45 +247,6 @@ struct ChatView: View {
         } message: {
             Text(viewModel.errorMessage ?? "An error occurred")
         }
-
-        // Story 3.1: Debug alerts temporarily disabled due to SwiftUI compiler complexity
-        // Will be re-enabled in Story 3.2 when building dedicated AI UI screens
-        /*
-        #if DEBUG
-        .alert("AI Test Success", isPresented: Binding(
-            get: { viewModel.debugAISummary != nil },
-            set: { if !$0 { viewModel.debugAISummary = nil } }
-        )) {
-            Button("OK", role: .cancel) {
-                viewModel.debugAISummary = nil
-            }
-            Button("Copy", role: .none) {
-                UIPasteboard.general.string = viewModel.debugAISummary
-            }
-        } message: {
-            if let summary = viewModel.debugAISummary {
-                Text(summary)
-            }
-        }
-
-        .alert("AI Test Failed", isPresented: Binding(
-            get: { viewModel.debugAIError != nil },
-            set: { if !$0 { viewModel.debugAIError = nil } }
-        )) {
-            Button("OK", role: .cancel) {
-                viewModel.debugAIError = nil
-            }
-            Button("Copy Error", role: .none) {
-                UIPasteboard.general.string = viewModel.debugAIError
-            }
-        } message: {
-            if let error = viewModel.debugAIError {
-                Text(error)
-            }
-        }
-        #endif
-        */
-
         // Image Picker Sheet
         .sheet(isPresented: $viewModel.isImagePickerPresented) {
             ImagePicker(selectedImage: $viewModel.selectedImage)
@@ -308,6 +278,10 @@ struct ChatView: View {
                 })
             }
         }
+    }
+
+    private var contentWithLifecycle: some View {
+        contentWithSheets
         .onAppear {
             // Track that user is viewing this conversation (for notification suppression)
             viewModel.onAppear()
@@ -325,10 +299,30 @@ struct ChatView: View {
         .onChange(of: viewModel.participants) { _ in
             updateConversationTitle()
         }
+        .onChange(of: viewModel.isOffline) { newValue in
+            print("🔴 [ChatView] onChange fired: isOffline=\(newValue)")
+
+            if !newValue {
+                // Reconnected - show reconnected toast briefly
+                print("   → Showing reconnected toast")
+                showReconnectedToast = true
+
+                // Auto-dismiss reconnected toast after 2 seconds
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                    print("   → Auto-dismissing reconnected toast")
+                    showReconnectedToast = false
+                }
+            } else {
+                // Went offline - hide reconnected toast if showing
+                showReconnectedToast = false
+            }
+        }
         .onDisappear {
             viewModel.onDisappear()
         }
     }
+
+    // MARK: - Supporting Views
 
     private var offlineBanner: some View {
         HStack {
@@ -459,6 +453,19 @@ struct ChatView: View {
         .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
         .padding(.top, 8)
         .accessibilityLabel("Back online")
+    }
+
+    // Story 3.2: Summary sheet content
+    @ViewBuilder
+    private var summarySheetContent: some View {
+        if let summaryVM = summaryViewModel {
+            SummaryView(viewModel: summaryVM)
+                .onAppear {
+                    Task {
+                        await summaryVM.loadSummary()
+                    }
+                }
+        }
     }
 }
 

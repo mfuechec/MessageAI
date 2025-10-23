@@ -187,5 +187,21 @@ class DIContainer {
             authRepository: authRepository
         )
     }
+
+    /// Creates SummaryViewModel for thread summarization (Story 3.2)
+    /// - Parameters:
+    ///   - conversationId: The conversation to summarize
+    ///   - messageIds: Optional specific message IDs to summarize
+    /// - Returns: Configured SummaryViewModel instance
+    func makeSummaryViewModel(
+        conversationId: String,
+        messageIds: [String]? = nil
+    ) -> SummaryViewModel {
+        SummaryViewModel(
+            conversationId: conversationId,
+            messageIds: messageIds,
+            aiService: aiService
+        )
+    }
 }
 

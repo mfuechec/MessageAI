@@ -5,11 +5,11 @@ Firebase Cloud Functions for AI-powered features in MessageAI.
 ## Overview
 
 This directory contains Node.js/TypeScript Cloud Functions that provide server-side AI processing for:
-- **Thread Summarization** - Generate summaries of conversation threads
+- **Thread Summarization** (Story 3.5 ✅) - Generate summaries of conversation threads using OpenAI GPT-4
 - **Action Item Extraction** - Extract tasks and assignments from conversations
 - **Smart Search** - AI-enhanced semantic search across messages
 
-**Story 3.1 Implementation Note:** These functions currently return placeholder responses. Real AI integration with OpenAI will be implemented in Story 3.5.
+**Story 3.5 Implementation:** Thread summarization now uses real OpenAI GPT-4 API with rate limiting, caching, and user-friendly error handling.
 
 ## Project Structure
 
@@ -67,7 +67,20 @@ npm run serve
 # Functions.functions().useEmulator(withHost: "localhost", port: 5001)
 ```
 
-## Environment Variables
+## Environment Variables (Story 3.5)
+
+### Getting an OpenAI API Key
+
+1. Go to [OpenAI Platform](https://platform.openai.com/)
+2. Sign up or log in
+3. Navigate to API Keys section
+4. Click "Create new secret key"
+5. Copy the key (starts with `sk-...`)
+
+**Cost Estimate:**
+- GPT-4 Turbo: ~$0.01 per summary (150-300 words)
+- With 24-hour cache: 70%+ cache hit rate reduces costs
+- Rate limit: 100 requests/user/day caps maximum cost
 
 ### Local Development
 
@@ -76,12 +89,12 @@ Create `functions/.runtimeconfig.json` (gitignored):
 ```json
 {
   "openai": {
-    "api_key": "placeholder-for-story-3.1"
+    "api_key": "sk-proj-your-openai-api-key-here"
   }
 }
 ```
 
-**Note:** Story 3.1 uses placeholder responses. Real API key will be added in Story 3.5.
+**IMPORTANT:** Never commit this file to git (already in .gitignore).
 
 ### Production
 
@@ -89,16 +102,19 @@ Set environment variables in Firebase:
 
 ```bash
 # Dev environment
-firebase functions:config:set openai.api_key="your-api-key" --project=messageai-dev-1f2ec
+firebase functions:config:set openai.api_key="sk-proj-..." --project=messageai-dev-1f2ec
 
 # Prod environment
-firebase functions:config:set openai.api_key="your-api-key" --project=messageai-prod-4d3a8
+firebase functions:config:set openai.api_key="sk-proj-..." --project=messageai-prod-4d3a8
+
+# Verify configuration
+firebase functions:config:get --project=messageai-dev-1f2ec
 ```
 
 Access in functions:
 
 ```typescript
-const apiKey = functions.config().openai?.api_key;
+const apiKey = functions.config().openai?.api_key || process.env.OPENAI_API_KEY;
 ```
 
 ## Deployment
@@ -148,11 +164,14 @@ Generates an AI summary of a conversation thread.
 }
 ```
 
-**Features:**
-- Authentication check (Firebase Auth token required)
-- Participant verification (user must be in conversation)
-- Cache lookup (24-hour expiration)
-- Error handling (rate limits, timeouts, validation errors)
+**Features (Story 3.5):**
+- ✅ Real OpenAI GPT-4 Turbo integration
+- ✅ Authentication check (Firebase Auth token required)
+- ✅ Participant verification (user must be in conversation)
+- ✅ Rate limiting (100 requests/user/day)
+- ✅ Cache lookup (24-hour expiration)
+- ✅ User-friendly error messages
+- ✅ Graceful fallback when AI unavailable
 
 ### 2. extractActionItems
 
@@ -289,16 +308,17 @@ Integration tests run from iOS test suite:
 ./scripts/quick-test.sh --test CloudFunctionsIntegrationTests --with-integration
 ```
 
-## Story 3.1 vs Story 3.5
+## Story 3.1 vs Story 3.5 ✅ COMPLETED
 
 | Feature | Story 3.1 | Story 3.5 |
 |---------|-----------|-----------|
-| **Cloud Functions** | ✅ Implemented with placeholders | Real OpenAI integration |
+| **Cloud Functions** | ✅ Implemented with placeholders | ✅ Real OpenAI GPT-4 Turbo |
 | **Authentication** | ✅ Working | ✅ Working |
-| **Caching** | ✅ Working | ✅ Working |
+| **Caching** | ✅ Working (24 hours) | ✅ Working (24 hours) |
 | **AI Responses** | ❌ Placeholder text | ✅ Real AI summaries |
 | **Rate Limiting** | ❌ Not implemented | ✅ 100 req/day per user |
-| **Cost Tracking** | ❌ Not implemented | ✅ Firebase Analytics |
+| **Error Handling** | ✅ Basic | ✅ User-friendly messages |
+| **Cost Optimization** | N/A | ✅ Cache + Rate limits |
 
 ## Troubleshooting
 
@@ -342,16 +362,21 @@ Restart emulator:
 
 Check emulator UI: http://localhost:4000
 
-## Future Enhancements (Story 3.5+)
+## Completed (Story 3.5) ✅
 
-- [ ] Real OpenAI GPT-4 Turbo integration
-- [ ] Function calling for structured outputs
-- [ ] Rate limiting (100 requests/day per user)
-- [ ] Cost tracking and analytics
-- [ ] User-friendly error messages
-- [ ] Graceful fallback when AI unavailable
+- [x] Real OpenAI GPT-4 Turbo integration
+- [x] JSON-based structured outputs
+- [x] Rate limiting (100 requests/day per user)
+- [x] User-friendly error messages
+- [x] Graceful fallback when AI unavailable
+
+## Future Enhancements (Story 3.6+)
+
+- [ ] Cost tracking dashboard in Firebase Analytics
 - [ ] Unit tests with Jest
-- [ ] Performance optimization
+- [ ] Additional AI models (Claude, Gemini)
+- [ ] Performance optimization (parallel requests)
+- [ ] Function calling for more structured extraction
 
 ## References
 

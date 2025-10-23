@@ -9,6 +9,7 @@ import FirebaseCore
 import FirebaseFirestore
 import FirebaseAuth
 import FirebaseStorage
+import FirebaseFunctions
 
 /// Central Firebase service manager
 ///
@@ -99,18 +100,22 @@ class FirebaseService {
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("USE_FIREBASE_EMULATOR") {
             print("🔥 Using Firebase Emulator")
-            
+
             // Auth Emulator
             Auth.auth().useEmulator(withHost: "localhost", port: 9099)
-            
+
             // Firestore Emulator
             let settings = Firestore.firestore().settings
             settings.host = "localhost:8080"
             settings.isSSLEnabled = false
             Firestore.firestore().settings = settings
-            
+
             // Storage Emulator
             Storage.storage().useEmulator(withHost: "localhost", port: 9199)
+
+            // Cloud Functions Emulator
+            Functions.functions().useEmulator(withHost: "localhost", port: 5001)
+            print("🔥 Cloud Functions emulator: localhost:5001")
         }
         #endif
     }

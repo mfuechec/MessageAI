@@ -23,7 +23,8 @@ protocol AIServiceProtocol {
     /// - Throws: AIServiceError if the request fails
     func summarizeThread(
         conversationId: String,
-        messageIds: [String]?
+        messageIds: [String]?,
+        bypassCache: Bool
     ) async throws -> ThreadSummary
 
     /// Extract action items from a conversation

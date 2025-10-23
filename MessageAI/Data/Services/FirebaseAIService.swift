@@ -23,29 +23,45 @@ class FirebaseAIService: AIServiceProtocol {
 
     func summarizeThread(
         conversationId: String,
-        messageIds: [String]?
+        messageIds: [String]?,
+        bypassCache: Bool = false
     ) async throws -> ThreadSummary {
+        print("🟢 [FirebaseAIService] summarizeThread() called")
+        print("   Conversation ID: \(conversationId)")
+        print("   Bypass cache: \(bypassCache)")
+
         let response = try await cloudFunctionsService.callSummarizeThread(
             conversationId: conversationId,
-            messageIds: messageIds
+            messageIds: messageIds,
+            bypassCache: bypassCache
         )
+
+        print("🟢 [FirebaseAIService] Cloud Function response received")
+        print("   Success: \(response.success)")
+        print("   Cached: \(response.cached)")
 
         // Parse timestamp
         let generatedAt: Date
         if let date = ISO8601DateFormatter().date(from: response.timestamp) {
             generatedAt = date
         } else {
+            print("⚠️  [FirebaseAIService] Failed to parse timestamp: \(response.timestamp), using Date()")
             generatedAt = Date()
         }
 
-        return ThreadSummary(
+        let summary = ThreadSummary(
             summary: response.summary,
             keyPoints: response.keyPoints ?? [],
             participants: response.participants ?? [],
             dateRange: response.dateRange ?? "",
             generatedAt: generatedAt,
-            cached: response.cached
+            cached: response.cached,
+            messagesSinceCache: response.messagesSinceCache
         )
+
+        print("✅ [FirebaseAIService] Mapped to ThreadSummary successfully")
+        print("   Messages since cache: \(response.messagesSinceCache)")
+        return summary
     }
 
     func extractActionItems(

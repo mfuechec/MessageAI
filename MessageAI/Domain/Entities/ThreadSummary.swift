@@ -30,4 +30,7 @@ struct ThreadSummary {
 
     /// Whether this result came from cache
     let cached: Bool
+
+    /// Number of new messages since this summary was cached (0 if fresh)
+    let messagesSinceCache: Int
 }

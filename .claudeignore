@@ -1,0 +1,44 @@
+# Claude Code Ignore File
+# Files and directories that Claude Code should not read or analyze
+
+# API Keys and Secrets
+**/.runtimeconfig.json
+**/GoogleService-Info*.plist
+**/.env
+**/.env.local
+**/credentials.json
+**/secrets.json
+
+# Firebase config files (contain project IDs and API keys)
+MessageAI/Resources/GoogleService-Info-Dev.plist
+MessageAI/Resources/GoogleService-Info-Prod.plist
+
+# Build artifacts
+**/DerivedData/
+**/build/
+**/lib/
+**/.build/
+**/Pods/
+
+# Dependencies
+**/node_modules/
+**/package-lock.json
+
+# User-specific files
+**/.DS_Store
+**/xcuserdata/
+**/*.xcworkspace/xcuserdata/
+
+# Large binary files
+**/*.ipa
+**/*.app
+**/*.dSYM
+**/*.xcarchive
+
+# Test coverage reports
+**/coverage/
+**/.coverage
+
+# Logs
+**/*.log
+**/logs/

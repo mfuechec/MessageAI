@@ -1,13 +1,19 @@
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
+import OpenAI from "openai";
 import {verifyConversationParticipant} from "./utils/security";
-import {generateCacheKey, lookupCache, storeInCache} from "./utils/cache";
+import {generateCacheKey, storeInCache, checkCacheStaleness} from "./utils/cache";
+import {checkRateLimit} from "./utils/rateLimiting";
+
+// Initialize OpenAI with API key from environment
+const openai = new OpenAI({
+  apiKey: functions.config().openai?.api_key || process.env.OPENAI_API_KEY,
+});
 
 /**
- * Cloud Function: Summarize Thread
+ * Cloud Function: Summarize Thread (Story 3.5)
  *
- * Generates an AI summary of a conversation thread.
- * In Story 3.1, this returns placeholder data. Real OpenAI integration in Story 3.5.
+ * Generates an AI summary of a conversation thread using OpenAI GPT-4.
  *
  * Input: { conversationId: string, messageIds?: string[] }
  * Output: { success: boolean, summary: string, keyPoints: string[], cached: boolean, timestamp: string }
@@ -50,19 +56,27 @@ export const summarizeThread = functions
 
       const conversationId = data.conversationId;
       const messageIds = data.messageIds as string[] | undefined;
+      const bypassCache = data.bypassCache === true; // Optional parameter to force fresh generation
 
       console.log(
         `[summarizeThread] User ${userId} requesting summary for conversation ${conversationId}`,
-        messageIds ? `with ${messageIds.length} specific messages` : "for all messages"
+        messageIds ? `with ${messageIds.length} specific messages` : "for all messages",
+        bypassCache ? "(bypassing cache)" : ""
       );
 
       // ========================================
-      // 3. SECURITY CHECK (Participant Verification)
+      // 3. RATE LIMITING (Story 3.5)
+      // ========================================
+      // Check rate limit BEFORE expensive operations to prevent abuse
+      await checkRateLimit(userId, "summary", 100);
+
+      // ========================================
+      // 4. SECURITY CHECK (Participant Verification)
       // ========================================
       await verifyConversationParticipant(userId, conversationId);
 
       // ========================================
-      // 4. FETCH MESSAGES FROM FIRESTORE
+      // 5. FETCH MESSAGES FROM FIRESTORE
       // ========================================
       let messagesQuery = admin.firestore()
         .collection("messages")
@@ -89,34 +103,72 @@ export const summarizeThread = functions
 
       console.log(`[summarizeThread] Found ${messages.length} messages`);
 
-      // Get latest message ID for cache key
-      const latestMessageId = messages[0].id as string;
-
       // ========================================
-      // 5. CACHE LOOKUP
+      // 6. SMART CACHE LOOKUP (Story 3.5)
       // ========================================
-      const cacheKey = generateCacheKey("summary", conversationId, latestMessageId);
-      const cachedResult = await lookupCache(cacheKey);
+      // Use conversationId only (not latestMessageId) for cache key
+      // This allows us to return slightly stale summaries if acceptable
+      const cacheKey = generateCacheKey("summary", conversationId, "v1");
 
-      if (cachedResult) {
-        console.log(`[summarizeThread] Returning cached summary`);
-        return {
-          success: true,
-          summary: cachedResult.summary,
-          keyPoints: cachedResult.keyPoints || [],
-          participants: cachedResult.participants || [],
-          dateRange: cachedResult.dateRange || "",
-          cached: true,
-          timestamp: new Date().toISOString(),
-        };
+      // Skip cache if bypass requested (e.g., from "Regenerate" button)
+      if (bypassCache) {
+        console.log(`[summarizeThread] Cache bypass requested - forcing fresh generation`);
+      } else {
+        // Try to get cached summary
+        const cacheDoc = await admin.firestore()
+          .collection("ai_cache")
+          .doc(cacheKey)
+          .get();
+
+        if (cacheDoc.exists) {
+        const cacheData = cacheDoc.data();
+
+        // Check if cache has expired (24 hours)
+        const expiresAt = cacheData?.expiresAt;
+        const isExpired = expiresAt && (
+          expiresAt.toDate ? expiresAt.toDate() : new Date(expiresAt)
+        ) < new Date();
+
+        if (!isExpired) {
+          // Check staleness: Only regenerate if >10 new messages or >24 hours
+          const stalenessCheck = checkCacheStaleness(
+            cacheData!,
+            messages.length,
+            10, // Regenerate if 10+ new messages
+            24  // Or if 24+ hours old
+          );
+
+          if (!stalenessCheck.isStale) {
+            // Cache is fresh enough - return it with staleness metadata
+            console.log(`[summarizeThread] Returning cached summary (fresh)`);
+            const cachedResult = JSON.parse(cacheData!.result);
+
+            return {
+              success: true,
+              summary: cachedResult.summary,
+              keyPoints: cachedResult.keyPoints || [],
+              participants: cachedResult.participants || [],
+              dateRange: cachedResult.dateRange || "",
+              cached: true,
+              messagesSinceCache: stalenessCheck.messagesSinceCache,
+              timestamp: new Date().toISOString(),
+            };
+          } else {
+            console.log(`[summarizeThread] Cache exists but is stale - regenerating`);
+            console.log(`  ${stalenessCheck.messagesSinceCache} new messages since cache`);
+            console.log(`  ${stalenessCheck.hoursSinceCache.toFixed(1)} hours since cache`);
+          }
+        } else {
+          console.log(`[summarizeThread] Cache expired - regenerating`);
+        }
+        } else {
+          console.log(`[summarizeThread] No cache found - generating new summary`);
+        }
       }
 
       // ========================================
-      // 6. AI API CALL (PLACEHOLDER for Story 3.1)
+      // 7. FETCH PARTICIPANT NAMES AND DATE RANGE
       // ========================================
-      // In Story 3.5, this will be replaced with actual OpenAI API call
-
-      // Fetch sender names for participants list
       const participantIds = Array.from(
         new Set(messages.map((m: any) => m.senderId))
       );
@@ -142,31 +194,129 @@ export const summarizeThread = functions
 
       const dateRange = `${oldestDate.toLocaleDateString()} - ${newestDate.toLocaleDateString()}`;
 
-      // MOCK RESPONSE - Replace with actual OpenAI call in Story 3.5
-      const mockSummary = {
-        summary: `This is a placeholder summary of the conversation. ` +
-          `The conversation includes ${messages.length} messages from ` +
-          `${participantNames.join(", ")}. ` +
-          `Actual AI integration will be implemented in Story 3.5. ` +
-          `This placeholder demonstrates the Cloud Function infrastructure, ` +
-          `authentication, caching, and response format.`,
-        keyPoints: [
-          "Placeholder key point 1: Infrastructure testing",
-          "Placeholder key point 2: Authentication working",
-          "Placeholder key point 3: Cache system functional",
-        ],
-        participants: participantNames,
-        dateRange,
-      };
+      // ========================================
+      // 8. PREPARE MESSAGES FOR AI (Story 3.5)
+      // ========================================
+      // Format messages with sender names for better context
+      const formattedMessages = await Promise.all(
+        messages.reverse().map(async (msg: any) => {
+          const senderDoc = await admin.firestore()
+            .collection("users")
+            .doc(msg.senderId)
+            .get();
+          const senderName = senderDoc.data()?.displayName || "Unknown";
+          return `${senderName}: ${msg.text}`;
+        })
+      );
 
-      console.log(`[summarizeThread] Generated placeholder summary`);
+      const conversationText = formattedMessages.join("\n");
+
+      console.log(`[summarizeThread] Prepared ${messages.length} messages for OpenAI`);
 
       // ========================================
-      // 7. STORE RESULT IN CACHE
+      // 9. OPENAI API CALL (Story 3.5)
+      // ========================================
+      let aiSummary: {
+        summary: string;
+        keyPoints: string[];
+        participants: string[];
+        dateRange: string;
+      };
+
+      try {
+        const completion = await openai.chat.completions.create({
+          model: "gpt-4-turbo-preview",
+          temperature: 0.3, // Lower = more deterministic
+          max_tokens: 500,
+          messages: [
+            {
+              role: "system",
+              content: `You are an AI assistant that summarizes team conversations.
+Your summaries should:
+- Be 150-300 words
+- Capture key decisions and action items
+- Highlight important questions or concerns
+- Use professional, clear language
+- Focus on the "what matters" for remote teams`,
+            },
+            {
+              role: "user",
+              content: `Summarize this conversation and extract key points as a JSON object with this exact format:
+{
+  "summary": "2-3 sentence summary here",
+  "keyPoints": ["point 1", "point 2", "point 3"]
+}
+
+Conversation:
+${conversationText}`,
+            },
+          ],
+        });
+
+        const responseText = completion.choices[0]?.message?.content || "{}";
+
+        // Parse OpenAI's JSON response
+        let parsedResponse;
+        try {
+          // Strip markdown code blocks if present (```json ... ```)
+          let cleanedText = responseText.trim();
+          if (cleanedText.startsWith("```")) {
+            // Remove opening ```json or ```
+            cleanedText = cleanedText.replace(/^```(?:json)?\s*\n?/, "");
+            // Remove closing ```
+            cleanedText = cleanedText.replace(/\n?```\s*$/, "");
+          }
+
+          parsedResponse = JSON.parse(cleanedText);
+        } catch (parseError) {
+          // Fallback if OpenAI doesn't return valid JSON
+          console.warn("[summarizeThread] Failed to parse OpenAI response as JSON, using fallback");
+          console.warn("[summarizeThread] Raw response:", responseText);
+          parsedResponse = {
+            summary: responseText.substring(0, 300),
+            keyPoints: [],
+          };
+        }
+
+        aiSummary = {
+          summary: parsedResponse.summary || "Summary generated",
+          keyPoints: parsedResponse.keyPoints || [],
+          participants: participantNames,
+          dateRange,
+        };
+
+        console.log(`[summarizeThread] OpenAI summary generated successfully`);
+      } catch (openaiError: any) {
+        console.error("[summarizeThread] OpenAI API error:", openaiError);
+
+        // Handle specific OpenAI errors with user-friendly messages
+        if (openaiError.status === 429) {
+          throw new functions.https.HttpsError(
+            "resource-exhausted",
+            "AI service rate limit exceeded. Please try again in a few minutes."
+          );
+        }
+
+        if (openaiError.status === 401) {
+          throw new functions.https.HttpsError(
+            "internal",
+            "AI service configuration error. Please contact support."
+          );
+        }
+
+        // Generic AI service error
+        throw new functions.https.HttpsError(
+          "unavailable",
+          "AI service temporarily unavailable. Please try again later."
+        );
+      }
+
+      // ========================================
+      // 10. STORE RESULT IN CACHE
       // ========================================
       await storeInCache(
         cacheKey,
-        mockSummary,
+        aiSummary,
         "summary",
         conversationId,
         messages.length,
@@ -174,15 +324,16 @@ export const summarizeThread = functions
       );
 
       // ========================================
-      // 8. RETURN STRUCTURED RESPONSE
+      // 11. RETURN STRUCTURED RESPONSE
       // ========================================
       return {
         success: true,
-        summary: mockSummary.summary,
-        keyPoints: mockSummary.keyPoints,
-        participants: mockSummary.participants,
-        dateRange: mockSummary.dateRange,
+        summary: aiSummary.summary,
+        keyPoints: aiSummary.keyPoints,
+        participants: aiSummary.participants,
+        dateRange: aiSummary.dateRange,
         cached: false,
+        messagesSinceCache: 0, // Fresh summary
         timestamp: new Date().toISOString(),
       };
     } catch (error: any) {

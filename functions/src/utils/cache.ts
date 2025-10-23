@@ -109,6 +109,54 @@ export async function storeInCache(
 }
 
 /**
+ * Check if a cached summary is stale (but not expired)
+ * Story 3.5: Smart cache invalidation
+ *
+ * A summary is considered stale if:
+ * - More than N new messages have been added (default: 10)
+ * - More than T hours have passed (default: 24)
+ *
+ * @param cacheData - Cache document data
+ * @param currentMessageCount - Current total messages in conversation
+ * @param stalenessMessageThreshold - Number of new messages before stale (default: 10)
+ * @param stalenessHoursThreshold - Hours before considering stale (default: 24)
+ * @returns Object with isStale flag and messagesSinceCache count
+ */
+export function checkCacheStaleness(
+  cacheData: admin.firestore.DocumentData,
+  currentMessageCount: number,
+  stalenessMessageThreshold: number = 10,
+  stalenessHoursThreshold: number = 24
+): { isStale: boolean; messagesSinceCache: number; hoursSinceCache: number } {
+  const cachedMessageCount = cacheData.messageCount || 0;
+  const messagesSinceCache = currentMessageCount - cachedMessageCount;
+
+  // Calculate hours since cache was created
+  const createdAt = cacheData.createdAt;
+  let hoursSinceCache = 0;
+
+  if (createdAt) {
+    const createdDate = createdAt.toDate ? createdAt.toDate() : new Date(createdAt);
+    hoursSinceCache = (Date.now() - createdDate.getTime()) / (1000 * 60 * 60);
+  }
+
+  const isStale =
+    messagesSinceCache >= stalenessMessageThreshold ||
+    hoursSinceCache >= stalenessHoursThreshold;
+
+  console.log(`[Cache Staleness Check]`);
+  console.log(`  Messages since cache: ${messagesSinceCache} (threshold: ${stalenessMessageThreshold})`);
+  console.log(`  Hours since cache: ${hoursSinceCache.toFixed(1)} (threshold: ${stalenessHoursThreshold})`);
+  console.log(`  Is stale: ${isStale}`);
+
+  return {
+    isStale,
+    messagesSinceCache,
+    hoursSinceCache,
+  };
+}
+
+/**
  * Generate a simple hash for a string (used for search query caching)
  *
  * @param str - String to hash

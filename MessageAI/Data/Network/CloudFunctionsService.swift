@@ -31,24 +31,43 @@ class CloudFunctionsService {
     /// - Throws: AIServiceError on failure
     func callSummarizeThread(
         conversationId: String,
-        messageIds: [String]? = nil
+        messageIds: [String]? = nil,
+        bypassCache: Bool = false
     ) async throws -> SummaryResponse {
-        let data: [String: Any] = [
+        var data: [String: Any] = [
             "conversationId": conversationId,
             "messageIds": messageIds ?? []
         ]
 
+        if bypassCache {
+            data["bypassCache"] = true
+        }
+
+        print("🔵 [CloudFunctions] Calling summarizeThread")
+        print("   Conversation ID: \(conversationId)")
+        print("   Message IDs: \(messageIds?.count ?? 0) messages")
+        print("   Bypass cache: \(bypassCache)")
+
         do {
             let result = try await functions.httpsCallable("summarizeThread").call(data)
+            print("✅ [CloudFunctions] summarizeThread succeeded")
 
             guard let response = result.data as? [String: Any] else {
+                print("❌ [CloudFunctions] Invalid response format: \(result.data)")
                 throw AIServiceError.unknown("Invalid response format from Cloud Function")
             }
 
+            print("📦 [CloudFunctions] Response data: \(response.keys.joined(separator: ", "))")
             return try parseSummaryResponse(response)
         } catch let error as AIServiceError {
+            print("❌ [CloudFunctions] AIServiceError: \(error.localizedDescription)")
             throw error
         } catch let error as NSError {
+            print("❌ [CloudFunctions] NSError:")
+            print("   Domain: \(error.domain)")
+            print("   Code: \(error.code)")
+            print("   Description: \(error.localizedDescription)")
+            print("   UserInfo: \(error.userInfo)")
             throw mapFirebaseFunctionsError(error)
         }
     }
@@ -128,6 +147,7 @@ class CloudFunctionsService {
         let keyPoints = data["keyPoints"] as? [String]
         let participants = data["participants"] as? [String]
         let dateRange = data["dateRange"] as? String
+        let messagesSinceCache = data["messagesSinceCache"] as? Int ?? 0
 
         return SummaryResponse(
             success: success,
@@ -136,6 +156,7 @@ class CloudFunctionsService {
             participants: participants,
             dateRange: dateRange,
             cached: cached,
+            messagesSinceCache: messagesSinceCache,
             timestamp: timestamp
         )
     }
@@ -255,6 +276,7 @@ struct SummaryResponse {
     let participants: [String]?
     let dateRange: String?
     let cached: Bool
+    let messagesSinceCache: Int
     let timestamp: String
 }
 

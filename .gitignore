@@ -34,6 +34,10 @@ GoogleService-Info-Prod.plist
 .env.*
 !.env.example
 
+# Firebase Cloud Functions runtime config (contains OpenAI API keys - Story 3.5)
+functions/.runtimeconfig.json
+**/.runtimeconfig.json
+
 # macOS
 .DS_Store
 .AppleDouble
