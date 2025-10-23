@@ -424,40 +424,40 @@ struct MessageKitWrapper: UIViewControllerRepresentable {
         // Only act if message count actually changed OR messages were edited
         let currentCount = uiViewController.messageCount
         let newCount = viewModel.messages.count
-        
+
         // Check if we need to force refresh (e.g., message edited, count unchanged)
         if viewModel.messagesNeedRefresh {
             print("📱 [ChatView] Forcing reload due to message edit")
             uiViewController.messagesCollectionView.reloadData()
-            
+
             // Reset flag OUTSIDE view update context to avoid SwiftUI warning
             DispatchQueue.main.async {
                 viewModel.messagesNeedRefresh = false
             }
             return
         }
-        
+
         // Skip if count hasn't changed (prevents flickering from redundant updates)
         guard currentCount != newCount else {
             // Silent skip - don't log spam
             return
         }
-        
+
         print("📱 [ChatView] Message count changed: \(currentCount) -> \(newCount)")
-        
+
         let oldCount = currentCount
         uiViewController.messageCount = newCount
-        
+
         // Handle empty state transition ONCE
         let wasEmpty = oldCount == 0
         let isEmpty = newCount == 0
-        
+
         if wasEmpty && !isEmpty {
             // Transitioning from empty to first message
             print("  ➡️ Empty -> Has messages: hiding empty state")
             uiViewController.hideEmptyState()
             uiViewController.messagesCollectionView.reloadData()
-            
+
             // Scroll to bottom to show latest messages on initial load
             DispatchQueue.main.async {
                 print("  ⬇️ Scrolling to latest message (initial load)")
@@ -469,24 +469,40 @@ struct MessageKitWrapper: UIViewControllerRepresentable {
             uiViewController.messagesCollectionView.reloadData()
             uiViewController.showEmptyState()
         } else if newCount > oldCount {
-            // New messages added - use performBatchUpdates for smooth animation
-            print("  ➕ Adding \(newCount - oldCount) new message(s)")
+            // New messages added - use performBatchUpdates for better performance
+            print("  ➕ Adding \(newCount - oldCount) new message(s) with incremental update")
+
+            // Calculate new section indices (MessageKit uses sections, not rows)
+            let newSections = IndexSet(integersIn: oldCount..<newCount)
+
+            // Perform incremental insert instead of full reload
             uiViewController.messagesCollectionView.performBatchUpdates({
-                uiViewController.messagesCollectionView.insertSections(IndexSet(oldCount..<newCount))
-            }, completion: nil)
-            
-            // Auto-scroll to bottom if appropriate
-            let shouldScroll = context.coordinator.isNearBottom || 
-                              (viewModel.messages.last?.senderId == viewModel.currentUserId)
-            if shouldScroll {
-                DispatchQueue.main.async {
+                uiViewController.messagesCollectionView.insertSections(newSections)
+            }, completion: { _ in
+                // Auto-scroll to bottom if appropriate
+                let shouldScroll = context.coordinator.isNearBottom ||
+                                  (self.viewModel.messages.last?.senderId == self.viewModel.currentUserId)
+                if shouldScroll {
                     uiViewController.messagesCollectionView.scrollToLastItem(animated: true)
                 }
-            }
+            })
         } else {
-            // Messages modified or removed - full reload
-            print("  🔄 Messages modified/removed: full reload")
-            uiViewController.messagesCollectionView.reloadData()
+            // Messages modified or removed - use incremental updates
+            print("  🔄 Messages modified/removed: \(oldCount) -> \(newCount)")
+
+            if newCount < oldCount {
+                // Messages removed
+                let removedSections = IndexSet(integersIn: newCount..<oldCount)
+                print("  ➖ Removing sections: \(removedSections)")
+
+                uiViewController.messagesCollectionView.performBatchUpdates({
+                    uiViewController.messagesCollectionView.deleteSections(removedSections)
+                }, completion: nil)
+            } else {
+                // Shouldn't reach here, but fallback to reload
+                print("  ⚠️ Unexpected state, falling back to reloadData")
+                uiViewController.messagesCollectionView.reloadData()
+            }
         }
     }
     
@@ -501,8 +517,7 @@ struct MessageKitWrapper: UIViewControllerRepresentable {
         var isNearBottom: Bool = true
         weak var messagesCollectionView: MessagesCollectionView?
 
-        // Image cache: [userId: downloadedImage]
-        private var avatarImageCache: [String: UIImage] = [:]
+        // Note: Avatar caching now handled by Kingfisher (Phase 2 - Issue #2 Fix)
 
         init(viewModel: ChatViewModel) {
             self.viewModel = viewModel
@@ -573,50 +588,29 @@ struct MessageKitWrapper: UIViewControllerRepresentable {
             
             let initials = senderUser.displayInitials
             print("👤 Configuring avatar for \(senderUser.displayName) (senderId: \(senderId))")
-            
-            // Check if we have a cached image for this user
-            if let cachedImage = avatarImageCache[senderId] {
-                print("✅ Using cached image for \(senderUser.displayName)")
-                let avatarWithIndicator = createAvatarWithPresenceIndicator(cachedImage, user: senderUser)
-                avatarView.set(avatar: Avatar(image: avatarWithIndicator, initials: initials))
-                return
-            }
-            
-            // Try to load profile image
+
+            // Try to load profile image using Kingfisher (Phase 2 - Issue #2 Fix)
             if let photoURLString = senderUser.profileImageURL,
                !photoURLString.isEmpty,
                let photoURL = URL(string: photoURLString) {
                 print("🖼️ Loading profile image for \(senderUser.displayName): \(photoURLString)")
-                
+
                 // Set initials immediately as placeholder
                 avatarView.set(avatar: Avatar(image: createAvatarWithPresenceIndicator(nil, user: senderUser), initials: initials))
-                
-                // Download image asynchronously
-                Task {
-                    do {
-                        let (data, _) = try await URLSession.shared.data(from: photoURL)
-                        if let downloadedImage = UIImage(data: data) {
-                            print("✅ Profile image downloaded for \(senderUser.displayName)")
-                            
-                            // Cache the image
-                            await MainActor.run {
-                                self.avatarImageCache[senderId] = downloadedImage
-                            }
-                            
-                            let avatarWithIndicator = createAvatarWithPresenceIndicator(downloadedImage, user: senderUser)
-                            await MainActor.run {
-                                avatarView.set(avatar: Avatar(image: avatarWithIndicator, initials: initials))
-                            }
-                        } else {
-                            print("❌ Failed to create UIImage from data for \(senderUser.displayName)")
-                            await MainActor.run {
-                                avatarView.set(avatar: Avatar(image: createAvatarWithPresenceIndicator(nil, user: senderUser), initials: initials))
-                            }
+
+                // Download image using Kingfisher with automatic memory + disk caching
+                KingfisherManager.shared.retrieveImage(with: photoURL) { result in
+                    switch result {
+                    case .success(let imageResult):
+                        print("✅ Profile image loaded for \(senderUser.displayName) (cache: \(imageResult.cacheType))")
+                        let avatarWithIndicator = self.createAvatarWithPresenceIndicator(imageResult.image, user: senderUser)
+                        DispatchQueue.main.async {
+                            avatarView.set(avatar: Avatar(image: avatarWithIndicator, initials: initials))
                         }
-                    } catch {
-                        print("❌ Profile image download failed for \(senderUser.displayName): \(error)")
-                        await MainActor.run {
-                            avatarView.set(avatar: Avatar(image: createAvatarWithPresenceIndicator(nil, user: senderUser), initials: initials))
+                    case .failure(let error):
+                        print("❌ Profile image load failed for \(senderUser.displayName): \(error)")
+                        DispatchQueue.main.async {
+                            avatarView.set(avatar: Avatar(image: self.createAvatarWithPresenceIndicator(nil, user: senderUser), initials: initials))
                         }
                     }
                 }
@@ -801,23 +795,61 @@ struct MessageKitWrapper: UIViewControllerRepresentable {
         func configureMediaMessageImageView(_ imageView: UIImageView, for message: MessageType, at indexPath: IndexPath, in messagesCollectionView: MessagesCollectionView) {
             guard let messageKitMessage = message as? MessageKitMessage,
                   case .photo(let mediaItem) = messageKitMessage.kind,
-                  let url = mediaItem.url else {
+                  let domainMessage = viewModel.messages[safe: indexPath.section] else {
                 return
             }
 
-            // Use Kingfisher for async image loading
-            imageView.kf.setImage(
-                with: url,
-                placeholder: UIImage(systemName: "photo"),
-                options: [
-                    .transition(.fade(0.2)),
-                    .cacheOriginalImage
-                ]
-            )
+            // Check if we have a local cached image (for immediate display before upload completes)
+            if let localImage = viewModel.localImageCache[domainMessage.id] {
+                // Use local cached image immediately (no blinking, instant display)
+                // Only set if different to avoid unnecessary operations
+                if imageView.image !== localImage {
+                    imageView.image = localImage
+                    imageView.contentMode = .scaleAspectFill
+                    imageView.clipsToBounds = true
+                }
+            } else if let url = mediaItem.url, !url.absoluteString.hasPrefix("local://") {
+                // Check if imageView is already displaying this URL
+                // Use associated object to track current URL
+                let currentURLKey = "currentImageURL"
+                let currentURL = objc_getAssociatedObject(imageView, currentURLKey) as? URL
+
+                // Only call setImage if URL changed or no image currently loaded
+                if currentURL != url {
+                    // Store the URL we're loading
+                    objc_setAssociatedObject(imageView, currentURLKey, url, .OBJC_ASSOCIATION_RETAIN)
+
+                    // Calculate target size for downsampling (MessageKit displays images at ~250x250)
+                    // Use @3x for retina displays = 750x750 max
+                    let targetSize = CGSize(width: 750, height: 750)
+
+                    // Use Kingfisher with performance optimizations for smooth scrolling
+                    imageView.kf.setImage(
+                        with: url,
+                        placeholder: nil,  // Don't show placeholder if image already loaded
+                        options: [
+                            .processor(DownsamplingImageProcessor(size: targetSize)),  // Downsample to display size (~95% memory savings)
+                            .scaleFactor(UIScreen.main.scale),  // Handle retina displays correctly
+                            .cacheOriginalImage,  // Cache both original and downsampled
+                            .backgroundDecode,  // CRITICAL: Decode off main thread for smooth scrolling
+                            .keepCurrentImageWhileLoading,  // Prevents blinking by retaining current image
+                            .transition(.none)  // Remove fade transition - already have image or loading instantly from cache
+                        ]
+                    )
+                }
+                // else: imageView already displaying correct image, skip reload
+            } else {
+                // Fallback placeholder (only for invalid URLs)
+                if imageView.image != UIImage(systemName: "photo") {
+                    imageView.image = UIImage(systemName: "photo")
+                }
+            }
+
+            // Clean up any existing overlays from cell reuse
+            removeProgressOverlay(from: imageView)
 
             // Show upload progress overlay if uploading
-            if let domainMessage = viewModel.messages[safe: indexPath.section],
-               let progress = viewModel.uploadProgress[domainMessage.id] {
+            if let progress = viewModel.uploadProgress[domainMessage.id] {
                 addProgressOverlay(to: imageView, progress: progress)
             }
         }
@@ -889,13 +921,16 @@ struct MessageKitWrapper: UIViewControllerRepresentable {
             ])
         }
 
-        private func addProgressOverlay(to imageView: UIImageView, progress: Double) {
-            // Remove existing overlay
+        private func removeProgressOverlay(from imageView: UIImageView) {
+            // Remove all overlay subviews (tagged or all if safe)
             imageView.subviews.forEach { $0.removeFromSuperview() }
+        }
 
+        private func addProgressOverlay(to imageView: UIImageView, progress: Double) {
             // Create progress view
             let overlayView = UIView(frame: imageView.bounds)
             overlayView.backgroundColor = UIColor.black.withAlphaComponent(0.5)
+            overlayView.autoresizingMask = [.flexibleWidth, .flexibleHeight]  // Auto-resize with imageView
 
             let progressView = UIProgressView(progressViewStyle: .default)
             progressView.progress = Float(progress)

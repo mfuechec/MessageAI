@@ -7,14 +7,19 @@
 
 import Foundation
 import FirebaseStorage
+import FirebaseAuth
 import UIKit
 
 /// Firebase implementation of storage repository
 class FirebaseStorageRepository: StorageRepositoryProtocol {
-    private let storage = Storage.storage()
+    private let storage: Storage
 
     // Track active uploads for cancellation
     private var activeUploads: [String: StorageUploadTask] = [:]
+
+    init(firebaseService: FirebaseService) {
+        self.storage = firebaseService.storage
+    }
     
     func uploadProfileImage(_ image: UIImage, userId: String) async throws -> String {
         print("🔵 [StorageRepo] uploadProfileImage called for user: \(userId)")
@@ -87,6 +92,14 @@ class FirebaseStorageRepository: StorageRepositoryProtocol {
     ) async throws -> MessageAttachment {
         print("📤 [StorageRepo] Uploading image for message: \(messageId)")
 
+        // DEBUG: Check auth state before upload
+        if let currentUser = Auth.auth().currentUser {
+            print("✅ [StorageRepo] User authenticated: \(currentUser.uid)")
+        } else {
+            print("❌ [StorageRepo] WARNING: No authenticated user!")
+            throw StorageError.unauthorized
+        }
+
         // Step 1: Compress image
         guard let compressedImage = ImageCompressor.compress(
             image: image,
@@ -111,7 +124,7 @@ class FirebaseStorageRepository: StorageRepositoryProtocol {
         metadata.contentType = "image/jpeg"
 
         do {
-            // Step 4: Upload with progress tracking
+            // Step 4: Upload with progress tracking using continuation for proper async/await
             let uploadTask = storageRef.putData(imageData, metadata: metadata)
             activeUploads[messageId] = uploadTask
 
@@ -126,11 +139,29 @@ class FirebaseStorageRepository: StorageRepositoryProtocol {
                 }
             }
 
-            // Wait for completion
-            let _ = try await uploadTask
-            activeUploads.removeValue(forKey: messageId)
+            // Wait for completion using continuation
+            let uploadMetadata = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<StorageMetadata, Error>) in
+                uploadTask.observe(.success) { snapshot in
+                    guard let metadata = snapshot.metadata else {
+                        continuation.resume(throwing: StorageError.uploadFailed("Upload succeeded but metadata is missing"))
+                        return
+                    }
+                    continuation.resume(returning: metadata)
+                }
 
+                uploadTask.observe(.failure) { snapshot in
+                    if let error = snapshot.error {
+                        continuation.resume(throwing: error)
+                    } else {
+                        continuation.resume(throwing: StorageError.uploadFailed("Upload failed with unknown error"))
+                    }
+                }
+            }
+
+            activeUploads.removeValue(forKey: messageId)
             print("✅ [StorageRepo] Upload complete: \(storagePath)")
+            print("✅ [StorageRepo] Upload metadata bucket: \(uploadMetadata.bucket ?? "unknown")")
+            print("✅ [StorageRepo] Upload metadata path: \(uploadMetadata.path ?? "unknown")")
 
             // Step 5: Get download URL
             let downloadURL = try await storageRef.downloadURL()
@@ -150,6 +181,7 @@ class FirebaseStorageRepository: StorageRepositoryProtocol {
         } catch let error as NSError {
             activeUploads.removeValue(forKey: messageId)
             print("❌ [StorageRepo] Upload failed: \(error.localizedDescription)")
+            print("❌ [StorageRepo] Error domain: \(error.domain), code: \(error.code)")
 
             // Map Firebase Storage errors
             if error.domain == "FIRStorageErrorDomain" {
@@ -194,7 +226,7 @@ class FirebaseStorageRepository: StorageRepositoryProtocol {
         metadata.customMetadata = ["fileName": fileName]
 
         do {
-            // Step 5: Upload with progress tracking
+            // Step 5: Upload with progress tracking using continuation for proper async/await
             let uploadTask = storageRef.putData(documentData, metadata: metadata)
             activeUploads[messageId] = uploadTask
 
@@ -209,12 +241,31 @@ class FirebaseStorageRepository: StorageRepositoryProtocol {
                 }
             }
 
-            // Wait for completion
-            let _ = try await uploadTask
+            // Wait for completion using continuation
+            let uploadMetadata = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<StorageMetadata, Error>) in
+                uploadTask.observe(.success) { snapshot in
+                    guard let metadata = snapshot.metadata else {
+                        continuation.resume(throwing: StorageError.uploadFailed("Upload succeeded but metadata is missing"))
+                        return
+                    }
+                    continuation.resume(returning: metadata)
+                }
+
+                uploadTask.observe(.failure) { snapshot in
+                    if let error = snapshot.error {
+                        continuation.resume(throwing: error)
+                    } else {
+                        continuation.resume(throwing: StorageError.uploadFailed("Upload failed with unknown error"))
+                    }
+                }
+            }
+
             activeUploads.removeValue(forKey: messageId)
 
             let duration = Date().timeIntervalSince(startTime)
             print("✅ [StorageRepo] Document upload complete: \(storagePath), duration: \(String(format: "%.2f", duration))s")
+            print("✅ [StorageRepo] Upload metadata bucket: \(uploadMetadata.bucket ?? "unknown")")
+            print("✅ [StorageRepo] Upload metadata path: \(uploadMetadata.path ?? "unknown")")
 
             // Step 6: Get download URL
             let downloadURL = try await storageRef.downloadURL()
@@ -234,6 +285,7 @@ class FirebaseStorageRepository: StorageRepositoryProtocol {
         } catch let error as NSError {
             activeUploads.removeValue(forKey: messageId)
             print("❌ [StorageRepo] Document upload failed: \(error.localizedDescription)")
+            print("❌ [StorageRepo] Error domain: \(error.domain), code: \(error.code)")
 
             // Map Firebase Storage errors
             if error.domain == "FIRStorageErrorDomain" {

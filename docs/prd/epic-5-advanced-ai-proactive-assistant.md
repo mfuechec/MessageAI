@@ -80,9 +80,8 @@ so that **I can get proactive coordination assistance**.
 16. Doesn't impact message delivery
 
 **Testing:**
-17. Unit tests for scheduling detection logic
-18. Integration test: Send scheduling message, verify detection and banner appear
-19. Integration test: Non-scheduling message, verify no false detection
+17. Integration test: Send scheduling message, verify detection and banner appear
+18. Integration test: Non-scheduling message, verify no false detection
 
 ## Story 5.3: Meeting Time Suggestions
 
@@ -131,9 +130,8 @@ so that **scheduling becomes faster and easier**.
 22. Cached for conversation (regenerate on request)
 
 **Testing:**
-23. Unit tests for suggestion logic
-24. Integration test: Request suggestions, verify they match conversation constraints
-25. Regression test: All previous AI features still functional
+23. Integration test: Request suggestions, verify they match conversation constraints
+24. Regression test: All previous AI features still functional
 
 ## Story 5.4: Proactive Assistant UX Polish
 

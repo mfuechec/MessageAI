@@ -4,6 +4,7 @@
 //
 //  Created by Dev Agent (James) on 10/21/25.
 //  Story 2.0: Start New Conversation with Duplicate Prevention
+//  Updated: Phase 2 - Issue #2 Fix - Replaced AsyncImage with UserAvatarView for consistent caching
 //
 
 import SwiftUI
@@ -11,41 +12,17 @@ import SwiftUI
 /// Reusable row component for displaying a user in a list
 struct UserRowView: View {
     let user: User
-    
+
     var body: some View {
         let _ = print("🖼️ [UserRow] Rendering for \(user.displayName)")
-        
+
         return HStack(spacing: 12) {
-            // Avatar (photo or initials)
-            if let photoURL = user.profileImageURL, !photoURL.isEmpty, let url = URL(string: photoURL) {
-                let _ = print("🖼️ [UserRow] Has image URL: \(photoURL)")
-                AsyncImage(url: url) { phase in
-                    Group {
-                        switch phase {
-                        case .success(let image):
-                            let _ = print("✅ [UserRow] Image loaded for \(user.displayName)")
-                            image
-                                .resizable()
-                                .scaledToFill()
-                                .frame(width: 50, height: 50)
-                                .clipShape(Circle())
-                        case .failure(let error):
-                            let _ = print("❌ [UserRow] Image failed for \(user.displayName): \(error)")
-                            initialsCircle
-                        case .empty:
-                            let _ = print("⏳ [UserRow] Image loading for \(user.displayName)...")
-                            ProgressView()
-                                .frame(width: 50, height: 50)
-                        @unknown default:
-                            initialsCircle
-                        }
-                    }
-                }
-                .id(user.id)  // Force unique identity per user to prevent image caching issues
-            } else {
-                let _ = print("ℹ️ [UserRow] No image for \(user.displayName), showing initials")
-                initialsCircle
-            }
+            // Avatar - Using unified UserAvatarView with Kingfisher caching (Phase 2 Fix)
+            UserAvatarView(
+                user: user,
+                size: 50,
+                showPresenceIndicator: false  // Presence shown separately
+            )
             
             VStack(alignment: .leading, spacing: 4) {
                 Text(user.displayName)
@@ -77,17 +54,6 @@ struct UserRowView: View {
         .padding(.vertical, 4)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(user.displayName), \(user.email), \(user.isOnline ? "Online" : "Offline")")
-    }
-    
-    private var initialsCircle: some View {
-        Circle()
-            .fill(Color.blue)
-            .frame(width: 50, height: 50)
-            .overlay(
-                Text(user.displayInitials)
-                    .foregroundColor(.white)
-                    .font(.headline)
-            )
     }
 }
 

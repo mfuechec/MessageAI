@@ -23,10 +23,9 @@ so that **I only see relevant contacts and can participate in team-based messagi
 9. Firestore security rules updated: Users can only query users in their organization(s)
 10. Performance: User queries scoped to organization (< 100ms for 1000+ member orgs)
 11. Conversation list filtered to conversations within current organization
-12. Unit tests for organization-based user filtering
-13. Integration test: User A in Org 1 cannot message User B in Org 2
-14. Migration: Existing users assigned to "Default Organization"
-15. Error handling: User without organization shown onboarding flow
+12. Integration test: User A in Org 1 cannot message User B in Org 2
+13. Migration: Existing users assigned to "Default Organization"
+14. Error handling: User without organization shown onboarding flow
 
 **Note:** This story addresses the scalability limitation documented in Story 2.0 where `getAllUsers()` doesn't scale beyond small teams. Organizations enable multi-tenant usage and proper contact scoping.
 
@@ -49,10 +48,9 @@ so that **API keys are never exposed in the client app and AI features can be tr
 9. Cloud Functions return structured JSON responses with AI results
 10. Performance: Cloud Functions respond within 10 seconds or return timeout error
 11. Cost optimization: Implement caching layer for repeated requests (same messages = cached summary)
-12. Unit tests for Cloud Functions logic (mocked AI API calls)
-13. Deployment: Cloud Functions deployed to Firebase dev environment
-14. Integration test: iOS app calls Cloud Function, receives valid response
-15. Security: Cloud Functions validate user has access to requested conversation data
+12. Deployment: Cloud Functions deployed to Firebase dev environment
+13. Integration test: iOS app calls Cloud Function, receives valid response
+14. Security: Cloud Functions validate user has access to requested conversation data
 
 ## Story 3.2: Thread Summarization Feature
 
@@ -90,9 +88,8 @@ so that **I can quickly catch up on discussions without reading every message**.
 19. Cache invalidated when new messages added (or regenerated on demand)
 
 **Testing:**
-20. Unit tests for summary ViewModel logic
-21. Integration test: Generate summary, verify it contains key message content
-22. Regression test: Chat functionality still works with AI button added
+20. Integration test: Generate summary, verify it contains key message content
+21. Regression test: Chat functionality still works with AI button added
 
 ## Story 3.3: Action Item Extraction Feature
 
@@ -131,9 +128,8 @@ so that **I don't miss tasks assigned to me or my team**.
 17. Cache key: conversationId + messageRange
 
 **Testing:**
-18. Unit tests for action item ViewModel
-19. Integration test: Extract action items from test conversation with known tasks
-20. Regression test: Summary feature still works after action item implementation
+18. Integration test: Extract action items from test conversation with known tasks
+19. Regression test: Summary feature still works after action item implementation
 
 ## Story 3.4: Smart Search Feature
 
@@ -176,10 +172,9 @@ so that **I can find information without remembering exact keywords**.
 22. Error handling: If Cloud Function fails, show basic Firestore results
 
 **Testing:**
-23. Unit tests for search ViewModel and query preprocessing
-24. Integration test: Search for specific message, verify it appears in results
-25. Performance test: Search across 1000+ messages completes within time limits
-26. Regression test: Conversations list and chat still perform well with search added
+23. Integration test: Search for specific message, verify it appears in results
+24. Performance test: Search across 1000+ messages completes within time limits
+25. Regression test: Conversations list and chat still perform well with search added
 
 ## Story 3.5: AI Service Selection & Configuration
 

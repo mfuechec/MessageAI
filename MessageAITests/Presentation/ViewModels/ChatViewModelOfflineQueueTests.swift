@@ -224,6 +224,150 @@ final class ChatViewModelOfflineQueueTests: XCTestCase {
         XCTAssertTrue(sut.showConnectivityToast, "Toast should appear when connectivity restored with queued messages")
     }
 
+    // MARK: - Network State Transition Tests (Story 2.9 - Race Condition Fix)
+
+    func testOfflineToOnlineTransition_WithQueuedMessages_ShowsToast() async {
+        // Given: User is offline with queued messages
+        mockNetworkMonitor.isConnected = false
+        sut.messageText = "Test message"
+        await sut.sendMessage()
+
+        XCTAssertEqual(sut.queuedMessages.count, 1)
+        XCTAssertFalse(sut.showConnectivityToast)
+
+        // When: Connection restored
+        mockNetworkMonitor.isConnected = true
+        mockNetworkMonitor.simulateConnectivityChange()
+
+        // Wait for async update
+        try? await Task.sleep(nanoseconds: 100_000_000)  // 0.1s
+
+        // Then: Toast shown
+        XCTAssertTrue(sut.showConnectivityToast, "Toast should show when connectivity restored with queued messages")
+        XCTAssertFalse(sut.isOffline, "Should be online")
+    }
+
+    func testOfflineToOnlineTransition_WithoutQueuedMessages_NoToast() async {
+        // Given: User is offline with NO queued messages
+        mockNetworkMonitor.isConnected = false
+        sut.isOffline = true
+
+        XCTAssertEqual(sut.queuedMessages.count, 0)
+
+        // When: Connection restored
+        mockNetworkMonitor.isConnected = true
+        mockNetworkMonitor.simulateConnectivityChange()
+
+        // Wait for async update
+        try? await Task.sleep(nanoseconds: 100_000_000)  // 0.1s
+
+        // Then: Toast NOT shown
+        XCTAssertFalse(sut.showConnectivityToast, "Toast should NOT show without queued messages")
+        XCTAssertFalse(sut.isOffline, "Should be online")
+    }
+
+    func testOnlineToOfflineTransition_HidesToast() async {
+        // Given: User is online with toast showing
+        mockNetworkMonitor.isConnected = true
+        sut.showConnectivityToast = true
+
+        // When: Connection lost
+        mockNetworkMonitor.isConnected = false
+        mockNetworkMonitor.simulateConnectivityChange()
+
+        // Wait for async update
+        try? await Task.sleep(nanoseconds: 100_000_000)  // 0.1s
+
+        // Then: Toast hidden
+        XCTAssertFalse(sut.showConnectivityToast, "Toast should hide when going offline")
+        XCTAssertTrue(sut.isOffline, "Should be offline")
+    }
+
+    func testRapidNetworkToggles_HandlesGracefully() async {
+        // Given: Start online
+        mockNetworkMonitor.isConnected = true
+
+        // Queue a message while offline
+        mockNetworkMonitor.isConnected = false
+        mockNetworkMonitor.simulateConnectivityChange()
+        try? await Task.sleep(nanoseconds: 50_000_000)  // 0.05s
+
+        sut.messageText = "Test"
+        await sut.sendMessage()
+
+        // When: Rapid toggles - offline→online→offline→online
+        mockNetworkMonitor.isConnected = true
+        mockNetworkMonitor.simulateConnectivityChange()
+        try? await Task.sleep(nanoseconds: 50_000_000)
+
+        mockNetworkMonitor.isConnected = false
+        mockNetworkMonitor.simulateConnectivityChange()
+        try? await Task.sleep(nanoseconds: 50_000_000)
+
+        mockNetworkMonitor.isConnected = true
+        mockNetworkMonitor.simulateConnectivityChange()
+        try? await Task.sleep(nanoseconds: 100_000_000)  // Final wait
+
+        // Then: Should handle gracefully without crashes or state corruption
+        XCTAssertFalse(sut.isOffline, "Final state should be online")
+        XCTAssertTrue(sut.showConnectivityToast, "Toast should show on final offline→online transition")
+    }
+
+    func testNetworkStateChange_UpdatesIsOfflineProperty() async {
+        // Given: Start online
+        mockNetworkMonitor.isConnected = true
+        XCTAssertFalse(sut.isOffline)
+
+        // When: Go offline
+        mockNetworkMonitor.isConnected = false
+        mockNetworkMonitor.simulateConnectivityChange()
+        try? await Task.sleep(nanoseconds: 100_000_000)
+
+        // Then: isOffline updated
+        XCTAssertTrue(sut.isOffline, "isOffline should be true when offline")
+
+        // When: Go online
+        mockNetworkMonitor.isConnected = true
+        mockNetworkMonitor.simulateConnectivityChange()
+        try? await Task.sleep(nanoseconds: 100_000_000)
+
+        // Then: isOffline updated
+        XCTAssertFalse(sut.isOffline, "isOffline should be false when online")
+    }
+
+    func testMultipleOfflineOnlineTransitions_ConsistentBehavior() async {
+        // Test multiple cycles to ensure no state corruption from race conditions
+
+        // Cycle 1: Offline → queue message → online
+        mockNetworkMonitor.isConnected = false
+        mockNetworkMonitor.simulateConnectivityChange()
+        try? await Task.sleep(nanoseconds: 50_000_000)
+
+        sut.messageText = "Message 1"
+        await sut.sendMessage()
+
+        mockNetworkMonitor.isConnected = true
+        mockNetworkMonitor.simulateConnectivityChange()
+        try? await Task.sleep(nanoseconds: 100_000_000)
+
+        XCTAssertTrue(sut.showConnectivityToast, "Toast should show after cycle 1")
+
+        // Cycle 2: Offline → queue another message → online
+        mockNetworkMonitor.isConnected = false
+        mockNetworkMonitor.simulateConnectivityChange()
+        try? await Task.sleep(nanoseconds: 50_000_000)
+
+        sut.messageText = "Message 2"
+        await sut.sendMessage()
+
+        mockNetworkMonitor.isConnected = true
+        mockNetworkMonitor.simulateConnectivityChange()
+        try? await Task.sleep(nanoseconds: 100_000_000)
+
+        XCTAssertTrue(sut.showConnectivityToast, "Toast should show after cycle 2")
+        XCTAssertFalse(sut.isOffline, "Final state should be online")
+    }
+
     // MARK: - Helper Methods
 
     private func createTestMessage(id: String, text: String) -> Message {

@@ -41,7 +41,12 @@ class DIContainer {
     
     /// Network monitor instance (Story 1.9)
     /// Tracks network connectivity status for offline indicators
-    private lazy var networkMonitor: NetworkMonitor = NetworkMonitor()
+    ///
+    /// **IMPORTANT:** Not lazy - initialized eagerly in init() to ensure
+    /// monitoring starts immediately at app launch. This gives NWPathMonitor
+    /// time to establish baseline connectivity before any views appear,
+    /// preventing the offline banner from missing initial offline states.
+    private var networkMonitor: NetworkMonitor
 
     /// Offline queue store (Story 2.9)
     /// Manages persistent storage of queued messages composed while offline
@@ -80,14 +85,21 @@ class DIContainer {
     /// Storage repository (Story 2.1)
     /// Handles file uploads to Firebase Storage (profile images, attachments)
     internal lazy var storageRepository: StorageRepositoryProtocol = {
-        FirebaseStorageRepository()
+        FirebaseStorageRepository(firebaseService: firebaseService)
     }()
     
     // MARK: - Initialization
-    
+
     private init() {
         // Initialize Firebase service (Story 1.2)
         self.firebaseService = FirebaseService.shared
+
+        // Initialize NetworkMonitor eagerly to start monitoring immediately
+        // This ensures NWPathMonitor has time to establish baseline connectivity
+        // before any views appear, preventing offline banner timing issues
+        self.networkMonitor = NetworkMonitor()
+
+        print("✅ DIContainer initialized with eager NetworkMonitor")
     }
     
     // MARK: - Factory Methods for ViewModels

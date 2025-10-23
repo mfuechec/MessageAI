@@ -4,6 +4,7 @@
 //
 //  Created by Dev Agent (James) on 10/21/25.
 //  Story 2.1: Group Chat Functionality
+//  Updated: Phase 2 - Issue #2 Fix - Replaced AsyncImage with UserAvatarView for consistent caching
 //
 
 import SwiftUI
@@ -82,53 +83,18 @@ struct GroupAvatarView: View {
     @ViewBuilder
     private func miniAvatar(for user: User?, size: CGFloat) -> some View {
         if let user = user {
-            if let photoURL = user.profileImageURL, 
-               !photoURL.isEmpty,
-               let url = URL(string: photoURL) {
-                let _ = print("🖼️ [GroupAvatar] Loading image for \(user.displayName): \(photoURL)")
-                AsyncImage(url: url) { phase in
-                    Group {
-                        switch phase {
-                        case .success(let image):
-                            let _ = print("✅ [GroupAvatar] Image loaded for \(user.displayName)")
-                            image
-                                .resizable()
-                                .scaledToFill()
-                                .frame(width: size, height: size)
-                                .clipShape(Circle())
-                        case .failure(let error):
-                            let _ = print("❌ [GroupAvatar] Image failed for \(user.displayName): \(error)")
-                            initialsCircle(for: user, size: size)
-                        case .empty:
-                            let _ = print("⏳ [GroupAvatar] Image loading for \(user.displayName)...")
-                            initialsCircle(for: user, size: size)
-                        @unknown default:
-                            initialsCircle(for: user, size: size)
-                        }
-                    }
-                }
-                .id(user.id)  // Force unique identity per user to prevent image caching issues
-            } else {
-                let _ = print("ℹ️ [GroupAvatar] No image for \(user.displayName), showing initials")
-                initialsCircle(for: user, size: size)
-            }
+            // Use unified UserAvatarView with Kingfisher caching (Phase 2 Fix)
+            UserAvatarView(
+                user: user,
+                size: size,
+                showPresenceIndicator: false
+            )
         } else {
             // Placeholder for missing user
             Circle()
                 .fill(Color.gray.opacity(0.3))
                 .frame(width: size, height: size)
         }
-    }
-    
-    private func initialsCircle(for user: User, size: CGFloat) -> some View {
-        Circle()
-            .fill(Color.blue)
-            .frame(width: size, height: size)
-            .overlay(
-                Text(user.displayName.prefix(1).uppercased())
-                    .foregroundColor(.white)
-                    .font(.system(size: size * 0.5))
-            )
     }
     
     private func additionalUsersIndicator(count: Int, size: CGFloat) -> some View {

@@ -10,6 +10,7 @@ import SwiftUI
 import FirebaseMessaging
 import FirebaseAuth
 import UserNotifications
+import Kingfisher
 
 // MARK: - AppDelegate for Push Notifications
 
@@ -223,11 +224,33 @@ struct MessageAIApp: App {
     init() {
         FirebaseService.shared.configure()
 
+        // Configure Kingfisher cache limits for optimal image caching (Phase 2 - Issue #2 Fix)
+        configureImageCache()
+
         // Clean up expired temporary images from previous sessions (Story 2.7)
         ImageCacheManager.cleanupExpiredImages()
 
         // Story 2.10 QA Fix: Inject UserRepository into AppDelegate
         appDelegate.userRepository = DIContainer.shared.userRepository
+    }
+
+    /// Configure Kingfisher image cache limits
+    ///
+    /// Optimized for user profile images with persistent disk + memory caching.
+    /// Prevents wrong user image flashes during rapid scrolling or view recycling.
+    private func configureImageCache() {
+        let cache = KingfisherManager.shared.cache
+
+        // Memory cache: 50 MB, max 100 images
+        cache.memoryStorage.config.totalCostLimit = 50 * 1024 * 1024  // 50 MB
+        cache.memoryStorage.config.countLimit = 100  // Max 100 images in memory
+        cache.memoryStorage.config.expiration = .days(7)  // Keep in memory for 7 days
+
+        // Disk cache: 200 MB, expires after 30 days
+        cache.diskStorage.config.sizeLimit = 200 * 1024 * 1024  // 200 MB
+        cache.diskStorage.config.expiration = .days(30)  // Auto-cleanup after 30 days
+
+        print("✅ Kingfisher cache configured (Memory: 50MB/100 images, Disk: 200MB/30 days)")
     }
     
     var body: some Scene {

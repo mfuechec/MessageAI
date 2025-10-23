@@ -57,5 +57,10 @@ protocol ConversationRepositoryProtocol {
     ///   - limit: Number of conversations to load (default: 50)
     /// - Returns: Array of older conversations
     func loadMoreConversations(userId: String, lastConversation: Conversation?, limit: Int) async throws -> [Conversation]
+
+    /// Load conversations from local cache (offline-first strategy)
+    /// - Parameter userId: The user ID whose conversations to load
+    /// - Returns: Array of cached conversations (empty if no cache available)
+    func getConversationsFromCache(userId: String) async throws -> [Conversation]
 }
 

@@ -77,6 +77,12 @@ service cloud.firestore {
       allow read: if isAuthenticated();
       allow write: if false;  // Only Cloud Functions write to cache
     }
+
+    // Network monitoring collection (for offline detection)
+    match /_monitoring/{document=**} {
+      allow read: if isAuthenticated();
+      allow write: if false;  // Read-only for clients
+    }
   }
 }
 

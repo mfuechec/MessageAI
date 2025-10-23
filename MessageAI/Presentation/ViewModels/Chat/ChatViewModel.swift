@@ -76,6 +76,9 @@ class ChatViewModel: ObservableObject {
     @Published var selectedImage: UIImage?
     @Published var selectedImageURL: String?  // For full-screen viewer
 
+    // Local image cache for immediate display (before upload completes)
+    var localImageCache: [String: UIImage] = [:]  // messageId -> UIImage
+
     // Document upload state
     @Published var isDocumentPickerPresented: Bool = false
     @Published var selectedDocumentURL: URL?
@@ -163,9 +166,7 @@ class ChatViewModel: ObservableObject {
         // Always observe messages (async)
         observeMessages()
         observeTypingUsers()
-        observeNetworkStatus()
-        setupNetworkMonitoring()
-        observeConnectivity()  // Story 2.9: Watch for offline → online transitions
+        setupNetworkMonitoring()  // Story 2.9: Watch network state & offline → online transitions, retry uploads
     }
     
     // MARK: - Private Methods
@@ -179,6 +180,18 @@ class ChatViewModel: ObservableObject {
                 print("🔄 [ChatViewModel] Messages updated: \(messages.count) messages")
 
                 let sortedMessages = messages.sorted { $0.timestamp < $1.timestamp }
+
+                // CRITICAL FIX: Preserve paginated messages that are older than the real-time window (50 messages)
+                // Real-time listener only watches most recent 50 messages for performance
+                // We need to keep older paginated messages that fall outside this window
+                let existingPaginatedMessages = self.messages.filter { existingMsg in
+                    // Keep messages that are NOT in the new Firestore update
+                    !sortedMessages.contains(where: { $0.id == existingMsg.id })
+                }
+
+                if !existingPaginatedMessages.isEmpty {
+                    print("💾 [ChatViewModel] Preserving \(existingPaginatedMessages.count) paginated message(s) outside real-time window")
+                }
 
                 // CRITICAL: Preserve local state for failed messages (Story 2.4)
                 // Failed messages never made it to Firestore, so we need to merge them
@@ -200,27 +213,53 @@ class ChatViewModel: ObservableObject {
                     return firestoreMessage
                 }
 
+                // Add paginated messages (older than real-time window)
+                mergedMessages.append(contentsOf: existingPaginatedMessages)
+
                 // Add local-only failed messages
                 mergedMessages.append(contentsOf: localOnlyFailedMessages)
                 mergedMessages.sort { $0.timestamp < $1.timestamp }
 
-                // CRITICAL: Detect if message content changed but count stayed same
-                // This happens when messages are edited, deleted, or read status changes
-                if self.messages.count == mergedMessages.count && self.messages.count > 0 {
-                    // Check if any message content changed (edited, deleted, or status updated)
-                    let contentChanged = zip(self.messages, mergedMessages).contains { old, new in
+                // CRITICAL FIX: Optimize content change detection - only compare IDs for large arrays
+                // For 50+ messages, full comparison is O(n) expensive on main thread
+                let needsRefresh: Bool
+                if self.messages.count == mergedMessages.count && self.messages.count > 20 {
+                    // Fast path: Just check if any IDs are different (O(n) but cheap comparison)
+                    let oldIds = Set(self.messages.map { $0.id })
+                    let newIds = Set(mergedMessages.map { $0.id })
+
+                    if oldIds == newIds {
+                        // Same IDs - do spot check on first 5 messages for edits/status changes
+                        let sampleSize = min(5, self.messages.count)
+                        needsRefresh = (0..<sampleSize).contains { idx in
+                            let old = self.messages[idx]
+                            let new = mergedMessages[idx]
+                            return old.text != new.text ||
+                                   old.isEdited != new.isEdited ||
+                                   old.isDeleted != new.isDeleted ||
+                                   old.status != new.status ||
+                                   old.readCount != new.readCount
+                        }
+                    } else {
+                        needsRefresh = true  // IDs changed
+                    }
+                } else if self.messages.count == mergedMessages.count && self.messages.count > 0 {
+                    // Small array - do full comparison (original logic)
+                    needsRefresh = zip(self.messages, mergedMessages).contains { old, new in
                         old.text != new.text ||
                         old.isEdited != new.isEdited ||
                         old.isDeleted != new.isDeleted ||
-                        old.status != new.status ||          // ← Read receipt status changes
-                        old.readBy != new.readBy ||          // ← Read receipt array changes
-                        old.readCount != new.readCount       // ← Read receipt count changes
+                        old.status != new.status ||
+                        old.readBy != new.readBy ||
+                        old.readCount != new.readCount
                     }
+                } else {
+                    needsRefresh = self.messages.count != mergedMessages.count
+                }
 
-                    if contentChanged {
-                        print("📝 [ChatViewModel] Message content changed (edit/delete/status), forcing UI refresh")
-                        self.messagesNeedRefresh = true
-                    }
+                if needsRefresh {
+                    print("📝 [ChatViewModel] Content changed, forcing UI refresh")
+                    self.messagesNeedRefresh = true
                 }
 
                 self.messages = mergedMessages
@@ -272,19 +311,65 @@ class ChatViewModel: ObservableObject {
         isLoading = !(messagesLoaded && participantsLoaded)
     }
     
+    /// Setup network monitoring with connectivity transition detection (Story 2.9 - FIXED)
+    ///
+    /// Single subscription pattern eliminates race conditions.
+    /// Detects offline → online transitions and shows connectivity toast.
     private func setupNetworkMonitoring() {
         networkMonitor.isConnectedPublisher
+            .removeDuplicates()  // Filter duplicate events
             .receive(on: DispatchQueue.main)
             .sink { [weak self] isConnected in
                 guard let self = self else { return }
+
+                // Capture previous state BEFORE update
                 let wasOffline = self.isOffline
-                self.isOffline = !isConnected
+                let isNowOffline = !isConnected
+
+                // Update current state
+                self.isOffline = isNowOffline
+
                 print("🌐 [ChatViewModel] Network status changed: isConnected=\(isConnected), isOffline=\(self.isOffline)")
-                if wasOffline != self.isOffline {
-                    print("   State changed: wasOffline=\(wasOffline) → isOffline=\(self.isOffline)")
+
+                // Detect offline → online transition
+                if wasOffline && !isNowOffline {
+                    self.handleConnectivityRestored()
+                }
+
+                // Detect online → offline transition
+                if !wasOffline && isNowOffline {
+                    self.handleConnectivityLost()
                 }
             }
             .store(in: &cancellables)
+    }
+
+    /// Handle connectivity restored (offline → online)
+    private func handleConnectivityRestored() {
+        print("🌐 [ChatViewModel] Connectivity restored")
+
+        // Retry any queued image/document uploads
+        retryOfflineUploads()
+
+        // Show toast if there are queued messages
+        if !queuedMessages.isEmpty {
+            print("   → Found \(queuedMessages.count) queued messages")
+            showConnectivityToast = true
+
+            // Auto-dismiss toast after 10 seconds
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 10_000_000_000)  // 10 seconds
+                self.showConnectivityToast = false
+            }
+        }
+    }
+
+    /// Handle connectivity lost (online → offline)
+    private func handleConnectivityLost() {
+        print("🔴 [ChatViewModel] Connectivity lost")
+
+        // Hide connectivity toast if showing
+        showConnectivityToast = false
     }
     
     // MARK: - Public Methods
@@ -534,11 +619,19 @@ class ChatViewModel: ObservableObject {
     
     /// Initiates edit mode for a message
     /// Only allows editing of own messages
+    /// Messages with attachments (images/documents) cannot be edited
     func startEdit(message: Message) {
         guard message.senderId == currentUserId else {
             print("⚠️ Cannot edit message from another user")
             return
         }
+
+        // Prevent editing messages with attachments (silently ignore - may add enlarge/view later)
+        guard message.attachments.isEmpty else {
+            print("ℹ️ Ignoring tap on message with attachments (edit not supported)")
+            return
+        }
+
         editingMessageId = message.id
         editingMessageText = message.text
         isEditingMessage = true
@@ -855,6 +948,12 @@ class ChatViewModel: ObservableObject {
             }
         }
 
+        // Clear local image cache to free memory
+        if !localImageCache.isEmpty {
+            print("🧹 [ChatViewModel] Clearing \(localImageCache.count) cached image(s) from memory")
+            localImageCache.removeAll()
+        }
+
         if AppState.shared.currentlyViewingConversationId == conversationId {
             AppState.shared.currentlyViewingConversationId = nil
             print("👋 Left conversation: \(conversationId)")
@@ -1117,34 +1216,6 @@ class ChatViewModel: ObservableObject {
         }
     }
 
-    /// Observe connectivity changes (Story 2.9)
-    /// Shows toast when transitioning from offline → online with queued messages
-    private func observeConnectivity() {
-        var wasOffline = isOffline
-
-        networkMonitor.isConnectedPublisher
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] isConnected in
-                guard let self = self else { return }
-
-                let isNowOffline = !isConnected
-
-                // Detect offline → online transition
-                if wasOffline && !isNowOffline && !self.queuedMessages.isEmpty {
-                    print("🌐 [ChatViewModel] Connectivity restored with \(self.queuedMessages.count) queued messages")
-                    self.showConnectivityToast = true
-
-                    // Auto-dismiss toast after 10 seconds
-                    Task { @MainActor in
-                        try? await Task.sleep(nanoseconds: 10_000_000_000)  // 10 seconds
-                        self.showConnectivityToast = false
-                    }
-                }
-
-                wasOffline = isNowOffline
-            }
-            .store(in: &cancellables)
-    }
 
     /// Send all queued messages sequentially (Story 2.9)
     ///
@@ -1361,8 +1432,27 @@ class ChatViewModel: ObservableObject {
                 return
             }
 
-            // Step 3: Create optimistic message with caption support
+            // Step 3: Cache local image for immediate display
+            // Enforce memory limit: max 10 cached images (~20MB total)
+            if localImageCache.count >= 10 {
+                // Remove oldest cached image (FIFO)
+                if let oldestKey = localImageCache.keys.first {
+                    localImageCache.removeValue(forKey: oldestKey)
+                    print("🧹 [ChatViewModel] Cache limit reached, removed oldest cached image")
+                }
+            }
+            localImageCache[messageId] = compressedImage
+
+            // Step 4: Create optimistic message with placeholder attachment for immediate display
             let caption = messageText  // Capture current text for caption
+            let placeholderAttachment = MessageAttachment(
+                id: UUID().uuidString,
+                type: .image,
+                url: "local://\(messageId)",  // Placeholder URL to indicate local image
+                thumbnailURL: nil,
+                sizeBytes: Int64(imageData.count),
+                fileName: nil
+            )
             let message = Message(
                 id: messageId,
                 conversationId: conversationId,
@@ -1371,14 +1461,14 @@ class ChatViewModel: ObservableObject {
                 timestamp: Date(),
                 status: .sending,
                 statusUpdatedAt: Date(),
-                attachments: []  // Will be populated after upload
+                attachments: [placeholderAttachment]  // Placeholder attachment with local:// URL
             )
 
             messages.append(message)
             uploadProgress[messageId] = 0.0
             messageText = ""  // Clear text input after creating message
 
-            // Step 4: Upload image in background
+            // Step 5: Upload image in background
             await performImageUpload(messageId: messageId, imageData: imageData)
         }
     }
@@ -1421,6 +1511,7 @@ class ChatViewModel: ObservableObject {
             // Clean up
             uploadProgress.removeValue(forKey: messageId)
             uploadErrors.removeValue(forKey: messageId)
+            localImageCache.removeValue(forKey: messageId)  // Remove local cache
             ImageCacheManager.deleteTemporaryImage(forMessageId: messageId)
             removeFromOfflineQueue(messageId: messageId)
 
@@ -1443,6 +1534,7 @@ class ChatViewModel: ObservableObject {
                 }
 
                 uploadProgress.removeValue(forKey: messageId)
+                // Keep localImageCache for queued uploads (will show local preview until sent)
                 // Don't set uploadErrors - queued uploads will auto-retry
 
             } else {
@@ -1453,6 +1545,8 @@ class ChatViewModel: ObservableObject {
 
                 uploadProgress.removeValue(forKey: messageId)
                 uploadErrors[messageId] = "Failed to upload image. Tap to retry."
+                // Clear local cache for failed uploads to free memory
+                localImageCache.removeValue(forKey: messageId)
             }
         }
     }
@@ -1779,16 +1873,6 @@ class ChatViewModel: ObservableObject {
         return queue.filter { $0.conversationId == conversationId }.count
     }
 
-    /// Observe network status and retry uploads
-    private func observeNetworkStatus() {
-        networkMonitor.isConnectedPublisher
-            .sink { [weak self] (isConnected: Bool) in
-                if isConnected {
-                    self?.retryOfflineUploads()
-                }
-            }
-            .store(in: &cancellables)
-    }
 
     // MARK: - Full-Screen Image Viewer
 

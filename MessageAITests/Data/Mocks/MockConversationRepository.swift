@@ -15,7 +15,9 @@ class MockConversationRepository: ConversationRepositoryProtocol {
     var markAsReadCalled = false
     var updateConversationCalled = false
     var updateTypingStateCalled = false
-    
+    var loadMoreConversationsCalled = false
+    var getConversationsFromCacheCalled = false
+
     // MARK: - Configurable Return Values
     
     var mockConversations: [Conversation] = []
@@ -32,7 +34,9 @@ class MockConversationRepository: ConversationRepositoryProtocol {
     var capturedUpdates: [String: Any]?
     var capturedTypingUserId: String?
     var capturedIsTyping: Bool?
-    
+    var capturedLastConversation: Conversation?
+    var capturedLimit: Int?
+
     // MARK: - ConversationRepositoryProtocol Implementation
     
     func getConversation(id: String) async throws -> Conversation {
@@ -133,8 +137,32 @@ class MockConversationRepository: ConversationRepositoryProtocol {
         }
     }
 
+    func loadMoreConversations(userId: String, lastConversation: Conversation?, limit: Int) async throws -> [Conversation] {
+        loadMoreConversationsCalled = true
+        capturedUserId = userId
+        capturedLastConversation = lastConversation
+        capturedLimit = limit
+
+        if shouldFail, let error = mockError {
+            throw error
+        }
+
+        return mockConversations
+    }
+
+    func getConversationsFromCache(userId: String) async throws -> [Conversation] {
+        getConversationsFromCacheCalled = true
+        capturedUserId = userId
+
+        if shouldFail, let error = mockError {
+            throw error
+        }
+
+        return mockConversations
+    }
+
     // MARK: - Reset
-    
+
     func reset() {
         observeConversationsCalled = false
         getConversationCalled = false
@@ -144,6 +172,8 @@ class MockConversationRepository: ConversationRepositoryProtocol {
         markAsReadCalled = false
         updateConversationCalled = false
         updateTypingStateCalled = false
+        loadMoreConversationsCalled = false
+        getConversationsFromCacheCalled = false
 
         mockConversations = []
         mockConversation = nil
@@ -157,6 +187,8 @@ class MockConversationRepository: ConversationRepositoryProtocol {
         capturedUpdates = nil
         capturedTypingUserId = nil
         capturedIsTyping = nil
+        capturedLastConversation = nil
+        capturedLimit = nil
     }
 }
 

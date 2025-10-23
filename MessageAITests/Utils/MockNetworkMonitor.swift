@@ -26,30 +26,54 @@ import Combine
 /// XCTAssertTrue(viewModel.isOffline)
 /// ```
 class MockNetworkMonitor: NetworkMonitorProtocol {
-    
+
     // MARK: - Published Properties
-    
+
     /// Simulated network connection state
     @Published var isConnected: Bool = true
-    
+
     /// Publisher for network connectivity changes
     var isConnectedPublisher: Published<Bool>.Publisher { $isConnected }
-    
+
+    /// Simulated Firestore connection state
+    @Published var isFirestoreConnected: Bool = true
+
+    /// Publisher for Firestore connectivity changes
+    var isFirestoreConnectedPublisher: Published<Bool>.Publisher { $isFirestoreConnected }
+
+    /// Effective connectivity state (source of truth)
+    var isEffectivelyConnected: Bool {
+        return isFirestoreConnected
+    }
+
     // MARK: - Public Methods
-    
+
     /// Simulates network disconnection (airplane mode, WiFi off, etc.)
     func simulateOffline() {
         isConnected = false
+        isFirestoreConnected = false
     }
-    
+
     /// Simulates network reconnection
     func simulateOnline() {
         isConnected = true
+        isFirestoreConnected = true
     }
-    
+
+    /// Simulates Firestore-specific disconnection (while OS network is still up)
+    func simulateFirestoreDisconnect() {
+        isFirestoreConnected = false
+    }
+
+    /// Simulates Firestore reconnection
+    func simulateFirestoreReconnect() {
+        isFirestoreConnected = true
+    }
+
     /// Resets to default online state
     func reset() {
         isConnected = true
+        isFirestoreConnected = true
     }
 
     /// Simulate connectivity change to trigger observers (Story 2.9)

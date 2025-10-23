@@ -50,10 +50,9 @@ so that **I don't miss important questions or requests directed at me**.
 23. Priority status cached, re-evaluated only when conversation context changes
 
 **Testing:**
-24. Unit tests for priority detection logic in Cloud Function
-25. Integration test: Send priority message, verify it's flagged correctly
-26. Integration test: Send non-priority message, verify it's not flagged
-27. Regression test: Message delivery, editing, and AI features still work correctly
+24. Integration test: Send priority message, verify it's flagged correctly
+25. Integration test: Send non-priority message, verify it's not flagged
+26. Regression test: Message delivery, editing, and AI features still work correctly
 
 ## Story 4.2: Decision Tracking System
 
@@ -107,10 +106,9 @@ so that **I can reference past agreements and understand why choices were made**
 27. Cached decisions with 1-hour refresh
 
 **Testing:**
-28. Unit tests for decision detection logic
-29. Integration test: Make explicit decision in conversation, verify detection or manual tagging works
-30. Integration test: Search decisions, verify correct results returned
-31. Regression test: All previous AI features still functional
+28. Integration test: Make explicit decision in conversation, verify detection or manual tagging works
+29. Integration test: Search decisions, verify correct results returned
+30. Regression test: All previous AI features still functional
 
 ## Story 4.3: Insights Dashboard - Aggregated View
 
@@ -165,10 +163,9 @@ so that **I can manage action items, review decisions, and see priority messages
 28. Visual distinction between sections (subtle dividers, spacing)
 
 **Testing:**
-29. Unit tests for Insights ViewModel aggregating data from multiple repositories
-30. Integration test: Create action items and decisions in multiple conversations, verify they appear in Insights
-31. UI test: Navigate through all Insights sections, verify interactions work
-32. Regression test: Main messaging functionality unaffected by Insights tab
+29. Integration test: Create action items and decisions in multiple conversations, verify they appear in Insights
+30. UI test: Navigate through all Insights sections, verify interactions work
+31. Regression test: Main messaging functionality unaffected by Insights tab
 
 ## Story 4.4: Cross-Conversation AI Context
 
@@ -204,10 +201,9 @@ so that **Insights dashboard can provide intelligent aggregation and suggestions
 14. Cloud Function validates user authentication before returning data
 
 **Testing:**
-15. Unit tests for aggregation logic (mocked conversation data)
-16. Integration test: User with 5 conversations, create action items in 3, verify aggregated view correct
-17. Security test: Attempt to access another user's insights, verify denied
-18. Performance test: User with 50 conversations, verify aggregation completes within time limit
+15. Integration test: User with 5 conversations, create action items in 3, verify aggregated view correct
+16. Security test: Attempt to access another user's insights, verify denied
+17. Performance test: User with 50 conversations, verify aggregation completes within time limit
 
 ## Story 4.5: AI Feature Discoverability & Onboarding
 

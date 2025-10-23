@@ -1,54 +1,67 @@
 rules_version = '2';
 
+// Firebase Storage Security Rules
+// NOTE: Firestore cross-service checks (firestore.get/exists) are NOT used
+// because they cause authentication failures. Participant validation is done
+// at the application layer in Swift before upload.
+
 service firebase.storage {
   match /b/{bucket}/o {
-    
+
     // Helper function: Check if user is authenticated
     function isAuthenticated() {
       return request.auth != null;
     }
-    
-    // Helper function: Check if user is participant in conversation
-    function isParticipant(conversationId) {
-      return request.auth.uid in firestore.get(/databases/(default)/documents/conversations/$(conversationId)).data.participantIds;
-    }
-    
-    // Image attachments: /images/{conversationId}/{messageId}/{filename}
-    match /images/{conversationId}/{messageId}/{filename} {
-      // Allow upload if authenticated and participant (with 2MB limit)
-      allow write: if isAuthenticated() 
-        && isParticipant(conversationId)
-        && request.resource.size < 2 * 1024 * 1024;
-      
-      // Allow read if authenticated and participant
-      allow read: if isAuthenticated() && isParticipant(conversationId);
-    }
-    
-    // Document attachments: /documents/{conversationId}/{messageId}/{filename}
-    match /documents/{conversationId}/{messageId}/{filename} {
-      // Allow upload if authenticated and participant (with 10MB limit and PDF only)
-      allow write: if isAuthenticated()
-        && isParticipant(conversationId)
-        && request.resource.size < 10 * 1024 * 1024
-        && request.resource.contentType == 'application/pdf';
 
-      // Allow read if authenticated and participant
-      allow read: if isAuthenticated() && isParticipant(conversationId);
+    // Helper function: Check if file is a valid image type
+    function isValidImage() {
+      return request.resource.contentType.matches('image/(jpeg|jpg|png|gif|webp|heic)');
     }
-    
-    // Profile images: /profile-images/{userId}/{filename}
-    match /profile-images/{userId}/{filename} {
-      // Allow user to upload their own profile image
-      allow write: if isAuthenticated() && request.auth.uid == userId;
-      
-      // Allow any authenticated user to read profile images
+
+    // Image attachments: /images/{conversationId}/{messageId}/{filename}
+    // Access control: Authenticated users only
+    // Participant validation happens in app before upload
+    match /images/{conversationId}/{messageId}/{filename} {
+      allow write: if isAuthenticated()
+        && isValidImage()
+        && request.resource.size < 5 * 1024 * 1024;  // 5MB limit
+
       allow read: if isAuthenticated();
     }
-    
+
+    // Helper function: Check if file is a valid document type
+    function isValidDocument() {
+      return request.resource.contentType.matches('application/(pdf|msword|vnd.openxmlformats-officedocument.wordprocessingml.document)') ||
+             request.resource.contentType.matches('application/vnd.ms-excel|application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') ||
+             request.resource.contentType == 'text/plain';
+    }
+
+    // Document attachments: /documents/{conversationId}/{messageId}/{filename}
+    // Access control: Authenticated users only
+    // Participant validation happens in app before upload
+    match /documents/{conversationId}/{messageId}/{filename} {
+      allow write: if isAuthenticated()
+        && isValidDocument()
+        && request.resource.size < 10 * 1024 * 1024;  // 10MB limit
+
+      allow read: if isAuthenticated();
+    }
+
+    // Profile images: /profile-images/{userId}/{filename}
+    match /profile-images/{userId}/{filename} {
+      // Users can only upload their own profile image
+      allow write: if isAuthenticated()
+        && request.auth.uid == userId
+        && isValidImage()
+        && request.resource.size < 5 * 1024 * 1024;
+
+      // Any authenticated user can read profile images
+      allow read: if isAuthenticated();
+    }
+
     // Default: deny all
     match /{allPaths=**} {
       allow read, write: if false;
     }
   }
 }
-

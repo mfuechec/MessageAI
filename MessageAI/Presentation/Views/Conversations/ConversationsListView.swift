@@ -46,6 +46,7 @@ struct ConversationsListView: View {
     }
     
     var body: some View {
+        let _ = print("🚨 [ConversationsListView] body rendering - isOffline=\(viewModel.isOffline)")
         NavigationView {
             ZStack {
                 if viewModel.isLoading && viewModel.conversations.isEmpty {
@@ -59,7 +60,7 @@ struct ConversationsListView: View {
                     // Conversations list
                     conversationsList
                 }
-                
+
                 // Toast notifications
                 VStack {
                     // Permission denied banner (Story 2.10a AC 11-13)
@@ -69,6 +70,7 @@ struct ConversationsListView: View {
                     }
 
                     if viewModel.isOffline {
+                        let _ = print("🚨 [ConversationsListView] Showing offline toast")
                         offlineToast
                             .transition(.move(edge: .top).combined(with: .opacity))
                     }
@@ -86,15 +88,19 @@ struct ConversationsListView: View {
             }
             .navigationTitle("Messages")
             .onChange(of: viewModel.isOffline) { newValue in
+                print("🚨 [ConversationsListView] onChange triggered: isOffline=\(newValue)")
                 if !newValue {
+                    print("🚨 [ConversationsListView] Reconnected - showing toast")
                     // Reconnected - show reconnected toast briefly
                     showReconnectedToast = true
-                    
+
                     // Auto-dismiss reconnected toast after 2 seconds
                     DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                        print("🚨 [ConversationsListView] Auto-dismissing reconnected toast")
                         showReconnectedToast = false
                     }
                 } else {
+                    print("🚨 [ConversationsListView] Went offline - hiding reconnected toast")
                     // Went offline - hide reconnected toast if showing
                     showReconnectedToast = false
                 }

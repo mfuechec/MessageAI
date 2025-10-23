@@ -119,18 +119,18 @@ final class ConversationTests: XCTestCase {
             isGroup: true,
             groupName: nil
         )
-        
+
         let users = [
             User(id: "user-1", email: "alice@example.com", displayName: "Alice"),
             User(id: "user-2", email: "bob@example.com", displayName: "Bob"),
             User(id: "user-3", email: "carol@example.com", displayName: "Carol")
         ]
-        
+
         // When: Get display name
         let displayName = conversation.displayName(for: "user-1", users: users)
-        
-        // Then: Should show concatenated participant names
-        XCTAssertEqual(displayName, "Alice, Bob, Carol")
+
+        // Then: Should show concatenated participant names (excluding current user)
+        XCTAssertEqual(displayName, "Bob, Carol")
     }
 }
 

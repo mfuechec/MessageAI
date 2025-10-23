@@ -12,7 +12,11 @@ class ConversationsListViewModel: ObservableObject {
     @Published var users: [String: User] = [:] // userId -> User mapping (single source of truth)
     @Published var isLoading: Bool = false
     @Published var errorMessage: String?
-    @Published var isOffline: Bool = false
+    @Published var isOffline: Bool = false {
+        didSet {
+            print("🚨 [ConversationsListViewModel] isOffline changed: \(oldValue) -> \(isOffline)")
+        }
+    }
     @Published var notificationPermissionDenied: Bool = false // Story 2.10a AC 11
 
     // Story 2.11 - AC #3: Pagination state
@@ -44,10 +48,14 @@ class ConversationsListViewModel: ObservableObject {
         self.userRepository = userRepository
         self.currentUserId = currentUserId
         self.networkMonitor = networkMonitor
-        
+
+        // Load from cache first (offline-first strategy)
+        loadCachedConversations()
+
+        // Then observe real-time updates
         observeConversations()
         observeNetworkStatus()
-        
+
         #if DEBUG
         // Enable notification simulation in DEBUG builds (for simulator testing)
         if let messageRepo = messageRepository {
@@ -64,7 +72,33 @@ class ConversationsListViewModel: ObservableObject {
     }
     
     // MARK: - Real-Time Observations
-    
+
+    /// Load conversations from local cache for instant display (offline-first)
+    ///
+    /// Called immediately on init to show cached data instantly, even when offline.
+    /// The real-time listener will then update with live data when network is available.
+    private func loadCachedConversations() {
+        Task {
+            do {
+                let cachedConversations = try await conversationRepository.getConversationsFromCache(userId: currentUserId)
+
+                await MainActor.run {
+                    if !cachedConversations.isEmpty {
+                        print("💾 [ConversationsListViewModel] Loaded \(cachedConversations.count) conversations from cache")
+                        self.conversations = sortConversations(cachedConversations)
+                        self.updateBadgeCount()
+                        self.loadParticipantUsers(from: cachedConversations)
+                    } else {
+                        print("💾 [ConversationsListViewModel] No cached conversations available")
+                    }
+                }
+            } catch {
+                print("⚠️ [ConversationsListViewModel] Failed to load cached conversations: \(error.localizedDescription)")
+                // Not a critical error - real-time listener will populate data
+            }
+        }
+    }
+
     private func observeConversations() {
         conversationRepository.observeConversations(userId: currentUserId)
             .receive(on: DispatchQueue.main)
@@ -147,9 +181,12 @@ class ConversationsListViewModel: ObservableObject {
     }
     
     private func observeNetworkStatus() {
+        print("🚨 [ConversationsListViewModel] Setting up network status observer")
         networkMonitor.isConnectedPublisher
             .receive(on: DispatchQueue.main)
             .sink { [weak self] isConnected in
+                print("🚨 [ConversationsListViewModel] Received network status update: isConnected=\(isConnected)")
+                print("🚨 [ConversationsListViewModel] Setting isOffline to \(!isConnected)")
                 self?.isOffline = !isConnected
             }
             .store(in: &cancellables)

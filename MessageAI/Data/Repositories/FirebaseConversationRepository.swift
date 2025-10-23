@@ -155,7 +155,12 @@ final class FirebaseConversationRepository: ConversationRepositoryProtocol {
     
     func observeConversations(userId: String) -> AnyPublisher<[Conversation], Never> {
         let subject = PassthroughSubject<[Conversation], Never>()
-        
+
+        // CRITICAL FIX: Maintain local state to prevent duplicates on reconnection
+        // When network toggles, Firestore re-emits all documents. We need to track
+        // what we already have and only process actual changes.
+        var conversationsCache: [String: Conversation] = [:]
+
         let listener = db.collection("conversations")
             .whereField("participantIds", arrayContains: userId)
             .addSnapshotListener { snapshot, error in
@@ -164,30 +169,57 @@ final class FirebaseConversationRepository: ConversationRepositoryProtocol {
                     subject.send([])
                     return
                 }
-                
-                guard let documents = snapshot?.documents else {
+
+                guard let snapshot = snapshot else {
                     subject.send([])
                     return
                 }
-                
-                let conversations = documents.compactMap { doc -> Conversation? in
-                    try? Firestore.Decoder.default.decode(Conversation.self, from: doc.data())
+
+                // CRITICAL FIX: Use documentChanges to avoid duplicates on reconnection
+                // This processes only actual changes (added/modified/removed), not all documents
+                let changes = snapshot.documentChanges
+
+                if !changes.isEmpty {
+                    print("🔄 Processing \(changes.count) conversation change(s)")
+
+                    for change in changes {
+                        let docId = change.document.documentID
+
+                        switch change.type {
+                        case .added:
+                            if let conversation = try? Firestore.Decoder.default.decode(Conversation.self, from: change.document.data()) {
+                                conversationsCache[docId] = conversation
+                                print("➕ Added conversation: \(docId)")
+                            }
+
+                        case .modified:
+                            if let conversation = try? Firestore.Decoder.default.decode(Conversation.self, from: change.document.data()) {
+                                conversationsCache[docId] = conversation
+                                print("✏️ Modified conversation: \(docId)")
+                            }
+
+                        case .removed:
+                            conversationsCache.removeValue(forKey: docId)
+                            print("🗑️ Removed conversation: \(docId)")
+                        }
+                    }
                 }
-                
+
                 // Sort by last message timestamp (most recent first)
+                let conversations = Array(conversationsCache.values)
                 let sorted = conversations.sorted { conv1, conv2 in
                     guard let time1 = conv1.lastMessageTimestamp else { return false }
                     guard let time2 = conv2.lastMessageTimestamp else { return true }
                     return time1 > time2
                 }
-                
+
                 print("✅ Conversations updated: \(sorted.count) conversations for user \(userId)")
                 subject.send(sorted)
             }
-        
+
         // Store listener for cleanup
         activeListeners.append(listener)
-        
+
         return subject.eraseToAnyPublisher()
     }
     
@@ -275,6 +307,45 @@ final class FirebaseConversationRepository: ConversationRepositoryProtocol {
 
         } catch {
             print("❌ Failed to load more conversations: \(error.localizedDescription)")
+            throw RepositoryError.networkError(error)
+        }
+    }
+
+    // MARK: - Offline-First Loading
+
+    func getConversationsFromCache(userId: String) async throws -> [Conversation] {
+        do {
+            // Query cache ONLY (no network request)
+            let query = db.collection("conversations")
+                .whereField("participantIds", arrayContains: userId)
+                .order(by: "lastMessageTimestamp", descending: true)
+
+            // Use cache source explicitly - this returns immediately with cached data
+            let snapshot = try await query.getDocuments(source: .cache)
+
+            let conversations = snapshot.documents.compactMap { doc -> Conversation? in
+                guard let conversation = try? Firestore.Decoder.default.decode(
+                    Conversation.self,
+                    from: doc.data()
+                ) else {
+                    print("⚠️ Failed to decode cached conversation: \(doc.documentID)")
+                    return nil
+                }
+                return conversation
+            }
+
+            print("💾 [Cache] Loaded \(conversations.count) conversations from cache for user \(userId)")
+            return conversations
+
+        } catch let error as NSError where error.domain == FirestoreErrorDomain {
+            // Cache miss or unavailable - return empty array (not an error)
+            if error.code == FirestoreErrorCode.unavailable.rawValue {
+                print("💾 [Cache] No cached conversations available")
+                return []
+            }
+            throw RepositoryError.networkError(error)
+        } catch {
+            print("❌ Failed to load conversations from cache: \(error.localizedDescription)")
             throw RepositoryError.networkError(error)
         }
     }
