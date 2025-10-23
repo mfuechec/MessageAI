@@ -3,6 +3,17 @@ import * as admin from "firebase-admin";
 
 admin.initializeApp();
 
+// ========================================
+// AI CLOUD FUNCTIONS (Story 3.1)
+// ========================================
+export {summarizeThread} from "./summarizeThread";
+export {extractActionItems} from "./extractActionItems";
+export {generateSmartSearchResults} from "./generateSmartSearchResults";
+
+// ========================================
+// MESSAGING CLOUD FUNCTIONS
+// ========================================
+
 /**
  * Cloud Function: Send push notification when new message is created
  *

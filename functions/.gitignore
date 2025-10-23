@@ -8,3 +8,6 @@ typings/
 # Node.js dependency directory
 node_modules/
 
+# Firebase Functions local runtime config (contains API keys)
+.runtimeconfig.json
+

@@ -16,18 +16,97 @@ struct ChatView: View {
 
     // Offline queue state (Story 2.9)
     @State private var showOfflineQueue = false
-
+    
     // Optional initial data to avoid loading delay
     let initialConversation: Conversation?
     let initialParticipants: [User]?
-
+    
     init(viewModel: ChatViewModel, initialConversation: Conversation? = nil, initialParticipants: [User]? = nil) {
         self.viewModel = viewModel
         self.initialConversation = initialConversation
         self.initialParticipants = initialParticipants
     }
-
+    
     var body: some View {
+        mainContent
+            .navigationBarTitleDisplayMode(.inline)
+            .onChange(of: viewModel.isOffline, perform: handleOfflineStateChange)
+            .toolbar { toolbarContent }
+            .sheet(isPresented: $showGroupMemberList) {
+                GroupMemberListView(participants: viewModel.participants)
+            }
+            .sheet(isPresented: $showOfflineQueue) {
+                offlineQueueSheet
+            }
+            .sheet(isPresented: $viewModel.showEditHistoryModal) {
+                editHistorySheet
+            }
+            .sheet(item: $viewModel.readReceiptTapped) { message in
+                ReadReceiptDetailView(
+                    message: message,
+                    participants: viewModel.participants,
+                    currentUserId: viewModel.currentUserId
+                )
+            }
+            .alert("Delete this message for everyone?", isPresented: $viewModel.showDeleteConfirmation) {
+                deleteConfirmationButtons
+            } message: {
+                Text("This message will be deleted for all participants. This action cannot be undone.")
+            }
+            .alert("Message Failed", isPresented: $showFailedMessageAlert, presenting: selectedFailedMessage) { message in
+                failedMessageButtons(message: message)
+            } message: { message in
+                Text("This message failed to send. Would you like to retry or delete it?")
+            }
+            .onChange(of: viewModel.failedMessageTapped) { message in
+                if let message = message {
+                    selectedFailedMessage = message
+                    showFailedMessageAlert = true
+                    viewModel.failedMessageTapped = nil
+                }
+            }
+            .alert("Error", isPresented: Binding(
+                get: { viewModel.errorMessage != nil },
+                set: { if !$0 { viewModel.errorMessage = nil } }
+            )) {
+                Button("OK", role: .cancel) {
+                    viewModel.errorMessage = nil
+                }
+            } message: {
+                Text(viewModel.errorMessage ?? "An error occurred")
+            }
+            .modifier(DebugAIAlertsModifier(viewModel: viewModel))
+            .sheet(isPresented: $viewModel.isImagePickerPresented) {
+                ImagePicker(selectedImage: $viewModel.selectedImage)
+            }
+            .onChange(of: viewModel.selectedImage) { oldValue, newValue in
+                handleSelectedImage(newValue)
+            }
+            .sheet(isPresented: $viewModel.isDocumentPickerPresented) {
+                DocumentPicker(selectedDocumentURL: $viewModel.selectedDocumentURL)
+            }
+            .onChange(of: viewModel.selectedDocumentURL) { oldValue, newValue in
+                handleSelectedDocument(newValue)
+            }
+            .fullScreenCover(item: Binding(
+                get: { viewModel.selectedImageURL.map { URLWrapper(url: $0) } },
+                set: { viewModel.selectedImageURL = $0?.url }
+            )) { wrapper in
+                FullScreenImageView(imageURL: wrapper.url) {
+                    viewModel.dismissFullScreenImage()
+                }
+            }
+            .onAppear {
+                viewModel.onAppear()
+            }
+            .onDisappear {
+                viewModel.onDisappear()
+            }
+    }
+
+    // MARK: - View Components
+
+    private var mainContent: some View {
         ZStack {
             // Always show content (MessageKit handles empty state)
             VStack(spacing: 0) {
@@ -58,7 +137,7 @@ struct ChatView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(Color(.systemBackground))
             }
-            
+
             // Toast notifications
             VStack {
                 if viewModel.isOffline {
@@ -94,7 +173,7 @@ struct ChatView: View {
             .animation(.spring(response: 0.3), value: viewModel.isOffline)
             .animation(.spring(response: 0.3), value: showReconnectedToast)
             .animation(.spring(response: 0.3), value: viewModel.showConnectivityToast)
-            
+
             // Edit mode overlay
             if viewModel.isEditingMessage {
                 editModeOverlay
@@ -139,11 +218,8 @@ struct ChatView: View {
                 }
             }
 
-            // Story 3.1: Debug button temporarily disabled due to SwiftUI compiler complexity issues
-            // Will be re-enabled after view refactoring or in Story 3.2 AI UI
-            // For now, test Cloud Functions directly via Firebase Console
-            /*
             #if DEBUG
+            // Story 3.1: Debug button to test AI infrastructure
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button(action: {
                     Task {
@@ -163,7 +239,6 @@ struct ChatView: View {
                 .accessibilityHint("Tests Cloud Functions AI infrastructure")
             }
             #endif
-            */
         }
         .sheet(isPresented: $showGroupMemberList) {
             GroupMemberListView(participants: viewModel.participants)
@@ -239,10 +314,8 @@ struct ChatView: View {
             Text(viewModel.errorMessage ?? "An error occurred")
         }
 
-        // Story 3.1: Debug alerts temporarily disabled due to SwiftUI compiler complexity
-        // Will be re-enabled in Story 3.2 when building dedicated AI UI screens
-        /*
         #if DEBUG
+        // Story 3.1: Debug AI Success Alert
         .alert("AI Test Success", isPresented: Binding(
             get: { viewModel.debugAISummary != nil },
             set: { if !$0 { viewModel.debugAISummary = nil } }
@@ -259,6 +332,7 @@ struct ChatView: View {
             }
         }
 
+        // Story 3.1: Debug AI Error Alert
         .alert("AI Test Failed", isPresented: Binding(
             get: { viewModel.debugAIError != nil },
             set: { if !$0 { viewModel.debugAIError = nil } }
@@ -275,7 +349,6 @@ struct ChatView: View {
             }
         }
         #endif
-        */
 
         // Image Picker Sheet
         .sheet(isPresented: $viewModel.isImagePickerPresented) {
@@ -311,7 +384,7 @@ struct ChatView: View {
         .onAppear {
             // Track that user is viewing this conversation (for notification suppression)
             viewModel.onAppear()
-
+            
             // Set title immediately from initial data if available
             if let conversation = initialConversation, let participants = initialParticipants {
                 setTitle(conversation: conversation, participants: participants)
@@ -326,10 +399,11 @@ struct ChatView: View {
             updateConversationTitle()
         }
         .onDisappear {
+            // Clear conversation tracking when user leaves (allows notifications again)
             viewModel.onDisappear()
         }
     }
-
+    
     private var offlineBanner: some View {
         HStack {
             Image(systemName: "wifi.slash")

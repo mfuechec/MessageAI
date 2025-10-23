@@ -87,7 +87,21 @@ class DIContainer {
     internal lazy var storageRepository: StorageRepositoryProtocol = {
         FirebaseStorageRepository(firebaseService: firebaseService)
     }()
-    
+
+    // MARK: - AI Services (Story 3.1)
+
+    /// Cloud Functions service (Story 3.1)
+    /// Low-level wrapper for calling Firebase Cloud Functions
+    private lazy var cloudFunctionsService: CloudFunctionsService = {
+        CloudFunctionsService()
+    }()
+
+    /// AI service (Story 3.1)
+    /// High-level AI features: thread summarization, action item extraction, smart search
+    internal lazy var aiService: AIServiceProtocol = {
+        FirebaseAIService(cloudFunctionsService: cloudFunctionsService)
+    }()
+
     // MARK: - Initialization
 
     private init() {
@@ -146,7 +160,8 @@ class DIContainer {
             networkMonitor: networkMonitor,
             offlineQueueStore: offlineQueueStore,  // Story 2.9
             initialConversation: initialConversation,
-            initialParticipants: initialParticipants
+            initialParticipants: initialParticipants,
+            aiService: aiService  // Story 3.1: Inject for debug testing
         )
     }
     
