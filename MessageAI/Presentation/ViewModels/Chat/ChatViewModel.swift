@@ -1889,5 +1889,46 @@ class ChatViewModel: ObservableObject {
     func dismissFullScreenImage() {
         selectedImageURL = nil
     }
+
+    // MARK: - DEBUG: Test Message Population
+
+    #if DEBUG
+    /// Populates conversation with test messages for AI feature testing
+    ///
+    /// Uses Cloud Function with admin privileges to create realistic multi-participant
+    /// conversations that bypass Firestore security rules. This allows messages from
+    /// other users to be created, enabling proper AI testing for action item extraction,
+    /// decision tracking, and priority detection.
+    func populateTestMessages() async {
+        let startTime = Date()
+
+        do {
+            print("🧪 [ChatViewModel] Calling Cloud Function to populate test messages...")
+
+            let cloudFunctions = CloudFunctionsService()
+            let response = try await cloudFunctions.callPopulateTestMessages(conversationId: conversationId)
+
+            let endTime = Date()
+            let totalDuration = endTime.timeIntervalSince(startTime)
+
+            print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+            print("✅ [ChatViewModel] Test message population complete!")
+            print("📊 Messages created: \(response.messageCount)")
+            print("📊 Total time: \(String(format: "%.2f", totalDuration))s")
+            print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+
+            // Messages will appear automatically via Firestore real-time listener
+            // No need to manually update local state
+
+        } catch {
+            print("❌ [ChatViewModel] Failed to populate test messages: \(error.localizedDescription)")
+
+            // Show error to user
+            await MainActor.run {
+                errorMessage = "Failed to populate test messages: \(error.localizedDescription)"
+            }
+        }
+    }
+    #endif
 }
 

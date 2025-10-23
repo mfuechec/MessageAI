@@ -227,25 +227,26 @@ export const summarizeThread = functions
         const completion = await openai.chat.completions.create({
           model: "gpt-4-turbo-preview",
           temperature: 0.3, // Lower = more deterministic
-          max_tokens: 500,
+          max_tokens: 200,
           messages: [
             {
               role: "system",
               content: `You are an AI assistant that summarizes team conversations.
-Your summaries should:
-- Be 150-300 words
-- Capture key decisions and action items
-- Highlight important questions or concerns
-- Use professional, clear language
-- Focus on the "what matters" for remote teams`,
+Your summaries MUST be:
+- Exactly 1-2 sentences (20-30 words MAXIMUM)
+- Focus ONLY on the most critical point
+- Use extremely concise language
+- No filler words or unnecessary details`,
             },
             {
               role: "user",
-              content: `Summarize this conversation and extract key points as a JSON object with this exact format:
+              content: `Summarize this conversation in 20-30 words MAX (1-2 sentences). Extract key points as a JSON object with this exact format:
 {
-  "summary": "2-3 sentence summary here",
+  "summary": "Ultra-concise 1-2 sentence summary (20-30 words)",
   "keyPoints": ["point 1", "point 2", "point 3"]
 }
+
+Be extremely brief. Focus on what matters most.
 
 Conversation:
 ${conversationText}`,

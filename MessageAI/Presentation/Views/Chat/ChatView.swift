@@ -147,6 +147,22 @@ struct ChatView: View {
                 .accessibilityLabel("AI Features")
                 .accessibilityHint("Access AI-powered features like thread summarization")
             }
+
+            #if DEBUG
+            // DEBUG: Populate test messages for AI testing
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button(action: {
+                    Task {
+                        await viewModel.populateTestMessages()
+                    }
+                }) {
+                    Image(systemName: "flask")
+                        .foregroundColor(.orange)
+                }
+                .accessibilityLabel("Populate Test Messages")
+                .accessibilityHint("Add test messages for AI feature validation")
+            }
+            #endif
     }
 
     private var contentWithToolbar: some View {
@@ -186,15 +202,17 @@ struct ChatView: View {
         }
         // Story 3.2: AI Features
         .confirmationDialog("AI Features", isPresented: $showAIMenu) {
-            Button("Summarize Thread") {
+            // Comprehensive AI Analysis (all features in one view)
+            Button("✨ AI Analysis") {
                 summaryViewModel = DIContainer.shared.makeSummaryViewModel(
                     conversationId: viewModel.conversationId
                 )
                 showSummary = true
             }
+
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Choose an AI feature to use")
+            Text("View AI-powered insights: priorities, summary, actions, and decisions")
         }
         .sheet(isPresented: $showSummary) {
             summarySheetContent
@@ -540,23 +558,44 @@ struct MessageKitWrapper: UIViewControllerRepresentable {
             uiViewController.messagesCollectionView.reloadData()
             uiViewController.showEmptyState()
         } else if newCount > oldCount {
-            // New messages added - use performBatchUpdates for better performance
-            print("  ➕ Adding \(newCount - oldCount) new message(s) with incremental update")
+            // New messages added
+            let messageCountDelta = newCount - oldCount
 
-            // Calculate new section indices (MessageKit uses sections, not rows)
-            let newSections = IndexSet(integersIn: oldCount..<newCount)
+            // For bulk additions (5+ messages), use reloadData to avoid batch update race conditions
+            // This happens during test message population or loading history
+            if messageCountDelta >= 5 {
+                print("  ➕ Bulk add: \(messageCountDelta) messages - using reloadData")
+                uiViewController.messagesCollectionView.reloadData()
 
-            // Perform incremental insert instead of full reload
-            uiViewController.messagesCollectionView.performBatchUpdates({
-                uiViewController.messagesCollectionView.insertSections(newSections)
-            }, completion: { _ in
-                // Auto-scroll to bottom if appropriate
-                let shouldScroll = context.coordinator.isNearBottom ||
-                                  (self.viewModel.messages.last?.senderId == self.viewModel.currentUserId)
-                if shouldScroll {
-                    uiViewController.messagesCollectionView.scrollToLastItem(animated: true)
+                // Auto-scroll to bottom for bulk adds (always show latest message)
+                DispatchQueue.main.async {
+                    uiViewController.messagesCollectionView.scrollToLastItem(animated: false)
                 }
-            })
+            } else {
+                // Small incremental additions - use batch updates for smooth animation
+                print("  ➕ Adding \(messageCountDelta) new message(s) with incremental update")
+
+                // Verify data source consistency before batch update
+                let actualSections = uiViewController.messagesCollectionView.numberOfSections
+
+                if actualSections != oldCount {
+                    // Data source already updated - fall back to reloadData
+                    print("  ⚠️ Data source inconsistency detected (\(actualSections) != \(oldCount)), using reloadData")
+                    uiViewController.messagesCollectionView.reloadData()
+                    return
+                }
+
+                // Calculate new section indices (MessageKit uses sections, not rows)
+                let newSections = IndexSet(integersIn: oldCount..<newCount)
+
+                // Perform incremental insert instead of full reload
+                uiViewController.messagesCollectionView.performBatchUpdates({
+                    uiViewController.messagesCollectionView.insertSections(newSections)
+                }, completion: { _ in
+                    // Always scroll to bottom for new messages (test population and regular messages)
+                    uiViewController.messagesCollectionView.scrollToLastItem(animated: true)
+                })
+            }
         } else {
             // Messages modified or removed - use incremental updates
             print("  🔄 Messages modified/removed: \(oldCount) -> \(newCount)")
@@ -641,47 +680,71 @@ struct MessageKitWrapper: UIViewControllerRepresentable {
         func configureAvatarView(_ avatarView: AvatarView, for message: MessageType, at indexPath: IndexPath, in messagesCollectionView: MessagesCollectionView) {
             let actualMessage = viewModel.messages[indexPath.section]
             let senderId = actualMessage.senderId  // Use actual message sender ID
-            
+
             // Don't show avatar for current user's messages
             if senderId == viewModel.currentUserId {
                 avatarView.isHidden = true
                 return
             }
-            
+
             avatarView.isHidden = false
-            
+
             // Get sender user from viewModel.users dictionary
             guard let senderUser = viewModel.users[senderId] else {
                 print("⚠️ Unknown user for senderId: \(senderId)")
                 avatarView.set(avatar: Avatar(image: nil, initials: "?"))
                 return
             }
-            
+
             let initials = senderUser.displayInitials
-            print("👤 Configuring avatar for \(senderUser.displayName) (senderId: \(senderId))")
 
             // Try to load profile image using Kingfisher (Phase 2 - Issue #2 Fix)
             if let photoURLString = senderUser.profileImageURL,
                !photoURLString.isEmpty,
                let photoURL = URL(string: photoURLString) {
-                print("🖼️ Loading profile image for \(senderUser.displayName): \(photoURLString)")
 
-                // Set initials immediately as placeholder
-                avatarView.set(avatar: Avatar(image: createAvatarWithPresenceIndicator(nil, user: senderUser), initials: initials))
+                // Track current URL to avoid redundant reconfiguration (prevents blinking)
+                let currentURLKey = "currentAvatarURL"
+                let currentURL = objc_getAssociatedObject(avatarView, currentURLKey) as? URL
 
-                // Download image using Kingfisher with automatic memory + disk caching
-                KingfisherManager.shared.retrieveImage(with: photoURL) { result in
-                    switch result {
-                    case .success(let imageResult):
-                        print("✅ Profile image loaded for \(senderUser.displayName) (cache: \(imageResult.cacheType))")
-                        let avatarWithIndicator = self.createAvatarWithPresenceIndicator(imageResult.image, user: senderUser)
-                        DispatchQueue.main.async {
-                            avatarView.set(avatar: Avatar(image: avatarWithIndicator, initials: initials))
-                        }
-                    case .failure(let error):
-                        print("❌ Profile image load failed for \(senderUser.displayName): \(error)")
-                        DispatchQueue.main.async {
-                            avatarView.set(avatar: Avatar(image: self.createAvatarWithPresenceIndicator(nil, user: senderUser), initials: initials))
+                // Skip reconfiguration if already showing this URL
+                if currentURL == photoURL {
+                    return
+                }
+
+                // Store the URL we're configuring
+                objc_setAssociatedObject(avatarView, currentURLKey, photoURL, .OBJC_ASSOCIATION_RETAIN)
+
+                print("👤 Configuring avatar for \(senderUser.displayName) (senderId: \(senderId))")
+
+                // Check Kingfisher memory cache synchronously FIRST to avoid blinking
+                let cache = KingfisherManager.shared.cache
+                let cacheKey = photoURL.absoluteString
+
+                if let cachedImage = cache.retrieveImageInMemoryCache(forKey: cacheKey) {
+                    // Image in memory cache - set immediately with NO initials placeholder
+                    print("⚡ Avatar in memory cache for \(senderUser.displayName), setting immediately")
+                    let avatarWithIndicator = createAvatarWithPresenceIndicator(cachedImage, user: senderUser)
+                    avatarView.set(avatar: Avatar(image: avatarWithIndicator, initials: initials))
+                } else {
+                    // Not in memory cache - show initials placeholder while loading from disk/network
+                    print("🖼️ Loading profile image for \(senderUser.displayName): \(photoURLString)")
+                    avatarView.set(avatar: Avatar(image: createAvatarWithPresenceIndicator(nil, user: senderUser), initials: initials))
+
+                    // Download image using Kingfisher (checks disk cache automatically before network)
+                    KingfisherManager.shared.retrieveImage(with: photoURL) { result in
+                        switch result {
+                        case .success(let imageResult):
+                            print("✅ Profile image loaded for \(senderUser.displayName) (cache: \(imageResult.cacheType))")
+                            let avatarWithIndicator = self.createAvatarWithPresenceIndicator(imageResult.image, user: senderUser)
+                            DispatchQueue.main.async {
+                                avatarView.set(avatar: Avatar(image: avatarWithIndicator, initials: initials))
+                            }
+                        case .failure(let error):
+                            print("❌ Profile image load failed for \(senderUser.displayName): \(error)")
+                            DispatchQueue.main.async {
+                                avatarView.set(avatar: Avatar(image: self.createAvatarWithPresenceIndicator(nil, user: senderUser), initials: initials))
+                            }
                         }
                     }
                 }

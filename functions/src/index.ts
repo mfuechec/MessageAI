@@ -11,6 +11,11 @@ export {extractActionItems} from "./extractActionItems";
 export {generateSmartSearchResults} from "./generateSmartSearchResults";
 
 // ========================================
+// TESTING UTILITIES (DEBUG ONLY)
+// ========================================
+export {populateTestMessages} from "./populateTestMessages";
+
+// ========================================
 // MESSAGING CLOUD FUNCTIONS
 // ========================================
 

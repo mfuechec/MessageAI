@@ -33,7 +33,7 @@ struct SummaryView: View {
                     emptyView
                 }
             }
-            .navigationTitle("Thread Summary")
+            .navigationTitle("AI Analysis")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
@@ -130,22 +130,27 @@ struct SummaryView: View {
                 // Metadata header
                 metadataSection(summary: summary)
 
-                // Main summary text
+                // 1. THREAD SUMMARY (First - condensed to 1-2 sentences)
                 summarySection(summary: summary)
 
-                // Key points
-                if !summary.keyPoints.isEmpty {
-                    keyPointsSection(summary: summary)
-                }
+                // 2. PRIORITY MESSAGES
+                priorityMessagesSection()
 
-                // Participants
-                if !summary.participants.isEmpty {
-                    participantsSection(summary: summary)
-                }
+                // 3. ACTION ITEMS
+                actionItemsSection()
 
-                // Date range
-                if !summary.dateRange.isEmpty {
-                    dateRangeSection(summary: summary)
+                // 4. DECISION TRACKING
+                decisionsSection()
+
+                // Participants & Date Range at bottom
+                HStack(spacing: 20) {
+                    if !summary.participants.isEmpty {
+                        participantsSection(summary: summary)
+                    }
+
+                    if !summary.dateRange.isEmpty {
+                        dateRangeSection(summary: summary)
+                    }
                 }
             }
             .padding()
@@ -188,82 +193,176 @@ struct SummaryView: View {
     }
 
     private func summarySection(summary: ThreadSummary) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Label("Summary", systemImage: "doc.text")
-                .font(.headline)
-                .foregroundColor(.primary)
+        VStack(alignment: .leading, spacing: 8) {
+            Label("📝 Summary", systemImage: "doc.text")
+                .font(.subheadline)
+                .fontWeight(.semibold)
+                .foregroundColor(.secondary)
 
             Text(summary.summary)
                 .font(.body)
-                .lineSpacing(4)
-                .fixedSize(horizontal: false, vertical: true)
+                .lineSpacing(2)
                 .foregroundColor(.primary)
         }
-        .padding()
+        .padding(12)
         .background(Color(.systemGray6))
-        .cornerRadius(12)
-    }
-
-    private func keyPointsSection(summary: ThreadSummary) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Label("Key Points", systemImage: "list.bullet")
-                .font(.headline)
-                .foregroundColor(.primary)
-
-            VStack(alignment: .leading, spacing: 10) {
-                ForEach(Array(summary.keyPoints.enumerated()), id: \.offset) { _, point in
-                    HStack(alignment: .top, spacing: 10) {
-                        Circle()
-                            .fill(Color.accentColor)
-                            .frame(width: 6, height: 6)
-                            .padding(.top, 7)
-
-                        Text(point)
-                            .font(.body)
-                            .lineSpacing(2)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .foregroundColor(.primary)
-                    }
-                }
-            }
-        }
-        .padding()
-        .background(Color(.systemGray6))
-        .cornerRadius(12)
+        .cornerRadius(8)
     }
 
     private func participantsSection(summary: ThreadSummary) -> some View {
-        HStack(spacing: 12) {
-            Label("Participants", systemImage: "person.2")
-                .font(.subheadline)
+        HStack(spacing: 6) {
+            Image(systemName: "person.2.fill")
+                .font(.caption)
                 .foregroundColor(.secondary)
-
-            Spacer()
-
             Text(summary.participants.joined(separator: ", "))
-                .font(.body)
-                .foregroundColor(.primary)
+                .font(.caption)
+                .foregroundColor(.secondary)
         }
-        .padding()
-        .background(Color(.systemGray6))
-        .cornerRadius(12)
     }
 
     private func dateRangeSection(summary: ThreadSummary) -> some View {
-        HStack(spacing: 12) {
-            Label("Date Range", systemImage: "calendar")
-                .font(.subheadline)
+        HStack(spacing: 6) {
+            Image(systemName: "calendar")
+                .font(.caption)
                 .foregroundColor(.secondary)
-
-            Spacer()
-
             Text(summary.dateRange)
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
+    }
+
+    // MARK: - AI Feature Sections
+
+    private func priorityMessagesSection() -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("⚠️ Priority Messages", systemImage: "exclamationmark.triangle.fill")
+                .font(.subheadline)
+                .fontWeight(.semibold)
+                .foregroundColor(.orange)
+
+            // TODO: Replace with actual priority messages from AI
+            VStack(alignment: .leading, spacing: 8) {
+                bulletPoint(
+                    icon: "exclamationmark.circle.fill",
+                    color: .red,
+                    text: "Production server is down - needs immediate attention (Alice)"
+                )
+                bulletPoint(
+                    icon: "exclamationmark.circle.fill",
+                    color: .orange,
+                    text: "Client waiting for proposal approval - can't wait (You)"
+                )
+                bulletPoint(
+                    icon: "exclamationmark.circle.fill",
+                    color: .orange,
+                    text: "Security vulnerabilities found - patch by EOD (Bob)"
+                )
+            }
+        }
+        .padding(12)
+        .background(Color.orange.opacity(0.08))
+        .cornerRadius(8)
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.orange.opacity(0.3), lineWidth: 1)
+        )
+    }
+
+    private func actionItemsSection() -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("✅ Action Items", systemImage: "checkmark.circle.fill")
+                .font(.subheadline)
+                .fontWeight(.semibold)
+                .foregroundColor(.blue)
+
+            // TODO: Replace with actual action items from AI
+            VStack(alignment: .leading, spacing: 8) {
+                bulletPoint(
+                    icon: "circle",
+                    color: .blue,
+                    text: "Finish quarterly report by Friday EOD (Sarah)"
+                )
+                bulletPoint(
+                    icon: "circle",
+                    color: .blue,
+                    text: "Send contract to John before tomorrow's meeting"
+                )
+                bulletPoint(
+                    icon: "circle",
+                    color: .blue,
+                    text: "Review pull request #234 before deploy"
+                )
+                bulletPoint(
+                    icon: "circle",
+                    color: .blue,
+                    text: "Update documentation by Wednesday"
+                )
+            }
+        }
+        .padding(12)
+        .background(Color.blue.opacity(0.08))
+        .cornerRadius(8)
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.blue.opacity(0.3), lineWidth: 1)
+        )
+    }
+
+    private func decisionsSection() -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("🎯 Decisions", systemImage: "checkmark.seal.fill")
+                .font(.subheadline)
+                .fontWeight(.semibold)
+                .foregroundColor(.green)
+
+            // TODO: Replace with actual decisions from AI
+            VStack(alignment: .leading, spacing: 8) {
+                bulletPoint(
+                    icon: "checkmark.circle.fill",
+                    color: .green,
+                    text: "Team decided to go with option B for architecture"
+                )
+                bulletPoint(
+                    icon: "checkmark.circle.fill",
+                    color: .green,
+                    text: "Launch postponed to next Monday for quality"
+                )
+                bulletPoint(
+                    icon: "checkmark.circle.fill",
+                    color: .green,
+                    text: "Using PostgreSQL instead of MongoDB (Alice)"
+                )
+                bulletPoint(
+                    icon: "checkmark.circle.fill",
+                    color: .green,
+                    text: "Moving forward with React migration next sprint"
+                )
+            }
+        }
+        .padding(12)
+        .background(Color.green.opacity(0.08))
+        .cornerRadius(8)
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.green.opacity(0.3), lineWidth: 1)
+        )
+    }
+
+    // MARK: - Helper Views
+
+    private func bulletPoint(icon: String, color: Color, text: String) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: icon)
+                .font(.caption)
+                .foregroundColor(color)
+                .frame(width: 12)
+                .padding(.top, 2)
+
+            Text(text)
                 .font(.body)
                 .foregroundColor(.primary)
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .padding()
-        .background(Color(.systemGray6))
-        .cornerRadius(12)
     }
 }
 

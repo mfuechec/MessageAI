@@ -134,11 +134,14 @@ struct ConversationsListView: View {
                 // Parent observes the ViewModel directly (more reliable than child onChange)
                 if let conversation = conversation {
                     print("📱 Parent detected conversation selection: \(conversation.id)")
-                    
-                    // Get participants from users dictionary (single source of truth)
-                    let participants = viewModel.getParticipants(for: conversation)
-                    print("✅ Found \(participants.count)/\(conversation.participantIds.count) participants")
-                    
+
+                    // For NEW conversations, get participants from NewConversationViewModel's users array
+                    // (more reliable than ConversationsListViewModel's users dict which may not be populated yet)
+                    let participants = conversation.participantIds.compactMap { participantId in
+                        newConversationViewModel.users.first { $0.id == participantId }
+                    }
+                    print("✅ Found \(participants.count)/\(conversation.participantIds.count) participants from NewConversationViewModel")
+
                     // Create ChatViewModel with participant data
                     let chatVM = DIContainer.shared.makeChatViewModel(
                         conversationId: conversation.id,
@@ -147,10 +150,10 @@ struct ConversationsListView: View {
                         initialParticipants: participants
                     )
                     print("✅ ChatViewModel created for new conversation")
-                    
+
                     // Dismiss new conversation sheet
                     showNewConversation = false
-                    
+
                     // Wait for dismissal animation, then open chat
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                         print("🚀 Opening chat sheet for conversation: \(conversation.id)")

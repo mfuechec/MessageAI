@@ -20,6 +20,49 @@ class CloudFunctionsService {
         self.functions = Functions.functions()
     }
 
+    // MARK: - Testing Utilities (DEBUG ONLY)
+
+    #if DEBUG
+    /// Call populateTestMessages Cloud Function
+    ///
+    /// Creates realistic multi-participant test messages for AI feature testing.
+    /// Uses admin privileges to bypass security rules and create messages from other users.
+    ///
+    /// - Parameter conversationId: The conversation to populate with test messages
+    /// - Returns: Response with message count and timestamp
+    /// - Throws: AIServiceError on failure
+    func callPopulateTestMessages(conversationId: String) async throws -> PopulateTestMessagesResponse {
+        let data: [String: Any] = [
+            "conversationId": conversationId
+        ]
+
+        print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        print("🧪 [CloudFunctions] Calling populateTestMessages")
+        print("   Conversation ID: \(conversationId)")
+
+        do {
+            let result = try await functions.httpsCallable("populateTestMessages").call(data)
+            print("✅ [CloudFunctions] populateTestMessages succeeded")
+
+            guard let response = result.data as? [String: Any] else {
+                print("❌ [CloudFunctions] Invalid response format: \(result.data)")
+                throw AIServiceError.unknown("Invalid response format from Cloud Function")
+            }
+
+            return try parsePopulateTestMessagesResponse(response)
+        } catch let error as AIServiceError {
+            print("❌ [CloudFunctions] AIServiceError: \(error.localizedDescription)")
+            throw error
+        } catch let error as NSError {
+            print("❌ [CloudFunctions] NSError:")
+            print("   Domain: \(error.domain)")
+            print("   Code: \(error.code)")
+            print("   Description: \(error.localizedDescription)")
+            throw mapFirebaseFunctionsError(error)
+        }
+    }
+    #endif
+
     // MARK: - AI Cloud Functions
 
     /// Call summarizeThread Cloud Function
@@ -135,6 +178,30 @@ class CloudFunctionsService {
     }
 
     // MARK: - Response Parsing
+
+    #if DEBUG
+    private func parsePopulateTestMessagesResponse(_ data: [String: Any]) throws -> PopulateTestMessagesResponse {
+        guard let success = data["success"] as? Bool,
+              let messageCount = data["messageCount"] as? Int,
+              let conversationId = data["conversationId"] as? String,
+              let timestamp = data["timestamp"] as? String else {
+            throw AIServiceError.unknown("Missing required fields in populateTestMessages response")
+        }
+
+        print("📊 [CloudFunctions] Test messages created:")
+        print("   Message count: \(messageCount)")
+        print("   Conversation: \(conversationId)")
+        print("   Timestamp: \(timestamp)")
+        print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+
+        return PopulateTestMessagesResponse(
+            success: success,
+            messageCount: messageCount,
+            conversationId: conversationId,
+            timestamp: timestamp
+        )
+    }
+    #endif
 
     private func parseSummaryResponse(_ data: [String: Any]) throws -> SummaryResponse {
         guard let success = data["success"] as? Bool,
@@ -311,3 +378,12 @@ struct SearchResultDTO {
     let timestamp: Date?
     let senderName: String
 }
+
+#if DEBUG
+struct PopulateTestMessagesResponse {
+    let success: Bool
+    let messageCount: Int
+    let conversationId: String
+    let timestamp: String
+}
+#endif
