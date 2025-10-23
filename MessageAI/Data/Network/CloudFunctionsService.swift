@@ -100,7 +100,20 @@ class CloudFunctionsService {
                 throw AIServiceError.unknown("Invalid response format from Cloud Function")
             }
 
-            print("📦 [CloudFunctions] Response data: \(response.keys.joined(separator: ", "))")
+            print("📦 [CloudFunctions] Response data keys: \(response.keys.joined(separator: ", "))")
+
+            // Debug: Print priority messages if present
+            if let priorityMessagesData = response["priorityMessages"] as? [[String: Any]] {
+                print("🔍 [CloudFunctions] Raw priorityMessages from Cloud Function:")
+                print("   Count: \(priorityMessagesData.count)")
+                for (idx, pm) in priorityMessagesData.enumerated() {
+                    print("   [\(idx)] \(pm)")
+                }
+            } else {
+                print("⚠️  [CloudFunctions] No priorityMessages in response or wrong type")
+                print("   priorityMessages value: \(response["priorityMessages"] ?? "nil")")
+            }
+
             return try parseSummaryResponse(response)
         } catch let error as AIServiceError {
             print("❌ [CloudFunctions] AIServiceError: \(error.localizedDescription)")
@@ -216,16 +229,58 @@ class CloudFunctionsService {
         let dateRange = data["dateRange"] as? String
         let messagesSinceCache = data["messagesSinceCache"] as? Int ?? 0
 
-        return SummaryResponse(
+        // Parse priority messages
+        var priorityMessages: [PriorityMessageDTO]? = nil
+        if let priorityMessagesData = data["priorityMessages"] as? [[String: Any]] {
+            print("🔍 [CloudFunctions] Parsing \(priorityMessagesData.count) priority messages")
+
+            priorityMessages = priorityMessagesData.compactMap { pmData in
+                print("   Parsing priority message: \(pmData)")
+
+                guard let text = pmData["text"] as? String else {
+                    print("   ❌ Missing 'text' field")
+                    return nil
+                }
+
+                guard let sourceMessageId = pmData["sourceMessageId"] as? String else {
+                    print("   ❌ Missing 'sourceMessageId' field")
+                    return nil
+                }
+
+                guard let priority = pmData["priority"] as? String else {
+                    print("   ❌ Missing 'priority' field")
+                    return nil
+                }
+
+                let dto = PriorityMessageDTO(
+                    text: text,
+                    sourceMessageId: sourceMessageId,
+                    priority: priority
+                )
+                print("   ✅ Created DTO: text=\(text.prefix(30))..., sourceMessageId=\(sourceMessageId), priority=\(priority)")
+                return dto
+            }
+
+            print("✅ [CloudFunctions] Successfully parsed \(priorityMessages?.count ?? 0) priority message DTOs")
+        } else {
+            print("⚠️  [CloudFunctions] priorityMessages not found or wrong type in response")
+        }
+
+        let response = SummaryResponse(
             success: success,
             summary: summary,
             keyPoints: keyPoints,
+            priorityMessages: priorityMessages,
             participants: participants,
             dateRange: dateRange,
             cached: cached,
             messagesSinceCache: messagesSinceCache,
             timestamp: timestamp
         )
+
+        print("📦 [CloudFunctions] Final SummaryResponse created with \(response.priorityMessages?.count ?? 0) priority messages")
+
+        return response
     }
 
     private func parseActionItemsResponse(_ data: [String: Any]) throws -> ActionItemsResponse {
@@ -340,11 +395,18 @@ struct SummaryResponse {
     let success: Bool
     let summary: String
     let keyPoints: [String]?
+    let priorityMessages: [PriorityMessageDTO]?
     let participants: [String]?
     let dateRange: String?
     let cached: Bool
     let messagesSinceCache: Int
     let timestamp: String
+}
+
+struct PriorityMessageDTO {
+    let text: String
+    let sourceMessageId: String  // Matches domain entity and ActionItemDTO
+    let priority: String
 }
 
 struct ActionItemsResponse {

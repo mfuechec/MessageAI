@@ -93,6 +93,9 @@ class ChatViewModel: ObservableObject {
     @Published var isLoadingMore: Bool = false
     @Published var hasMoreMessages: Bool = true
     private let pageSize = 50
+
+    // Scroll to message state (Story 3.2 - Priority Message Navigation)
+    @Published var scrollToMessageId: String? = nil
     
     // MARK: - Public Properties
 

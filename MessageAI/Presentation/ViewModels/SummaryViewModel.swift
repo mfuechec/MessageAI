@@ -17,14 +17,24 @@ import Combine
 /// - Error handling and loading states
 /// - Timestamp tracking for cache validation
 @MainActor
-class SummaryViewModel: ObservableObject {
+class SummaryViewModel: ObservableObject, Identifiable {
+    // MARK: - Identifiable
+    let id = UUID()
     // MARK: - Published Properties
 
     /// Current summary, nil if not yet loaded
-    @Published var summary: ThreadSummary?
+    @Published var summary: ThreadSummary? {
+        didSet {
+            print("🔄 [SummaryViewModel] summary changed: \(oldValue != nil ? "had summary" : "nil") → \(summary != nil ? "has summary" : "nil")")
+        }
+    }
 
-    /// Loading state indicator
-    @Published var isLoading = false
+    /// Loading state indicator (starts true since we always load on init)
+    @Published var isLoading = true {
+        didSet {
+            print("🔄 [SummaryViewModel] isLoading changed: \(oldValue) → \(isLoading)")
+        }
+    }
 
     /// Error message if summary generation failed
     @Published var errorMessage: String?
@@ -48,9 +58,16 @@ class SummaryViewModel: ObservableObject {
         messageIds: [String]? = nil,
         aiService: AIServiceProtocol
     ) {
+        print("🟢 [SummaryViewModel] init() called")
+        print("   conversationId: \(conversationId)")
+        print("   messageIds count: \(messageIds?.count ?? 0)")
+        print("   Initial isLoading: true")
+
         self.conversationId = conversationId
         self.messageIds = messageIds
         self.aiService = aiService
+
+        print("🟢 [SummaryViewModel] init() complete")
     }
 
     // MARK: - Public Methods
@@ -79,7 +96,18 @@ class SummaryViewModel: ObservableObject {
             print("✅ [SummaryViewModel] Received summary successfully")
             print("   Summary length: \(result.summary.count) characters")
             print("   Key points: \(result.keyPoints.count)")
+            print("   Priority messages: \(result.priorityMessages.count)")
             print("   Cached: \(result.cached)")
+
+            // Debug priority messages
+            if result.priorityMessages.isEmpty {
+                print("⚠️  [SummaryViewModel] No priority messages in ThreadSummary!")
+            } else {
+                print("🔍 [SummaryViewModel] Priority messages received:")
+                for (idx, pm) in result.priorityMessages.enumerated() {
+                    print("   [\(idx)] text=\(pm.text.prefix(50))..., sourceMessageId=\(pm.sourceMessageId), priority=\(pm.priority)")
+                }
+            }
 
             summary = result
             isLoading = false

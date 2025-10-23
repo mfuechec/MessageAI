@@ -19,6 +19,9 @@ struct ThreadSummary {
     /// Key points extracted from the conversation
     let keyPoints: [String]
 
+    /// Priority messages that need attention
+    let priorityMessages: [PriorityMessage]
+
     /// Participant names in the conversation
     let participants: [String]
 

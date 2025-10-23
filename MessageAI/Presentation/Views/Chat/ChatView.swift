@@ -18,13 +18,14 @@ struct ChatView: View {
     @State private var showOfflineQueue = false
 
     // AI features state (Story 3.2)
-    @State private var showAIMenu = false
-    @State private var showSummary = false
     @State private var summaryViewModel: SummaryViewModel?
 
     // Optional initial data to avoid loading delay
     let initialConversation: Conversation?
     let initialParticipants: [User]?
+
+    // Reference to the MessageKit view controller for scrolling
+    @State private var messageKitViewController: CustomMessagesViewController?
 
     init(viewModel: ChatViewModel, initialConversation: Conversation? = nil, initialParticipants: [User]? = nil) {
         self.viewModel = viewModel
@@ -54,7 +55,11 @@ struct ChatView: View {
                     )
                 }
 
-                MessageKitWrapper(viewModel: viewModel, conversationTitle: $conversationTitle)
+                MessageKitWrapper(
+                    viewModel: viewModel,
+                    conversationTitle: $conversationTitle,
+                    viewController: $messageKitViewController
+                )
                     .edgesIgnoringSafeArea(.bottom)
 
                 // Typing indicator (shows above input bar)
@@ -136,16 +141,27 @@ struct ChatView: View {
                 }
             }
 
-            // Story 3.2: AI Features Button
+            // Story 3.2: AI Features Button - directly opens AI Analysis
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button(action: {
-                    showAIMenu = true
+                    print("🔵 [ChatView] AI Analysis button tapped")
+                    print("   Creating SummaryViewModel...")
+
+                    let newViewModel = DIContainer.shared.makeSummaryViewModel(
+                        conversationId: viewModel.conversationId
+                    )
+
+                    print("   SummaryViewModel created. isLoading: \(newViewModel.isLoading)")
+                    print("   Setting summaryViewModel (this will trigger sheet presentation)")
+
+                    // Setting summaryViewModel triggers the .sheet(item:) presentation
+                    summaryViewModel = newViewModel
                 }) {
                     Image(systemName: "sparkles")
                         .foregroundColor(.blue)
                 }
-                .accessibilityLabel("AI Features")
-                .accessibilityHint("Access AI-powered features like thread summarization")
+                .accessibilityLabel("AI Analysis")
+                .accessibilityHint("View AI-powered insights: priorities, summary, actions, and decisions")
             }
 
             #if DEBUG
@@ -200,22 +216,21 @@ struct ChatView: View {
                 currentUserId: viewModel.currentUserId
             )
         }
-        // Story 3.2: AI Features
-        .confirmationDialog("AI Features", isPresented: $showAIMenu) {
-            // Comprehensive AI Analysis (all features in one view)
-            Button("✨ AI Analysis") {
-                summaryViewModel = DIContainer.shared.makeSummaryViewModel(
-                    conversationId: viewModel.conversationId
-                )
-                showSummary = true
+        // Story 3.2: AI Features - Direct sheet presentation
+        .sheet(item: $summaryViewModel) { viewModel in
+            SummaryView(
+                viewModel: viewModel,
+                onPriorityMessageTapped: { messageId in
+                    // Set the scroll target in the view model
+                    self.viewModel.scrollToMessageId = messageId
+                }
+            )
+            .onAppear {
+                print("📱 [ChatView] SummaryView sheet appeared, calling loadSummary()")
+                Task {
+                    await viewModel.loadSummary()
+                }
             }
-
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("View AI-powered insights: priorities, summary, actions, and decisions")
-        }
-        .sheet(isPresented: $showSummary) {
-            summarySheetContent
         }
         // Delete Confirmation Alert
         .alert("Delete this message for everyone?", isPresented: $viewModel.showDeleteConfirmation) {
@@ -316,6 +331,13 @@ struct ChatView: View {
         }
         .onChange(of: viewModel.participants) { _ in
             updateConversationTitle()
+        }
+        .onChange(of: viewModel.scrollToMessageId) { newValue in
+            // Scroll to specific message when requested
+            guard let messageId = newValue else { return }
+            scrollToMessage(messageId: messageId)
+            // Clear the scroll request
+            viewModel.scrollToMessageId = nil
         }
         .onChange(of: viewModel.isOffline) { newValue in
             print("🔴 [ChatView] onChange fired: isOffline=\(newValue)")
@@ -473,18 +495,25 @@ struct ChatView: View {
         .accessibilityLabel("Back online")
     }
 
-    // Story 3.2: Summary sheet content
-    @ViewBuilder
-    private var summarySheetContent: some View {
-        if let summaryVM = summaryViewModel {
-            SummaryView(viewModel: summaryVM)
-                .onAppear {
-                    Task {
-                        await summaryVM.loadSummary()
-                    }
-                }
+    // Scroll to specific message
+    private func scrollToMessage(messageId: String) {
+        guard let messagesVC = messageKitViewController,
+              let index = viewModel.messages.firstIndex(where: { $0.id == messageId }) else {
+            print("⚠️ [ChatView] Unable to scroll to message \(messageId)")
+            return
         }
+
+        print("📍 [ChatView] Scrolling to message at index \(index)")
+
+        // Scroll to the message section with animation
+        let indexPath = IndexPath(item: 0, section: index)
+        messagesVC.messagesCollectionView.scrollToItem(
+            at: indexPath,
+            at: .centeredVertically,
+            animated: true
+        )
     }
+
 }
 
 // MARK: - MessageKit Wrapper
@@ -492,7 +521,8 @@ struct ChatView: View {
 struct MessageKitWrapper: UIViewControllerRepresentable {
     @ObservedObject var viewModel: ChatViewModel
     @Binding var conversationTitle: String
-    
+    @Binding var viewController: CustomMessagesViewController?
+
     func makeUIViewController(context: Context) -> CustomMessagesViewController {
         let vc = CustomMessagesViewController(viewModel: viewModel)
         vc.messagesCollectionView.messagesDataSource = context.coordinator
@@ -500,11 +530,16 @@ struct MessageKitWrapper: UIViewControllerRepresentable {
         vc.messagesCollectionView.messagesDisplayDelegate = context.coordinator
         vc.messageInputBar.delegate = context.coordinator
         context.coordinator.messagesCollectionView = vc.messagesCollectionView
-        
+
         // Initialize messageCount to current count to prevent 0 -> N flash
         vc.messageCount = viewModel.messages.count
         print("🏗️ [ChatView] Created with \(vc.messageCount) messages")
-        
+
+        // Store reference for scrolling
+        DispatchQueue.main.async {
+            viewController = vc
+        }
+
         return vc
     }
     

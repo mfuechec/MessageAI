@@ -49,9 +49,25 @@ class FirebaseAIService: AIServiceProtocol {
             generatedAt = Date()
         }
 
+        // Map priority messages from DTO to domain entities
+        print("🔍 [FirebaseAIService] Mapping priority messages from DTO")
+        print("   Response priorityMessages count: \(response.priorityMessages?.count ?? 0)")
+
+        let priorityMessages = (response.priorityMessages ?? []).map { dto in
+            print("   Mapping DTO: text=\(dto.text.prefix(30))..., sourceMessageId=\(dto.sourceMessageId), priority=\(dto.priority)")
+            return PriorityMessage(
+                text: dto.text,
+                sourceMessageId: dto.sourceMessageId,
+                priority: dto.priority
+            )
+        }
+
+        print("✅ [FirebaseAIService] Mapped \(priorityMessages.count) priority messages to domain entities")
+
         let summary = ThreadSummary(
             summary: response.summary,
             keyPoints: response.keyPoints ?? [],
+            priorityMessages: priorityMessages,
             participants: response.participants ?? [],
             dateRange: response.dateRange ?? "",
             generatedAt: generatedAt,
@@ -61,6 +77,8 @@ class FirebaseAIService: AIServiceProtocol {
 
         print("✅ [FirebaseAIService] Mapped to ThreadSummary successfully")
         print("   Messages since cache: \(response.messagesSinceCache)")
+        print("   Priority messages in ThreadSummary: \(summary.priorityMessages.count)")
+
         return summary
     }
 

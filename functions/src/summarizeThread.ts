@@ -147,6 +147,7 @@ export const summarizeThread = functions
               success: true,
               summary: cachedResult.summary,
               keyPoints: cachedResult.keyPoints || [],
+              priorityMessages: cachedResult.priorityMessages || [],
               participants: cachedResult.participants || [],
               dateRange: cachedResult.dateRange || "",
               cached: true,
@@ -197,7 +198,7 @@ export const summarizeThread = functions
       // ========================================
       // 8. PREPARE MESSAGES FOR AI (Story 3.5)
       // ========================================
-      // Format messages with sender names for better context
+      // Format messages with sender names and IDs for better context
       const formattedMessages = await Promise.all(
         messages.reverse().map(async (msg: any) => {
           const senderDoc = await admin.firestore()
@@ -205,11 +206,12 @@ export const summarizeThread = functions
             .doc(msg.senderId)
             .get();
           const senderName = senderDoc.data()?.displayName || "Unknown";
-          return `${senderName}: ${msg.text}`;
+          return {
+            id: msg.id,
+            text: `${senderName}: ${msg.text}`,
+          };
         })
       );
-
-      const conversationText = formattedMessages.join("\n");
 
       console.log(`[summarizeThread] Prepared ${messages.length} messages for OpenAI`);
 
@@ -219,6 +221,7 @@ export const summarizeThread = functions
       let aiSummary: {
         summary: string;
         keyPoints: string[];
+        priorityMessages: Array<{text: string; sourceMessageId: string; priority: string}>;
         participants: string[];
         dateRange: string;
       };
@@ -227,7 +230,7 @@ export const summarizeThread = functions
         const completion = await openai.chat.completions.create({
           model: "gpt-4-turbo-preview",
           temperature: 0.3, // Lower = more deterministic
-          max_tokens: 200,
+          max_tokens: 300,
           messages: [
             {
               role: "system",
@@ -236,25 +239,50 @@ Your summaries MUST be:
 - Exactly 1-2 sentences (20-30 words MAXIMUM)
 - Focus ONLY on the most critical point
 - Use extremely concise language
-- No filler words or unnecessary details`,
+- No filler words or unnecessary details
+
+You also identify priority messages that require immediate attention.`,
             },
             {
               role: "user",
-              content: `Summarize this conversation in 20-30 words MAX (1-2 sentences). Extract key points as a JSON object with this exact format:
+              content: `Analyze this conversation and return a JSON object with this exact format:
 {
   "summary": "Ultra-concise 1-2 sentence summary (20-30 words)",
-  "keyPoints": ["point 1", "point 2", "point 3"]
+  "keyPoints": ["point 1", "point 2", "point 3"],
+  "priorityMessages": [
+    {
+      "text": "Condensed essence of the urgent message (8-12 words max)",
+      "messageIndex": 0,
+      "priority": "high"
+    }
+  ]
 }
 
-Be extremely brief. Focus on what matters most.
+For priorityMessages:
+- Include ONLY messages that require IMMEDIATE attention or action
+- CONDENSE the message to its ESSENTIAL information only (8-12 words max)
+- Remove filler phrases like "we need", "someone should", "I think", "right now"
+- Focus on: WHAT is urgent + CONSEQUENCE/IMPACT
+- DO NOT include sender name
+- Priority levels: "high" (urgent), "medium" (important), "low" (notable)
+- Limit to top 3 most critical messages
 
-Conversation:
-${conversationText}`,
+Condensing guidelines:
+- Keep core problem + business impact
+- Remove redundant urgency words
+- Use active voice
+- Example pattern: "[Problem]. [Consequence]" or "[Action needed] to [avoid consequence]"
+
+Conversation (numbered):
+${formattedMessages.map((m, i) => `${i}. ${m.text}`).join("\n")}`,
             },
           ],
         });
 
         const responseText = completion.choices[0]?.message?.content || "{}";
+
+        console.log("[summarizeThread] ========== OpenAI Response ==========");
+        console.log("[summarizeThread] Raw response text:", responseText);
 
         // Parse OpenAI's JSON response
         let parsedResponse;
@@ -268,7 +296,9 @@ ${conversationText}`,
             cleanedText = cleanedText.replace(/\n?```\s*$/, "");
           }
 
+          console.log("[summarizeThread] Cleaned JSON text:", cleanedText);
           parsedResponse = JSON.parse(cleanedText);
+          console.log("[summarizeThread] Parsed response object:", JSON.stringify(parsedResponse, null, 2));
         } catch (parseError) {
           // Fallback if OpenAI doesn't return valid JSON
           console.warn("[summarizeThread] Failed to parse OpenAI response as JSON, using fallback");
@@ -276,17 +306,52 @@ ${conversationText}`,
           parsedResponse = {
             summary: responseText.substring(0, 300),
             keyPoints: [],
+            priorityMessages: [],
           };
         }
+
+        // Map priority messages with actual message IDs
+        console.log("[summarizeThread] ========== Priority Message Mapping ==========");
+        console.log("[summarizeThread] Raw priorityMessages from AI:", parsedResponse.priorityMessages);
+        console.log("[summarizeThread] Number of formatted messages:", formattedMessages.length);
+
+        const priorityMessages = (parsedResponse.priorityMessages || [])
+          .map((pm: any, idx: number) => {
+            const messageIndex = pm.messageIndex;
+            console.log(`[summarizeThread] Priority message ${idx}:`, {
+              text: pm.text,
+              messageIndex,
+              priority: pm.priority,
+              isValidIndex: messageIndex >= 0 && messageIndex < formattedMessages.length,
+            });
+
+            if (messageIndex >= 0 && messageIndex < formattedMessages.length) {
+              const mapped = {
+                text: pm.text,
+                sourceMessageId: formattedMessages[messageIndex].id,  // Consistent with ActionItemDTO
+                priority: pm.priority || "medium",
+              };
+              console.log(`[summarizeThread] Mapped to:`, mapped);
+              return mapped;
+            }
+            console.log(`[summarizeThread] SKIPPED - invalid index ${messageIndex}`);
+            return null;
+          })
+          .filter((pm: any) => pm !== null);
+
+        console.log("[summarizeThread] ========== Final Priority Messages ==========");
+        console.log("[summarizeThread] Priority messages after filtering:", JSON.stringify(priorityMessages, null, 2));
 
         aiSummary = {
           summary: parsedResponse.summary || "Summary generated",
           keyPoints: parsedResponse.keyPoints || [],
+          priorityMessages,
           participants: participantNames,
           dateRange,
         };
 
         console.log(`[summarizeThread] OpenAI summary generated successfully`);
+        console.log(`[summarizeThread] Found ${priorityMessages.length} priority messages`);
       } catch (openaiError: any) {
         console.error("[summarizeThread] OpenAI API error:", openaiError);
 
@@ -327,16 +392,23 @@ ${conversationText}`,
       // ========================================
       // 11. RETURN STRUCTURED RESPONSE
       // ========================================
-      return {
+      const response = {
         success: true,
         summary: aiSummary.summary,
         keyPoints: aiSummary.keyPoints,
+        priorityMessages: aiSummary.priorityMessages,
         participants: aiSummary.participants,
         dateRange: aiSummary.dateRange,
         cached: false,
         messagesSinceCache: 0, // Fresh summary
         timestamp: new Date().toISOString(),
       };
+
+      console.log("[summarizeThread] ========== Final Response ==========");
+      console.log("[summarizeThread] Response priorityMessages:", JSON.stringify(response.priorityMessages, null, 2));
+      console.log("[summarizeThread] Response summary:", response.summary.substring(0, 100));
+
+      return response;
     } catch (error: any) {
       // ========================================
       // ERROR HANDLING

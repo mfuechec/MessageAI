@@ -75,9 +75,9 @@ export const populateTestMessages = functions.https.onCall(async (data, context)
             { senderId: otherUserId1, text: "Yes, I'll get that done. Also, remember to send the contract to John before tomorrow's meeting" },
             { senderId: otherUserId2, text: "I need someone to review the pull request #234 before we deploy" },
 
-            // Priority messages - should be flagged as urgent
-            { senderId: otherUserId1, text: "URGENT: Production server is down! Need immediate attention" },
-            { senderId: currentUserId, text: "Critical: Client is waiting for approval on the proposal. This can't wait" },
+            // Priority messages - should be flagged as urgent (natural language, no labels)
+            { senderId: otherUserId1, text: "The database migration failed and rolled back. All user data from the last 2 hours is lost and we need to figure out recovery before people notice" },
+            { senderId: currentUserId, text: "Legal just called - we're violating GDPR with our current data retention policy and could face fines. Need immediate review and changes" },
 
             // Decision tracking - important conclusions
             { senderId: currentUserId, text: "After discussing with the team, we've decided to go with option B for the architecture" },
@@ -95,8 +95,8 @@ export const populateTestMessages = functions.https.onCall(async (data, context)
             // Decision with reasoning
             { senderId: otherUserId1, text: "We've decided to use PostgreSQL instead of MongoDB because of the complex relational data" },
 
-            // Priority with action
-            { senderId: currentUserId, text: "IMPORTANT: Security audit found vulnerabilities. Need to patch by end of day" },
+            // Priority with action (natural urgency through context)
+            { senderId: currentUserId, text: "Major client threatening to cancel their $500K contract because of the performance issues. We have until tomorrow morning to show improvement or they're walking" },
 
             // Regular updates
             { senderId: otherUserId2, text: "Just finished the user testing session. Results look promising" },
@@ -108,8 +108,8 @@ export const populateTestMessages = functions.https.onCall(async (data, context)
             // Decision confirmation
             { senderId: otherUserId1, text: "Confirmed: We're moving forward with the React migration starting next sprint" },
 
-            // Mixed priority and action
-            { senderId: otherUserId2, text: "Critical bug in checkout flow. Sarah, can you investigate ASAP?" },
+            // Mixed priority and action (natural urgency)
+            { senderId: otherUserId2, text: "Payment processor is rejecting all transactions right now. We've had 50+ failed checkouts in the last hour and customers are complaining on social media" },
 
             // Wrap-up with actions
             { senderId: currentUserId, text: "Good progress everyone! Let's make sure all action items are tracked in Jira" },

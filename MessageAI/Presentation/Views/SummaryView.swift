@@ -20,16 +20,25 @@ struct SummaryView: View {
     @ObservedObject var viewModel: SummaryViewModel
     @SwiftUI.Environment(\.presentationMode) private var presentationMode
 
+    // Callback for when a priority message is tapped
+    var onPriorityMessageTapped: ((String) -> Void)?
+
     var body: some View {
-        NavigationView {
+        let _ = print("🎨 [SummaryView] body rendering - isLoading: \(viewModel.isLoading), hasSummary: \(viewModel.summary != nil), hasError: \(viewModel.errorMessage != nil)")
+
+        return NavigationView {
             ZStack {
                 if viewModel.isLoading {
+                    let _ = print("   → Showing loadingView")
                     loadingView
                 } else if let errorMessage = viewModel.errorMessage {
+                    let _ = print("   → Showing errorView: \(errorMessage)")
                     errorView(message: errorMessage)
                 } else if let summary = viewModel.summary {
+                    let _ = print("   → Showing summaryContentView")
                     summaryContentView(summary: summary)
                 } else {
+                    let _ = print("   → Showing emptyView (BLANK SCREEN)")
                     emptyView
                 }
             }
@@ -59,7 +68,9 @@ struct SummaryView: View {
     // MARK: - Loading View
 
     private var loadingView: some View {
-        VStack(spacing: 20) {
+        let _ = print("📊 [SummaryView] loadingView being displayed")
+
+        return VStack(spacing: 20) {
             ProgressView()
                 .scaleEffect(1.5)
 
@@ -72,6 +83,9 @@ struct SummaryView: View {
                 .foregroundColor(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onAppear {
+            print("📊 [SummaryView] loadingView onAppear")
+        }
     }
 
     // MARK: - Error View
@@ -104,7 +118,9 @@ struct SummaryView: View {
     // MARK: - Empty View
 
     private var emptyView: some View {
-        VStack(spacing: 20) {
+        let _ = print("⚠️  [SummaryView] emptyView being displayed (THIS IS THE BLANK SCREEN)")
+
+        return VStack(spacing: 20) {
             Image(systemName: "doc.text.magnifyingglass")
                 .font(.system(size: 50))
                 .foregroundColor(.gray)
@@ -118,6 +134,9 @@ struct SummaryView: View {
                 }
             }
             .buttonStyle(.borderedProminent)
+        }
+        .onAppear {
+            print("⚠️  [SummaryView] emptyView onAppear")
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -235,30 +254,40 @@ struct SummaryView: View {
 
     private func priorityMessagesSection() -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label("⚠️ Priority Messages", systemImage: "exclamationmark.triangle.fill")
+            Label("Priority Messages", systemImage: "exclamationmark.triangle.fill")
                 .font(.subheadline)
                 .fontWeight(.semibold)
                 .foregroundColor(.orange)
 
-            // TODO: Replace with actual priority messages from AI
-            VStack(alignment: .leading, spacing: 8) {
-                bulletPoint(
-                    icon: "exclamationmark.circle.fill",
-                    color: .red,
-                    text: "Production server is down - needs immediate attention (Alice)"
-                )
-                bulletPoint(
-                    icon: "exclamationmark.circle.fill",
-                    color: .orange,
-                    text: "Client waiting for proposal approval - can't wait (You)"
-                )
-                bulletPoint(
-                    icon: "exclamationmark.circle.fill",
-                    color: .orange,
-                    text: "Security vulnerabilities found - patch by EOD (Bob)"
-                )
+            if let summary = viewModel.summary {
+                let pmCount = summary.priorityMessages.count
+                let _ = print("🔍 [SummaryView] Rendering priority messages section: \(pmCount) messages")
+
+                if !summary.priorityMessages.isEmpty {
+                    // Display real priority messages from AI
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(Array(summary.priorityMessages.enumerated()), id: \.offset) { index, priorityMessage in
+                            let _ = print("🔍 [SummaryView] Rendering priority message [\(index)]: \(priorityMessage.text.prefix(30))...")
+                            priorityMessageRow(priorityMessage: priorityMessage)
+                        }
+                    }
+                } else {
+                    // Empty state
+                    let _ = print("⚠️  [SummaryView] Showing empty state - no priority messages")
+                    Text("No priority messages found")
+                        .font(.body)
+                        .foregroundColor(.secondary)
+                        .italic()
+                }
+            } else {
+                let _ = print("⚠️  [SummaryView] No summary available yet")
+                Text("Loading...")
+                    .font(.body)
+                    .foregroundColor(.secondary)
+                    .italic()
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
         .background(Color.orange.opacity(0.08))
         .cornerRadius(8)
@@ -266,6 +295,66 @@ struct SummaryView: View {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(Color.orange.opacity(0.3), lineWidth: 1)
         )
+    }
+
+    private func priorityMessageRow(priorityMessage: PriorityMessage) -> some View {
+        Button(action: {
+            // Call the callback to navigate to the message
+            onPriorityMessageTapped?(priorityMessage.sourceMessageId)
+            // Dismiss the summary view
+            presentationMode.wrappedValue.dismiss()
+        }) {
+            HStack(alignment: .top, spacing: 8) {
+                // Icon based on priority level
+                Image(systemName: iconForPriority(priorityMessage.priority))
+                    .font(.caption)
+                    .foregroundColor(colorForPriority(priorityMessage.priority))
+                    .frame(width: 12)
+                    .padding(.top, 2)
+
+                Text(priorityMessage.text)
+                    .font(.body)
+                    .foregroundColor(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .multilineTextAlignment(.leading)
+
+                Spacer()
+
+                // Chevron to indicate it's tappable
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+
+    // Helper to get icon based on priority
+    private func iconForPriority(_ priority: String) -> String {
+        switch priority.lowercased() {
+        case "high":
+            return "exclamationmark.triangle.fill"  // Triangle for high urgency
+        case "medium":
+            return "exclamationmark.circle.fill"     // Circle for medium urgency
+        case "low":
+            return "exclamationmark.circle"          // Outline circle for low urgency
+        default:
+            return "exclamationmark.circle.fill"
+        }
+    }
+
+    // Helper to get color based on priority - more distinct colors
+    private func colorForPriority(_ priority: String) -> Color {
+        switch priority.lowercased() {
+        case "high":
+            return Color(red: 0.9, green: 0.2, blue: 0.2)      // Bright red for high urgency
+        case "medium":
+            return Color(red: 1.0, green: 0.6, blue: 0.0)      // Vivid orange for medium
+        case "low":
+            return Color(red: 1.0, green: 0.8, blue: 0.0)      // Golden yellow for low
+        default:
+            return .orange
+        }
     }
 
     private func actionItemsSection() -> some View {
@@ -299,6 +388,7 @@ struct SummaryView: View {
                 )
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
         .background(Color.blue.opacity(0.08))
         .cornerRadius(8)
@@ -339,6 +429,7 @@ struct SummaryView: View {
                 )
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
         .background(Color.green.opacity(0.08))
         .cornerRadius(8)
@@ -384,6 +475,23 @@ struct SummaryView_Previews: PreviewProvider {
                         "Thread summaries should be 150-300 words maximum",
                         "Cache summaries for 24 hours to reduce API costs",
                         "Display summaries in a modal with key points highlighted"
+                    ],
+                    priorityMessages: [
+                        PriorityMessage(
+                            text: "Production server is down - needs immediate attention",
+                            sourceMessageId: "msg-1",
+                            priority: "high"
+                        ),
+                        PriorityMessage(
+                            text: "Client waiting for proposal approval - deadline today",
+                            sourceMessageId: "msg-2",
+                            priority: "medium"
+                        ),
+                        PriorityMessage(
+                            text: "Security vulnerabilities found - patch by EOD",
+                            sourceMessageId: "msg-3",
+                            priority: "high"
+                        )
                     ],
                     participants: ["Alice", "Bob", "Charlie"],
                     dateRange: "Oct 20 - Oct 23, 2025",
