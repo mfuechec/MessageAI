@@ -1,0 +1,71 @@
+schema: 1
+story: "2.12"
+story_title: "Comprehensive Reliability Testing & Regression Suite"
+gate: CONCERNS
+status_reason: "Excellent documentation and test infrastructure, but test execution reveals instability issues and manual testing phases incomplete"
+reviewer: "Quinn (Test Architect)"
+updated: "2025-10-22T20:06:00Z"
+
+waiver: { active: false }
+
+top_issues:
+  - id: "TEST-001"
+    severity: medium
+    finding: "Test execution inconsistency - dev agent reported 41/41 passing, but QA verification shows test failures with incomplete output"
+    suggested_action: "Investigate test flakiness, ensure clean test environment, verify all tests pass consistently"
+    suggested_owner: dev
+  - id: "TEST-002"
+    severity: medium
+    finding: "Manual testing phases incomplete - 10 reliability scenarios documented but not executed (Tasks 4-6)"
+    suggested_action: "Execute all 10 reliability scenarios and document results before marking story Done"
+    suggested_owner: dev
+  - id: "TEST-003"
+    severity: medium
+    finding: "TestFlight deployment and external beta testing not completed (AC #5)"
+    suggested_action: "Deploy to TestFlight and coordinate 2+ external testers for validation"
+    suggested_owner: dev
+  - id: "TEST-004"
+    severity: low
+    finding: "MVP checkpoint validation not completed (AC #6, Task 13)"
+    suggested_action: "Validate all Gauntlet MVP requirements and prepare demo script"
+    suggested_owner: dev
+
+quality_score: 70
+expires: "2025-11-05T00:00:00Z"
+
+evidence:
+  tests_reviewed: 41
+  risks_identified: 4
+  trace:
+    ac_covered: [1, 2, 3, 4]
+    ac_gaps: [5, 6]
+
+nfr_validation:
+  security:
+    status: PASS
+    notes: "No security changes in this story - testing/documentation only"
+  performance:
+    status: PASS
+    notes: "Performance baseline tests passing (25-37% faster than targets)"
+  reliability:
+    status: CONCERNS
+    notes: "Test instability detected during QA verification - needs investigation"
+  maintainability:
+    status: PASS
+    notes: "Excellent documentation (6 comprehensive test docs), clear test organization"
+
+recommendations:
+  immediate:
+    - action: "Debug and fix test execution inconsistencies - ensure 100% pass rate"
+      refs: ["MessageAITests/", "./scripts/quick-test.sh"]
+    - action: "Execute 10 reliability scenarios and document results"
+      refs: ["docs/testing/reliability-scenarios.md"]
+    - action: "Run integration tests with Firebase Emulator and document results"
+      refs: ["docs/testing/integration-test-guide.md"]
+  future:
+    - action: "Deploy to TestFlight and conduct external beta testing"
+      refs: ["Story 2.12 Tasks 11-12"]
+    - action: "Complete MVP checkpoint validation"
+      refs: ["Story 2.12 Task 13"]
+    - action: "Consider adding CI/CD pipeline for automated test runs"
+      refs: ["docs/testing/final-test-report.md"]
