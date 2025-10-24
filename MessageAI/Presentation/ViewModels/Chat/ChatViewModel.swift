@@ -196,6 +196,21 @@ class ChatViewModel: ObservableObject {
                     print("📬 [ChatViewModel] \(messages.count) messages received")
                 }
 
+                print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+                print("🔍 [DUPLICATE DEBUG] Raw Firestore Messages (\(messages.count)):")
+                for (index, msg) in messages.enumerated() {
+                    print("  [\(index)] ID: \(msg.id.prefix(8))... | Text: \(msg.text.prefix(30))... | Time: \(msg.timestamp)")
+                }
+
+                // Check for duplicates in raw Firestore data
+                let firestoreIds = messages.map { $0.id }
+                let uniqueFirestoreIds = Set(firestoreIds)
+                if firestoreIds.count != uniqueFirestoreIds.count {
+                    print("⚠️ [DUPLICATE DEBUG] Firestore sent \(firestoreIds.count - uniqueFirestoreIds.count) DUPLICATE(S)!")
+                    let duplicateIds = firestoreIds.filter { id in firestoreIds.filter({ $0 == id }).count > 1 }
+                    print("  Duplicate IDs: \(duplicateIds.map { $0.prefix(8) })")
+                }
+
                 let sortedMessages = messages.sorted { $0.timestamp < $1.timestamp }
 
                 // CRITICAL FIX: Preserve paginated messages that are older than the real-time window (50 messages)
@@ -236,6 +251,43 @@ class ChatViewModel: ObservableObject {
                 // Add local-only failed messages
                 mergedMessages.append(contentsOf: localOnlyFailedMessages)
                 mergedMessages.sort { $0.timestamp < $1.timestamp }
+
+                print("🔍 [DUPLICATE DEBUG] Before Deduplication (\(mergedMessages.count)):")
+                for (index, msg) in mergedMessages.enumerated() {
+                    print("  [\(index)] ID: \(msg.id.prefix(8))... | Text: \(msg.text.prefix(30))...")
+                }
+
+                // Check for duplicates before deduplication
+                let beforeIds = mergedMessages.map { $0.id }
+                let uniqueBeforeIds = Set(beforeIds)
+                if beforeIds.count != uniqueBeforeIds.count {
+                    print("⚠️ [DUPLICATE DEBUG] Found \(beforeIds.count - uniqueBeforeIds.count) duplicate(s) before deduplication!")
+                    let duplicateIds = beforeIds.filter { id in beforeIds.filter({ $0 == id }).count > 1 }
+                    print("  Duplicate IDs: \(Set(duplicateIds).map { $0.prefix(8) })")
+                }
+
+                // CRITICAL: Deduplicate by message ID (safety check to prevent duplicate messages in UI)
+                var seenIds = Set<String>()
+                let deduplicatedMessages = mergedMessages.filter { message in
+                    if seenIds.contains(message.id) {
+                        print("⚠️ [ChatViewModel] Duplicate message ID detected: \(message.id.prefix(8))... - removing duplicate")
+                        return false
+                    }
+                    seenIds.insert(message.id)
+                    return true
+                }
+
+                if deduplicatedMessages.count != mergedMessages.count {
+                    print("🧹 [ChatViewModel] Removed \(mergedMessages.count - deduplicatedMessages.count) duplicate message(s)")
+                }
+
+                mergedMessages = deduplicatedMessages
+
+                print("🔍 [DUPLICATE DEBUG] After Deduplication (\(mergedMessages.count)):")
+                for (index, msg) in mergedMessages.enumerated() {
+                    print("  [\(index)] ID: \(msg.id.prefix(8))... | Text: \(msg.text.prefix(30))...")
+                }
+                print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
                 // CRITICAL FIX: Optimize content change detection - only compare IDs for large arrays
                 // For 50+ messages, full comparison is O(n) expensive on main thread
@@ -295,6 +347,22 @@ class ChatViewModel: ObservableObject {
                 }
 
                 self.messages = mergedMessages
+
+                // Final verification - check for duplicates in displayed messages
+                print("🔍 [DUPLICATE DEBUG] FINAL self.messages (\(self.messages.count)):")
+                let finalIds = self.messages.map { $0.id }
+                let uniqueFinalIds = Set(finalIds)
+                if finalIds.count != uniqueFinalIds.count {
+                    print("⚠️⚠️⚠️ [DUPLICATE DEBUG] DUPLICATES IN FINAL DISPLAY! Count: \(finalIds.count - uniqueFinalIds.count)")
+                    let duplicateIds = finalIds.filter { id in finalIds.filter({ $0 == id }).count > 1 }
+                    print("  Duplicate IDs: \(Set(duplicateIds).map { $0.prefix(8) })")
+                    for (index, msg) in self.messages.enumerated() {
+                        print("  [\(index)] ID: \(msg.id.prefix(8))... | Text: \(msg.text.prefix(30))...")
+                    }
+                } else {
+                    print("✅ [DUPLICATE DEBUG] No duplicates in final display")
+                }
+
                 self.messagesLoaded = true
                 self.updateLoadingState()
 

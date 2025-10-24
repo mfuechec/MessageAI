@@ -91,11 +91,42 @@ class FirebaseAIService: AIServiceProtocol {
 
         print("✅ [FirebaseAIService] Mapped \(meetings.count) meetings to domain entities")
 
+        // Map action items from DTO to domain entities
+        print("🔍 [FirebaseAIService] Mapping action items from DTO")
+        print("   Response actionItems count: \(response.actionItems?.count ?? 0)")
+
+        let actionItems = (response.actionItems ?? []).map { dto in
+            ActionItem(
+                task: dto.task,
+                assignee: dto.assignee,
+                dueDate: dto.dueDate,
+                sourceMessageId: dto.sourceMessageId
+            )
+        }
+
+        print("✅ [FirebaseAIService] Mapped \(actionItems.count) action items to domain entities")
+
+        // Map decisions from DTO to domain entities
+        print("🔍 [FirebaseAIService] Mapping decisions from DTO")
+        print("   Response decisions count: \(response.decisions?.count ?? 0)")
+
+        let decisions = (response.decisions ?? []).map { dto in
+            Decision(
+                decision: dto.decision,
+                context: dto.context,
+                sourceMessageId: dto.sourceMessageId
+            )
+        }
+
+        print("✅ [FirebaseAIService] Mapped \(decisions.count) decisions to domain entities")
+
         let summary = ThreadSummary(
             summary: response.summary,
             keyPoints: response.keyPoints ?? [],
             priorityMessages: priorityMessages,
             meetings: meetings,
+            actionItems: actionItems,
+            decisions: decisions,
             participants: response.participants ?? [],
             dateRange: response.dateRange ?? "",
             generatedAt: generatedAt,

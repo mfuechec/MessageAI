@@ -25,6 +25,12 @@ struct ThreadSummary: Codable {
     /// Detected meeting needs and scheduled meetings
     let meetings: [Meeting]
 
+    /// Action items extracted from the conversation
+    let actionItems: [ActionItem]
+
+    /// Decisions made during the conversation
+    let decisions: [Decision]
+
     /// Participant names in the conversation
     let participants: [String]
 

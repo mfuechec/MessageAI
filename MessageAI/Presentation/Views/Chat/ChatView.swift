@@ -231,6 +231,39 @@ struct ChatView: View {
                 onPriorityMessageTapped: { messageId in
                     // Set the scroll target in the view model
                     self.viewModel.scrollToMessageId = messageId
+                },
+                onMeetingTapped: { meeting in
+                    print("🟢 [ChatView] onMeetingTapped callback invoked")
+                    print("   Meeting: \(meeting.topic)")
+                    print("   Current messageText: '\(self.viewModel.messageText)'")
+
+                    // Generate a meeting time suggestion
+                    print("   Generating meeting suggestion...")
+                    let suggestedTime = self.generateMeetingSuggestion(for: meeting)
+                    print("   Generated suggestion: '\(suggestedTime)'")
+
+                    // Dismiss the summary sheet first
+                    print("   Dismissing summary sheet (setting summaryViewModel = nil)...")
+                    self.summaryViewModel = nil
+
+                    // Then populate the message input field after a brief delay
+                    // This ensures the sheet is fully dismissed before setting text
+                    print("   Scheduling messageText update in 0.3 seconds...")
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        print("   ⏱️ Now setting messageText to: '\(suggestedTime)'")
+                        self.viewModel.messageText = suggestedTime
+                        print("   ✅ messageText is now: '\(self.viewModel.messageText)'")
+
+                        // CRITICAL: Also update MessageKit's input bar text
+                        if let messageKitVC = self.messageKitViewController {
+                            print("   📝 Updating MessageKit input bar text...")
+                            messageKitVC.messageInputBar.inputTextView.text = suggestedTime
+                            messageKitVC.messageInputBar.sendButton.isEnabled = true
+                            print("   ✅ MessageKit input bar updated!")
+                        } else {
+                            print("   ⚠️ WARNING: messageKitViewController is nil!")
+                        }
+                    }
                 }
             )
             .onAppear {
@@ -520,6 +553,49 @@ struct ChatView: View {
             at: .centeredVertically,
             animated: true
         )
+    }
+
+    /// Generate a meeting time suggestion message
+    private func generateMeetingSuggestion(for meeting: Meeting) -> String {
+        print("🔧 [generateMeetingSuggestion] Starting generation for meeting: \(meeting.topic)")
+        print("   Has scheduled time: \(meeting.scheduledTime != nil)")
+        print("   Duration: \(meeting.durationMinutes) minutes")
+
+        // If meeting already has a scheduled time, use it
+        if let scheduledTime = meeting.scheduledTime {
+            print("   Using existing scheduled time: \(scheduledTime)")
+            let formatter = DateFormatter()
+            formatter.dateStyle = .medium
+            formatter.timeStyle = .short
+            let timeString = formatter.string(from: scheduledTime)
+            let suggestion = "How about we meet \(timeString) for \(meeting.durationMinutes) minutes to discuss \(meeting.topic)?"
+            print("   Generated suggestion: '\(suggestion)'")
+            return suggestion
+        }
+
+        // Otherwise, suggest tomorrow at 2 PM
+        print("   No scheduled time - generating tomorrow at 2 PM suggestion")
+        let calendar = Calendar.current
+        let tomorrow = calendar.date(byAdding: .day, value: 1, to: Date()) ?? Date()
+        var components = calendar.dateComponents([.year, .month, .day], from: tomorrow)
+        components.hour = 14  // 2 PM
+        components.minute = 0
+
+        if let suggestedTime = calendar.date(from: components) {
+            let formatter = DateFormatter()
+            formatter.dateStyle = .medium
+            formatter.timeStyle = .short
+            let timeString = formatter.string(from: suggestedTime)
+            let suggestion = "How about we meet \(timeString) for \(meeting.durationMinutes) minutes to discuss \(meeting.topic)?"
+            print("   Generated suggestion: '\(suggestion)'")
+            return suggestion
+        }
+
+        // Fallback if date calculation fails
+        print("   ⚠️ Date calculation failed - using fallback")
+        let fallback = "How about we schedule a \(meeting.durationMinutes)-minute meeting to discuss \(meeting.topic)?"
+        print("   Fallback suggestion: '\(fallback)'")
+        return fallback
     }
 
 }

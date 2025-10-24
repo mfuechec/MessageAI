@@ -23,6 +23,9 @@ struct SummaryView: View {
     // Callback for when a priority message is tapped
     var onPriorityMessageTapped: ((String) -> Void)?
 
+    // Callback for when a meeting is tapped
+    var onMeetingTapped: ((Meeting) -> Void)?
+
     var body: some View {
         let _ = print("🎨 [SummaryView] body rendering - isLoading: \(viewModel.isLoading), hasSummary: \(viewModel.summary != nil), hasError: \(viewModel.errorMessage != nil)")
 
@@ -414,10 +417,19 @@ struct SummaryView: View {
 
     private func meetingRow(meeting: Meeting) -> some View {
         Button(action: {
-            // Call the callback to navigate to the message
-            onPriorityMessageTapped?(meeting.sourceMessageId)
-            // Dismiss the summary view
-            presentationMode.wrappedValue.dismiss()
+            print("🔵 [SummaryView] Meeting row tapped: \(meeting.topic)")
+            print("   Meeting details - type: \(meeting.type), urgency: \(meeting.urgency)")
+            print("   Callback exists: \(onMeetingTapped != nil)")
+
+            // Call the callback to suggest a meeting time
+            // The callback will handle dismissal to ensure proper timing
+            if let callback = onMeetingTapped {
+                print("   Calling onMeetingTapped callback...")
+                callback(meeting)
+                print("   onMeetingTapped callback returned")
+            } else {
+                print("   ⚠️ WARNING: onMeetingTapped callback is nil!")
+            }
         }) {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(alignment: .top, spacing: 8) {
@@ -542,28 +554,26 @@ struct SummaryView: View {
                 .fontWeight(.semibold)
                 .foregroundColor(.blue)
 
-            // TODO: Replace with actual action items from AI
-            VStack(alignment: .leading, spacing: 8) {
-                bulletPoint(
-                    icon: "circle",
-                    color: .blue,
-                    text: "Finish quarterly report by Friday EOD (Sarah)"
-                )
-                bulletPoint(
-                    icon: "circle",
-                    color: .blue,
-                    text: "Send contract to John before tomorrow's meeting"
-                )
-                bulletPoint(
-                    icon: "circle",
-                    color: .blue,
-                    text: "Review pull request #234 before deploy"
-                )
-                bulletPoint(
-                    icon: "circle",
-                    color: .blue,
-                    text: "Update documentation by Wednesday"
-                )
+            if let summary = viewModel.summary {
+                if !summary.actionItems.isEmpty {
+                    // Display real action items from AI
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(Array(summary.actionItems.enumerated()), id: \.offset) { index, actionItem in
+                            actionItemRow(actionItem: actionItem)
+                        }
+                    }
+                } else {
+                    // Empty state
+                    Text("No action items found")
+                        .font(.body)
+                        .foregroundColor(.secondary)
+                        .italic()
+                }
+            } else {
+                Text("Loading...")
+                    .font(.body)
+                    .foregroundColor(.secondary)
+                    .italic()
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -576,6 +586,39 @@ struct SummaryView: View {
         )
     }
 
+    private func actionItemRow(actionItem: ActionItem) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "circle")
+                .font(.caption)
+                .foregroundColor(.blue)
+                .frame(width: 12)
+                .padding(.top, 2)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(actionItem.task)
+                    .font(.body)
+                    .foregroundColor(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                // Show assignee and/or due date if available
+                if actionItem.assignee != nil || actionItem.dueDate != nil {
+                    HStack(spacing: 4) {
+                        if let assignee = actionItem.assignee {
+                            Text("(\(assignee))")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        if let dueDate = actionItem.dueDate {
+                            Text("• \(dueDate)")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     private func decisionsSection() -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Label("🎯 Decisions", systemImage: "checkmark.seal.fill")
@@ -583,28 +626,26 @@ struct SummaryView: View {
                 .fontWeight(.semibold)
                 .foregroundColor(.green)
 
-            // TODO: Replace with actual decisions from AI
-            VStack(alignment: .leading, spacing: 8) {
-                bulletPoint(
-                    icon: "checkmark.circle.fill",
-                    color: .green,
-                    text: "Team decided to go with option B for architecture"
-                )
-                bulletPoint(
-                    icon: "checkmark.circle.fill",
-                    color: .green,
-                    text: "Launch postponed to next Monday for quality"
-                )
-                bulletPoint(
-                    icon: "checkmark.circle.fill",
-                    color: .green,
-                    text: "Using PostgreSQL instead of MongoDB (Alice)"
-                )
-                bulletPoint(
-                    icon: "checkmark.circle.fill",
-                    color: .green,
-                    text: "Moving forward with React migration next sprint"
-                )
+            if let summary = viewModel.summary {
+                if !summary.decisions.isEmpty {
+                    // Display real decisions from AI
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(Array(summary.decisions.enumerated()), id: \.offset) { index, decision in
+                            decisionRow(decision: decision)
+                        }
+                    }
+                } else {
+                    // Empty state
+                    Text("No decisions found")
+                        .font(.body)
+                        .foregroundColor(.secondary)
+                        .italic()
+                }
+            } else {
+                Text("Loading...")
+                    .font(.body)
+                    .foregroundColor(.secondary)
+                    .italic()
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -615,6 +656,31 @@ struct SummaryView: View {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(Color.green.opacity(0.3), lineWidth: 1)
         )
+    }
+
+    private func decisionRow(decision: Decision) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.caption)
+                .foregroundColor(.green)
+                .frame(width: 12)
+                .padding(.top, 2)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(decision.decision)
+                    .font(.body)
+                    .fontWeight(.medium)
+                    .foregroundColor(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if !decision.context.isEmpty {
+                    Text(decision.context)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
     }
 
     // MARK: - Helper Views
@@ -689,6 +755,43 @@ struct SummaryView_Previews: PreviewProvider {
                             durationMinutes: 30,
                             urgency: "high",
                             participants: ["Alice", "Charlie"]
+                        )
+                    ],
+                    actionItems: [
+                        ActionItem(
+                            task: "Finish quarterly report",
+                            assignee: "Sarah",
+                            dueDate: "Friday EOD",
+                            sourceMessageId: "msg-6"
+                        ),
+                        ActionItem(
+                            task: "Send contract to John",
+                            assignee: nil,
+                            dueDate: "before tomorrow's meeting",
+                            sourceMessageId: "msg-7"
+                        ),
+                        ActionItem(
+                            task: "Review pull request #234",
+                            assignee: "Bob",
+                            dueDate: nil,
+                            sourceMessageId: "msg-8"
+                        )
+                    ],
+                    decisions: [
+                        Decision(
+                            decision: "Go with option B for architecture",
+                            context: "Better scalability and team familiarity",
+                            sourceMessageId: "msg-9"
+                        ),
+                        Decision(
+                            decision: "Use PostgreSQL instead of MongoDB",
+                            context: "Relational data model fits our use case better",
+                            sourceMessageId: "msg-10"
+                        ),
+                        Decision(
+                            decision: "Launch postponed to next Monday",
+                            context: "Need more time for quality assurance testing",
+                            sourceMessageId: "msg-11"
                         )
                     ],
                     participants: ["Alice", "Bob", "Charlie"],

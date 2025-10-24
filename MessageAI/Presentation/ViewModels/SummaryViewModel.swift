@@ -169,6 +169,12 @@ class SummaryViewModel: ObservableObject, Identifiable {
     ///
     /// Returns cached summary if available, nil if not found.
     private func loadFromFirestoreCache() async throws -> ThreadSummary? {
+        // Guard against empty paths (can happen during logout)
+        guard !userId.isEmpty, !conversationId.isEmpty else {
+            print("⚠️  [SummaryViewModel] Cannot load from cache - userId or conversationId is empty")
+            return nil
+        }
+
         print("📖 [SummaryViewModel] Reading from Firestore cache")
         print("   Path: users/\(userId)/conversation_summaries/\(conversationId)")
 
@@ -280,11 +286,56 @@ class SummaryViewModel: ObservableObject, Identifiable {
         }
 
         print("   ✅ Parsed \(meetings.count) meetings")
+
+        // Parse action items
+        print("   Parsing action items...")
+        let actionItemsData = data["actionItems"] as? [[String: Any]] ?? []
+        print("   Raw action items count: \(actionItemsData.count)")
+        let actionItems = actionItemsData.compactMap { dict -> ActionItem? in
+            guard let task = dict["task"] as? String,
+                  let sourceMessageId = dict["sourceMessageId"] as? String else {
+                return nil
+            }
+
+            let assignee = dict["assignee"] as? String
+            let dueDate = dict["dueDate"] as? String
+
+            return ActionItem(
+                task: task,
+                assignee: assignee,
+                dueDate: dueDate,
+                sourceMessageId: sourceMessageId
+            )
+        }
+
+        print("   ✅ Parsed \(actionItems.count) action items")
+
+        // Parse decisions
+        print("   Parsing decisions...")
+        let decisionsData = data["decisions"] as? [[String: Any]] ?? []
+        print("   Raw decisions count: \(decisionsData.count)")
+        let decisions = decisionsData.compactMap { dict -> Decision? in
+            guard let decision = dict["decision"] as? String,
+                  let context = dict["context"] as? String,
+                  let sourceMessageId = dict["sourceMessageId"] as? String else {
+                return nil
+            }
+
+            return Decision(
+                decision: decision,
+                context: context,
+                sourceMessageId: sourceMessageId
+            )
+        }
+
+        print("   ✅ Parsed \(decisions.count) decisions")
         print("   ========== Final ThreadSummary ==========")
         print("   - summary: \(summary.count) chars")
         print("   - keyPoints: \(keyPoints.count)")
         print("   - priorityMessages: \(priorityMessages.count)")
         print("   - meetings: \(meetings.count)")
+        print("   - actionItems: \(actionItems.count)")
+        print("   - decisions: \(decisions.count)")
         print("   - participants: \(participants.count)")
 
         return ThreadSummary(
@@ -292,6 +343,8 @@ class SummaryViewModel: ObservableObject, Identifiable {
             keyPoints: keyPoints,
             priorityMessages: priorityMessages,
             meetings: meetings,
+            actionItems: actionItems,
+            decisions: decisions,
             participants: participants,
             dateRange: dateRange,
             generatedAt: generatedAt,

@@ -357,12 +357,69 @@ class CloudFunctionsService {
             print("⚠️  [CloudFunctions] meetings not found or wrong type in response")
         }
 
+        // Parse action items
+        var actionItems: [SummaryActionItemDTO]?
+        if let actionItemsData = data["actionItems"] as? [[String: Any]] {
+            print("🔍 [CloudFunctions] Parsing \(actionItemsData.count) action items")
+            actionItems = actionItemsData.compactMap { itemData in
+                guard let task = itemData["task"] as? String,
+                      let sourceMessageId = itemData["sourceMessageId"] as? String else {
+                    print("   ⚠️ Skipping action item - missing required fields")
+                    return nil
+                }
+
+                let assignee = itemData["assignee"] as? String
+                let dueDate = itemData["dueDate"] as? String
+
+                let dto = SummaryActionItemDTO(
+                    task: task,
+                    assignee: assignee,
+                    dueDate: dueDate,
+                    sourceMessageId: sourceMessageId
+                )
+                print("   ✅ Created DTO: task=\(task)")
+                return dto
+            }
+
+            print("✅ [CloudFunctions] Successfully parsed \(actionItems?.count ?? 0) action item DTOs")
+        } else {
+            print("⚠️  [CloudFunctions] actionItems not found or wrong type in response")
+        }
+
+        // Parse decisions
+        var decisions: [DecisionDTO]?
+        if let decisionsData = data["decisions"] as? [[String: Any]] {
+            print("🔍 [CloudFunctions] Parsing \(decisionsData.count) decisions")
+            decisions = decisionsData.compactMap { decisionData in
+                guard let decision = decisionData["decision"] as? String,
+                      let context = decisionData["context"] as? String,
+                      let sourceMessageId = decisionData["sourceMessageId"] as? String else {
+                    print("   ⚠️ Skipping decision - missing required fields")
+                    return nil
+                }
+
+                let dto = DecisionDTO(
+                    decision: decision,
+                    context: context,
+                    sourceMessageId: sourceMessageId
+                )
+                print("   ✅ Created DTO: decision=\(decision)")
+                return dto
+            }
+
+            print("✅ [CloudFunctions] Successfully parsed \(decisions?.count ?? 0) decision DTOs")
+        } else {
+            print("⚠️  [CloudFunctions] decisions not found or wrong type in response")
+        }
+
         let response = SummaryResponse(
             success: success,
             summary: summary,
             keyPoints: keyPoints,
             priorityMessages: priorityMessages,
             meetings: meetings,
+            actionItems: actionItems,
+            decisions: decisions,
             participants: participants,
             dateRange: dateRange,
             cached: cached,
@@ -491,6 +548,8 @@ struct SummaryResponse {
     let keyPoints: [String]?
     let priorityMessages: [PriorityMessageDTO]?
     let meetings: [MeetingDTO]?
+    let actionItems: [SummaryActionItemDTO]?
+    let decisions: [DecisionDTO]?
     let participants: [String]?
     let dateRange: String?
     let cached: Bool
@@ -514,6 +573,21 @@ struct MeetingDTO {
     let durationMinutes: Int
     let urgency: String
     let participants: [String]
+}
+
+/// Action item from thread summary (simpler than ActionItemDTO for separate endpoint)
+struct SummaryActionItemDTO {
+    let task: String
+    let assignee: String?
+    let dueDate: String?
+    let sourceMessageId: String
+}
+
+/// Decision from thread summary
+struct DecisionDTO {
+    let decision: String
+    let context: String
+    let sourceMessageId: String
 }
 
 struct ActionItemsResponse {

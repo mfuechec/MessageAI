@@ -58,6 +58,29 @@ export const populateTestMessages = functions.https.onCall(async (data, context)
 
         console.log(`✅ User is participant. Total participants: ${participantIds.length}`);
 
+        // Check if test messages already exist (prevent duplicate populations)
+        const existingMessages = await db.collection('messages')
+            .where('conversationId', '==', conversationId)
+            .limit(1)
+            .get();
+
+        if (!existingMessages.empty) {
+            console.log(`⚠️ [populateTestMessages] Conversation already has messages. Deleting existing messages first...`);
+
+            // Delete all existing messages in this conversation
+            const allMessages = await db.collection('messages')
+                .where('conversationId', '==', conversationId)
+                .get();
+
+            const deleteBatch = db.batch();
+            allMessages.docs.forEach(doc => {
+                deleteBatch.delete(doc.ref);
+            });
+            await deleteBatch.commit();
+
+            console.log(`🗑️ [populateTestMessages] Deleted ${allMessages.size} existing message(s)`);
+        }
+
         // Get participant IDs for realistic conversation
         const currentUserId = userId;
         const otherUserIds = participantIds.filter(id => id !== currentUserId);
@@ -122,6 +145,7 @@ export const populateTestMessages = functions.https.onCall(async (data, context)
         const batch = db.batch();
         const now = admin.firestore.Timestamp.now();
         let successCount = 0;
+        let lastCreatedMessageId = '';
 
         for (let i = 0; i < testMessages.length; i++) {
             const messageData = testMessages[i];
@@ -156,6 +180,7 @@ export const populateTestMessages = functions.https.onCall(async (data, context)
 
             batch.set(db.collection('messages').doc(messageId), message);
             successCount++;
+            lastCreatedMessageId = messageId;  // Track last message ID
         }
 
         // Commit batch
@@ -168,7 +193,7 @@ export const populateTestMessages = functions.https.onCall(async (data, context)
             lastMessage: lastMessage.text,
             lastMessageTimestamp: now,
             lastMessageSenderId: lastMessage.senderId,
-            lastMessageId: db.collection('messages').doc().id
+            lastMessageId: lastCreatedMessageId  // Use actual last message ID
         });
 
         console.log(`✅ Updated conversation lastMessage`);

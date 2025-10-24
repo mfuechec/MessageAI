@@ -133,7 +133,7 @@ class AuthViewModel: ObservableObject {
     func signOut() async {
         // Step 1: Clear FCM token from Firestore (Story 2.10a)
         // Prevents old user from receiving notifications after new user signs in
-        if let userId = currentUser?.id {
+        if let userId = currentUser?.id, !userId.isEmpty {
             do {
                 let db = Firestore.firestore()
                 try await db.collection("users").document(userId).updateData([

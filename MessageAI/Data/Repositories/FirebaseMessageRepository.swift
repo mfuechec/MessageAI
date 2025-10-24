@@ -111,7 +111,22 @@ final class FirebaseMessageRepository: MessageRepositoryProtocol {
                     try? Firestore.Decoder.default.decode(Message.self, from: doc.data())
                 }
 
-                subject.send(messages)
+                // Deduplicate by message ID (safety check to prevent duplicate messages from Firestore)
+                var seenIds = Set<String>()
+                let deduplicatedMessages = messages.filter { message in
+                    if seenIds.contains(message.id) {
+                        print("⚠️ [Repository] Duplicate message ID from Firestore: \(message.id.prefix(8))... - removing duplicate")
+                        return false
+                    }
+                    seenIds.insert(message.id)
+                    return true
+                }
+
+                if deduplicatedMessages.count != messages.count {
+                    print("🧹 [Repository] Removed \(messages.count - deduplicatedMessages.count) duplicate message(s) from Firestore")
+                }
+
+                subject.send(deduplicatedMessages)
             }
 
         // Store listener for cleanup
@@ -131,9 +146,20 @@ final class FirebaseMessageRepository: MessageRepositoryProtocol {
             let messages = snapshot.documents.compactMap { doc -> Message? in
                 try? Firestore.Decoder.default.decode(Message.self, from: doc.data())
             }
-            
-            print("✅ Fetched \(messages.count) messages for conversation \(conversationId)")
-            return messages
+
+            // Deduplicate by message ID
+            var seenIds = Set<String>()
+            let deduplicatedMessages = messages.filter { message in
+                if seenIds.contains(message.id) {
+                    print("⚠️ [getMessages] Duplicate message ID: \(message.id.prefix(8))...")
+                    return false
+                }
+                seenIds.insert(message.id)
+                return true
+            }
+
+            print("✅ Fetched \(deduplicatedMessages.count) messages for conversation \(conversationId)")
+            return deduplicatedMessages
         } catch let error as DecodingError {
             print("❌ Get messages failed (decoding): \(error.localizedDescription)")
             throw RepositoryError.decodingError(error)
@@ -283,8 +309,19 @@ final class FirebaseMessageRepository: MessageRepositoryProtocol {
                 try? Firestore.Decoder.default.decode(Message.self, from: doc.data())
             }
 
+            // Deduplicate by message ID
+            var seenIds = Set<String>()
+            let deduplicatedMessages = messages.filter { message in
+                if seenIds.contains(message.id) {
+                    print("⚠️ [loadMoreMessages] Duplicate message ID: \(message.id.prefix(8))...")
+                    return false
+                }
+                seenIds.insert(message.id)
+                return true
+            }
+
             // Reverse to maintain chronological order (oldest first)
-            let sortedMessages = messages.sorted { $0.timestamp < $1.timestamp }
+            let sortedMessages = deduplicatedMessages.sorted { $0.timestamp < $1.timestamp }
 
             print("✅ [REPOSITORY] Loaded \(sortedMessages.count) older messages")
             return sortedMessages

@@ -150,6 +150,8 @@ export const summarizeThread = functions
               keyPoints: cachedResult.keyPoints || [],
               priorityMessages: cachedResult.priorityMessages || [],
               meetings: cachedResult.meetings || [],
+              actionItems: cachedResult.actionItems || [],
+              decisions: cachedResult.decisions || [],
               participants: cachedResult.participants || [],
               dateRange: cachedResult.dateRange || "",
               generatedAt: cacheData!.generatedAt || admin.firestore.FieldValue.serverTimestamp(),
@@ -189,6 +191,8 @@ export const summarizeThread = functions
               keyPoints: cachedResult.keyPoints || [],
               priorityMessages: cachedResult.priorityMessages || [],
               meetings: cachedResult.meetings || [],
+              actionItems: cachedResult.actionItems || [],
+              decisions: cachedResult.decisions || [],
               participants: cachedResult.participants || [],
               dateRange: cachedResult.dateRange || "",
               cached: true,
@@ -264,6 +268,8 @@ export const summarizeThread = functions
         keyPoints: string[];
         priorityMessages: Array<{text: string; sourceMessageId: string; priority: string}>;
         meetings: Array<{topic: string; sourceMessageId: string; type: string; scheduledTime: string | null; durationMinutes: number; urgency: string; participants: string[]}>;
+        actionItems: Array<{task: string; assignee: string | null; dueDate: string | null; sourceMessageId: string}>;
+        decisions: Array<{decision: string; context: string; sourceMessageId: string}>;
         participants: string[];
         dateRange: string;
       };
@@ -308,6 +314,21 @@ You also identify priority messages that require immediate attention.`,
       "urgency": "medium",
       "participants": ["Alice", "Bob"]
     }
+  ],
+  "actionItems": [
+    {
+      "task": "Brief description of what needs to be done",
+      "assignee": "Person responsible (or null)",
+      "dueDate": "When it's due (or null)",
+      "messageIndex": 0
+    }
+  ],
+  "decisions": [
+    {
+      "decision": "What was decided",
+      "context": "Why this decision matters",
+      "messageIndex": 0
+    }
   ]
 }
 
@@ -329,6 +350,21 @@ For meetings:
 - urgency: "high" (urgent need), "medium" (should schedule), "low" (optional)
 - participants: Names mentioned in context (from conversation participants)
 - Limit to top 3 most relevant meetings
+
+For actionItems:
+- Extract explicit tasks, TODOs, or commitments mentioned
+- task: What needs to be done (clear and actionable)
+- assignee: Who is responsible (null if not mentioned)
+- dueDate: When it's due as natural language (e.g., "Friday EOD", "by tomorrow") or null
+- Include only concrete action items, not vague suggestions
+- Limit to top 5 most important action items
+
+For decisions:
+- Identify key decisions or agreements made in the conversation
+- decision: What was decided (concise statement)
+- context: Brief explanation of why this matters or what problem it solves
+- Focus on significant decisions that affect the team or project
+- Limit to top 4 most important decisions
 
 Condensing guidelines:
 - Keep core problem + business impact
@@ -408,7 +444,9 @@ ${formattedMessages.map((m, i) => `${i}. ${m.text}`).join("\n")}`,
             summary: responseText.substring(0, 300),
             keyPoints: [],
             priorityMessages: [],
-            meetings: [],  // Include meetings in fallback
+            meetings: [],
+            actionItems: [],
+            decisions: [],
           };
         }
 
@@ -479,11 +517,76 @@ ${formattedMessages.map((m, i) => `${i}. ${m.text}`).join("\n")}`,
         console.log("[summarizeThread] ========== Final Meetings ==========");
         console.log("[summarizeThread] Meetings after filtering:", JSON.stringify(meetings, null, 2));
 
+        // Map action items with actual message IDs
+        console.log("[summarizeThread] ========== Action Item Mapping ==========");
+        console.log("[summarizeThread] Raw actionItems from AI:", parsedResponse.actionItems);
+
+        const actionItems = (parsedResponse.actionItems || [])
+          .map((item: any, idx: number) => {
+            const messageIndex = item.messageIndex;
+            console.log(`[summarizeThread] Action item ${idx}:`, {
+              task: item.task,
+              messageIndex,
+              assignee: item.assignee,
+              isValidIndex: messageIndex >= 0 && messageIndex < formattedMessages.length,
+            });
+
+            if (messageIndex >= 0 && messageIndex < formattedMessages.length) {
+              const mapped = {
+                task: item.task,
+                assignee: item.assignee || null,
+                dueDate: item.dueDate || null,
+                sourceMessageId: formattedMessages[messageIndex].id,
+              };
+              console.log(`[summarizeThread] Mapped to:`, mapped);
+              return mapped;
+            }
+            console.log(`[summarizeThread] SKIPPED - invalid index ${messageIndex}`);
+            return null;
+          })
+          .filter((item: any) => item !== null);
+
+        console.log("[summarizeThread] ========== Final Action Items ==========");
+        console.log("[summarizeThread] Action items after filtering:", JSON.stringify(actionItems, null, 2));
+
+        // Map decisions with actual message IDs
+        console.log("[summarizeThread] ========== Decision Mapping ==========");
+        console.log("[summarizeThread] Raw decisions from AI:", parsedResponse.decisions);
+
+        const decisions = (parsedResponse.decisions || [])
+          .map((decision: any, idx: number) => {
+            const messageIndex = decision.messageIndex;
+            console.log(`[summarizeThread] Decision ${idx}:`, {
+              decision: decision.decision,
+              messageIndex,
+              context: decision.context,
+              isValidIndex: messageIndex >= 0 && messageIndex < formattedMessages.length,
+            });
+
+            if (messageIndex >= 0 && messageIndex < formattedMessages.length) {
+              const mapped = {
+                decision: decision.decision,
+                context: decision.context || "",
+                sourceMessageId: formattedMessages[messageIndex].id,
+              };
+              console.log(`[summarizeThread] Mapped to:`, mapped);
+              return mapped;
+            }
+            console.log(`[summarizeThread] SKIPPED - invalid index ${messageIndex}`);
+            return null;
+          })
+          .filter((decision: any) => decision !== null);
+
+        console.log("[summarizeThread] ========== Final Decisions ==========");
+        console.log("[summarizeThread] Decisions after filtering:", JSON.stringify(decisions, null, 2));
+
         aiSummary = {
           summary: parsedResponse.summary || "Summary generated",
           keyPoints: parsedResponse.keyPoints || [],
           priorityMessages,
           meetings,
+          actionItems,
+          decisions,
           participants: participantNames,
           dateRange,
         };
@@ -537,6 +640,8 @@ ${formattedMessages.map((m, i) => `${i}. ${m.text}`).join("\n")}`,
         keyPoints: aiSummary.keyPoints,
         priorityMessages: aiSummary.priorityMessages,
         meetings: aiSummary.meetings,
+        actionItems: aiSummary.actionItems,
+        decisions: aiSummary.decisions,
         participants: aiSummary.participants,
         dateRange: aiSummary.dateRange,
         generatedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -582,6 +687,8 @@ ${formattedMessages.map((m, i) => `${i}. ${m.text}`).join("\n")}`,
         keyPoints: aiSummary.keyPoints,
         priorityMessages: aiSummary.priorityMessages,
         meetings: aiSummary.meetings,
+        actionItems: aiSummary.actionItems,
+        decisions: aiSummary.decisions,
         participants: aiSummary.participants,
         dateRange: aiSummary.dateRange,
         cached: false,

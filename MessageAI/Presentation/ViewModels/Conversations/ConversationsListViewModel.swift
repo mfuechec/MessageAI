@@ -532,6 +532,12 @@ class ConversationsListViewModel: ObservableObject {
         aiService: AIServiceProtocol,
         messageRepository: MessageRepositoryProtocol
     ) async throws {
+        // Guard against empty userId (can happen during logout)
+        guard !currentUserId.isEmpty else {
+            print("⚠️  [Staleness Detection] Cannot check staleness - userId is empty")
+            return
+        }
+
         let conversationId = conversation.id
 
         // 1. Check if there's a cached summary in Firestore
