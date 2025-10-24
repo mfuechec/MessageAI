@@ -345,7 +345,8 @@ struct ConversationsListView: View {
                     displayName: viewModel.displayName(for: conversation),
                     unreadCount: viewModel.unreadCount(for: conversation),
                     formattedTimestamp: viewModel.formattedTimestamp(for: conversation),
-                    participants: viewModel.getParticipants(for: conversation)
+                    participants: viewModel.getParticipants(for: conversation),
+                    currentUserId: authViewModel.currentUser?.id ?? ""
                 )
             }
             .buttonStyle(PlainButtonStyle())
@@ -365,6 +366,11 @@ struct ConversationsListView: View {
             if viewModel.currentlyViewingConversationId != nil {
                 print("🔄 [ConversationsListView] Clearing viewing state - user returned to list")
                 viewModel.currentlyViewingConversationId = nil
+            }
+
+            // Check and refresh stale summaries in background
+            Task {
+                await viewModel.checkAndRefreshStaleSummaries()
             }
         }
         .sheet(item: $chatContext) { context in

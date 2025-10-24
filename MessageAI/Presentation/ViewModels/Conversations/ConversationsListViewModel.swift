@@ -2,6 +2,7 @@ import Foundation
 import Combine
 import UIKit
 import UserNotifications
+import FirebaseFirestore
 
 /// In-app smart notification to display
 struct InAppSmartNotification: Identifiable, Equatable {
@@ -47,10 +48,13 @@ class ConversationsListViewModel: ObservableObject {
     private let conversationRepository: ConversationRepositoryProtocol
     private let userRepository: UserRepositoryProtocol
     private let notificationAnalysisRepository: NotificationAnalysisRepositoryProtocol
+    private let aiService: AIServiceProtocol?
+    private let messageRepository: MessageRepositoryProtocol?
     private let currentUserId: String
     private let networkMonitor: any NetworkMonitorProtocol
     private var cancellables = Set<AnyCancellable>()
     private var lastMessageIds: [String: String] = [:] // conversationId -> lastMessageId
+    private lazy var db = Firestore.firestore()
     
     #if DEBUG
     private var notificationSimulator: NotificationSimulator?
@@ -64,11 +68,14 @@ class ConversationsListViewModel: ObservableObject {
         notificationAnalysisRepository: NotificationAnalysisRepositoryProtocol,
         currentUserId: String,
         networkMonitor: any NetworkMonitorProtocol = NetworkMonitor(),
+        aiService: AIServiceProtocol? = nil,
         messageRepository: MessageRepositoryProtocol? = nil
     ) {
         self.conversationRepository = conversationRepository
         self.userRepository = userRepository
         self.notificationAnalysisRepository = notificationAnalysisRepository
+        self.aiService = aiService
+        self.messageRepository = messageRepository
         self.currentUserId = currentUserId
         self.networkMonitor = networkMonitor
 
@@ -486,6 +493,100 @@ class ConversationsListViewModel: ObservableObject {
     /// Dismiss current smart notification
     func dismissSmartNotification() {
         smartNotification = nil
+    }
+
+    // MARK: - Summary Staleness Detection
+
+    /// Check and refresh stale summaries for all conversations
+    ///
+    /// Loops through all conversations, checks if their cached summaries are stale
+    /// (based on message count changes), and triggers background regeneration if needed.
+    func checkAndRefreshStaleSummaries() async {
+        guard let aiService = aiService,
+              let messageRepository = messageRepository else {
+            print("⚠️  [Staleness Detection] AI service or message repository not available")
+            return
+        }
+
+        print("🔍 [Staleness Detection] Checking \(conversations.count) conversations for stale summaries")
+
+        for conversation in conversations {
+            // Run each check concurrently in background
+            Task {
+                do {
+                    try await checkAndRefreshSummaryIfStale(
+                        conversation: conversation,
+                        aiService: aiService,
+                        messageRepository: messageRepository
+                    )
+                } catch {
+                    print("❌ [Staleness Detection] Failed for \(conversation.id): \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+
+    /// Check if a specific conversation's summary is stale and refresh if needed
+    private func checkAndRefreshSummaryIfStale(
+        conversation: Conversation,
+        aiService: AIServiceProtocol,
+        messageRepository: MessageRepositoryProtocol
+    ) async throws {
+        let conversationId = conversation.id
+
+        // 1. Check if there's a cached summary in Firestore
+        let summaryRef = db.collection("users")
+            .document(currentUserId)
+            .collection("conversation_summaries")
+            .document(conversationId)
+
+        let summaryDoc = try await summaryRef.getDocument()
+
+        guard summaryDoc.exists, let summaryData = summaryDoc.data() else {
+            print("ℹ️  [Staleness Detection] No cached summary for \(conversationId) - skipping")
+            return
+        }
+
+        // 2. Get the cached message count
+        guard let cachedMessageCount = summaryData["messageCount"] as? Int else {
+            print("⚠️  [Staleness Detection] No messageCount in cached summary for \(conversationId)")
+            return
+        }
+
+        // 3. Get current message count from Firestore directly (more accurate than repository limit)
+        let messagesCollection = db.collection("messages")
+            .whereField("conversationId", isEqualTo: conversationId)
+            .whereField("isDeleted", isEqualTo: false)
+
+        let snapshot = try await messagesCollection.getDocuments()
+        let currentMessageCount = snapshot.documents.count
+
+        // 4. Check staleness: refresh if 10+ new messages
+        let messagesDelta = currentMessageCount - cachedMessageCount
+
+        if messagesDelta >= 10 {
+            print("🔄 [Staleness Detection] Summary for \(conversationId) is STALE")
+            print("   Cached: \(cachedMessageCount) messages, Current: \(currentMessageCount) messages")
+            print("   Delta: \(messagesDelta) new messages - triggering refresh")
+
+            // 5. Trigger background summary regeneration
+            do {
+                let newSummary = try await aiService.summarizeThread(
+                    conversationId: conversationId,
+                    messageIds: nil,
+                    bypassCache: true  // Force fresh generation
+                )
+
+                print("✅ [Staleness Detection] Successfully refreshed summary for \(conversationId)")
+                print("   New message count: \(newSummary.messageCount ?? currentMessageCount)")
+
+                // Summary is automatically stored in Firestore by the Cloud Function
+            } catch {
+                print("❌ [Staleness Detection] Failed to refresh summary for \(conversationId): \(error.localizedDescription)")
+            }
+        } else {
+            print("✓ [Staleness Detection] Summary for \(conversationId) is fresh (\(messagesDelta) new messages)")
+        }
     }
 }
 

@@ -8,6 +8,7 @@ struct ConversationRowView: View {
     let unreadCount: Int
     let formattedTimestamp: String
     let participants: [User]  // For group avatar display
+    let currentUserId: String  // For read receipt display
     
     var body: some View {
         HStack(spacing: 12) {
@@ -28,14 +29,20 @@ struct ConversationRowView: View {
                         .foregroundColor(.secondary)
                 }
                 
-                HStack {
+                HStack(alignment: .center, spacing: 4) {
+                    // Read receipt indicator (for own messages only)
+                    if let senderId = conversation.lastMessageSenderId,
+                       senderId == currentUserId {
+                        readReceiptIndicator
+                    }
+
                     Text(conversation.lastMessage ?? "No messages yet")
                         .font(.subheadline)
                         .foregroundColor(.secondary)
                         .lineLimit(2)
-                    
+
                     Spacer()
-                    
+
                     if unreadCount > 0 {
                         unreadBadge
                     }
@@ -122,6 +129,40 @@ struct ConversationRowView: View {
             .background(Color.accentColor)
             .clipShape(Capsule())
     }
+
+    /// Read receipt indicator for last message (shows for sender only)
+    @ViewBuilder
+    private var readReceiptIndicator: some View {
+        let readByAll: Bool = {
+            // Check if all other participants (excluding sender) have read the message
+            guard let readBy = conversation.lastMessageReadBy else {
+                return false
+            }
+
+            // Get all participants except the sender
+            let otherParticipants = conversation.participantIds.filter { $0 != currentUserId }
+
+            // Check if all other participants have read the message
+            return otherParticipants.allSatisfy { readBy.contains($0) }
+        }()
+
+        if readByAll && !conversation.participantIds.filter({ $0 != currentUserId }).isEmpty {
+            // All participants have read - show blue double checkmark
+            Image(systemName: "checkmark.circle.fill")
+                .font(.caption)
+                .foregroundColor(.blue)
+        } else if conversation.lastMessageReadBy != nil {
+            // Some have read (or message delivered) - show gray double checkmark
+            Image(systemName: "checkmark.circle")
+                .font(.caption)
+                .foregroundColor(.secondary)
+        } else {
+            // Message sent but not delivered/read - show single checkmark
+            Image(systemName: "checkmark")
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
+    }
 }
 
 // MARK: - Preview
@@ -145,7 +186,8 @@ struct ConversationRowView_Previews: PreviewProvider {
             displayName: "John Doe",
             unreadCount: 3,
             formattedTimestamp: "1h ago",
-            participants: [user1, user2]
+            participants: [user1, user2],
+            currentUserId: "current-user"
         )
         .previewLayout(.sizeThatFits)
         .padding()

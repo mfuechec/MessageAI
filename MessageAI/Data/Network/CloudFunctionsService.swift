@@ -228,6 +228,8 @@ class CloudFunctionsService {
         let participants = data["participants"] as? [String]
         let dateRange = data["dateRange"] as? String
         let messagesSinceCache = data["messagesSinceCache"] as? Int ?? 0
+        let lastMessageId = data["lastMessageId"] as? String
+        let messageCount = data["messageCount"] as? Int
 
         // Parse priority messages
         var priorityMessages: [PriorityMessageDTO]? = nil
@@ -275,7 +277,9 @@ class CloudFunctionsService {
             dateRange: dateRange,
             cached: cached,
             messagesSinceCache: messagesSinceCache,
-            timestamp: timestamp
+            timestamp: timestamp,
+            lastMessageId: lastMessageId,
+            messageCount: messageCount
         )
 
         print("📦 [CloudFunctions] Final SummaryResponse created with \(response.priorityMessages?.count ?? 0) priority messages")
@@ -401,6 +405,8 @@ struct SummaryResponse {
     let cached: Bool
     let messagesSinceCache: Int
     let timestamp: String
+    let lastMessageId: String?
+    let messageCount: Int?
 }
 
 struct PriorityMessageDTO {

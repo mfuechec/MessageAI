@@ -19,6 +19,7 @@ final class SummaryViewModelTests: XCTestCase {
         mockAIService = MockAIService()
         viewModel = SummaryViewModel(
             conversationId: "test-conversation",
+            userId: "test-user",
             aiService: mockAIService
         )
     }
@@ -51,7 +52,9 @@ final class SummaryViewModelTests: XCTestCase {
             dateRange: "Oct 1 - Oct 23",
             generatedAt: Date(),
             cached: false,
-            messagesSinceCache: 0
+            messagesSinceCache: 0,
+            lastMessageId: nil,
+            messageCount: nil
         )
         mockAIService.mockSummary = expectedSummary
 
@@ -78,7 +81,9 @@ final class SummaryViewModelTests: XCTestCase {
             dateRange: "",
             generatedAt: Date(),
             cached: true,
-            messagesSinceCache: 5  // Test staleness indicator
+            messagesSinceCache: 5,  // Test staleness indicator
+            lastMessageId: nil,
+            messageCount: nil
         )
         mockAIService.mockSummary = cachedSummary
 
@@ -152,7 +157,9 @@ final class SummaryViewModelTests: XCTestCase {
             dateRange: "",
             generatedAt: Date().addingTimeInterval(-3600), // 1 hour ago
             cached: true,
-            messagesSinceCache: 3
+            messagesSinceCache: 3,
+            lastMessageId: nil,
+            messageCount: nil
         )
         mockAIService.mockSummary = initialSummary
         await viewModel.loadSummary()
@@ -169,7 +176,9 @@ final class SummaryViewModelTests: XCTestCase {
             dateRange: "Oct 23",
             generatedAt: Date(),
             cached: false,
-            messagesSinceCache: 0  // Fresh summary
+            messagesSinceCache: 0,  // Fresh summary
+            lastMessageId: nil,
+            messageCount: nil
         )
         mockAIService.mockSummary = newSummary
 
@@ -195,7 +204,9 @@ final class SummaryViewModelTests: XCTestCase {
             dateRange: "",
             generatedAt: Date(),
             cached: false,
-            messagesSinceCache: 0
+            messagesSinceCache: 0,
+            lastMessageId: nil,
+            messageCount: nil
         )
         mockAIService.mockSummary = summary
         await viewModel.loadSummary()
@@ -222,7 +233,9 @@ final class SummaryViewModelTests: XCTestCase {
             dateRange: "",
             generatedAt: Date().addingTimeInterval(-30), // 30 seconds ago
             cached: false,
-            messagesSinceCache: 0
+            messagesSinceCache: 0,
+            lastMessageId: nil,
+            messageCount: nil
         )
         mockAIService.mockSummary = summary
 
@@ -256,7 +269,9 @@ final class SummaryViewModelTests: XCTestCase {
             dateRange: "",
             generatedAt: Date().addingTimeInterval(-300), // 5 minutes ago
             cached: false,
-            messagesSinceCache: 0
+            messagesSinceCache: 0,
+            lastMessageId: nil,
+            messageCount: nil
         )
         mockAIService.mockSummary = summary
 
@@ -283,7 +298,9 @@ final class SummaryViewModelTests: XCTestCase {
             dateRange: "",
             generatedAt: Date().addingTimeInterval(-7200), // 2 hours ago
             cached: false,
-            messagesSinceCache: 0
+            messagesSinceCache: 0,
+            lastMessageId: nil,
+            messageCount: nil
         )
         mockAIService.mockSummary = summary
 
@@ -313,7 +330,9 @@ final class SummaryViewModelTests: XCTestCase {
             dateRange: "",
             generatedAt: Date(),
             cached: false,
-            messagesSinceCache: 0
+            messagesSinceCache: 0,
+            lastMessageId: nil,
+            messageCount: nil
         )
         mockAIService.simulateDelay = 0.1 // Simulate network delay
 

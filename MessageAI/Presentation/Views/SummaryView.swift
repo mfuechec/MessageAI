@@ -497,7 +497,9 @@ struct SummaryView_Previews: PreviewProvider {
                     dateRange: "Oct 20 - Oct 23, 2025",
                     generatedAt: Date().addingTimeInterval(-300), // 5 minutes ago
                     cached: true,
-                    messagesSinceCache: 5  // Preview shows staleness indicator
+                    messagesSinceCache: 5,  // Preview shows staleness indicator
+                    lastMessageId: "msg-100",
+                    messageCount: 100
                 )
             }
 
@@ -512,6 +514,7 @@ struct SummaryView_Previews: PreviewProvider {
 
         let viewModel = SummaryViewModel(
             conversationId: "preview-conversation",
+            userId: "preview-user",
             aiService: MockAIService()
         )
 
@@ -520,6 +523,7 @@ struct SummaryView_Previews: PreviewProvider {
             SummaryView(viewModel: {
                 let vm = SummaryViewModel(
                     conversationId: "preview",
+                    userId: "preview-user",
                     aiService: MockAIService()
                 )
                 vm.isLoading = true
@@ -531,6 +535,7 @@ struct SummaryView_Previews: PreviewProvider {
             SummaryView(viewModel: {
                 let vm = SummaryViewModel(
                     conversationId: "preview",
+                    userId: "preview-user",
                     aiService: MockAIService()
                 )
                 Task { @MainActor in
@@ -544,6 +549,7 @@ struct SummaryView_Previews: PreviewProvider {
             SummaryView(viewModel: {
                 let vm = SummaryViewModel(
                     conversationId: "preview",
+                    userId: "preview-user",
                     aiService: MockAIService()
                 )
                 vm.errorMessage = "Failed to generate summary. The AI service is temporarily unavailable."

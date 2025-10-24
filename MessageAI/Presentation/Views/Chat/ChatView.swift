@@ -155,7 +155,8 @@ struct ChatView: View {
                     print("   Creating SummaryViewModel...")
 
                     let newViewModel = DIContainer.shared.makeSummaryViewModel(
-                        conversationId: viewModel.conversationId
+                        conversationId: viewModel.conversationId,
+                        userId: viewModel.currentUserId
                     )
 
                     print("   SummaryViewModel created. isLoading: \(newViewModel.isLoading)")
@@ -589,11 +590,11 @@ struct MessageKitWrapper: UIViewControllerRepresentable {
             uiViewController.hideEmptyState()
             uiViewController.messagesCollectionView.reloadData()
 
-            // Scroll to bottom to show latest messages on initial load
-            DispatchQueue.main.async {
-                print("  ⬇️ Scrolling to latest message (initial load)")
-                uiViewController.messagesCollectionView.scrollToLastItem(animated: false)
-            }
+            // Scroll to bottom SYNCHRONOUSLY to prevent visual flash of showing top first
+            // Force layout to complete before scrolling
+            uiViewController.messagesCollectionView.layoutIfNeeded()
+            print("  ⬇️ Scrolling to latest message (initial load)")
+            uiViewController.messagesCollectionView.scrollToLastItem(animated: false)
         } else if !wasEmpty && isEmpty {
             // Transitioning from messages to empty
             print("  ➡️ Has messages -> Empty: showing empty state")
@@ -609,10 +610,10 @@ struct MessageKitWrapper: UIViewControllerRepresentable {
                 print("  ➕ Bulk add: \(messageCountDelta) messages - using reloadData")
                 uiViewController.messagesCollectionView.reloadData()
 
-                // Auto-scroll to bottom for bulk adds (always show latest message)
-                DispatchQueue.main.async {
-                    uiViewController.messagesCollectionView.scrollToLastItem(animated: false)
-                }
+                // Auto-scroll to bottom SYNCHRONOUSLY for bulk adds to prevent visual flash
+                // Force layout to complete before scrolling
+                uiViewController.messagesCollectionView.layoutIfNeeded()
+                uiViewController.messagesCollectionView.scrollToLastItem(animated: false)
             } else {
                 // Small incremental additions - use batch updates for smooth animation
                 print("  ➕ Adding \(messageCountDelta) new message(s) with incremental update")
@@ -1207,10 +1208,10 @@ class CustomMessagesViewController: MessagesViewController {
     
     override func viewDidLoad() {
         super.viewDidLoad()
-        
+
         configureMessageCollectionView()
         configureMessageInputBar()
-        
+
         // Show empty state ONLY if truly empty at load time
         if viewModel?.messages.isEmpty == true {
             print("📭 [CustomMessagesViewController] No messages, showing empty state")
@@ -1218,18 +1219,18 @@ class CustomMessagesViewController: MessagesViewController {
         } else {
             print("💬 [CustomMessagesViewController] \(viewModel?.messages.count ?? 0) messages, hiding empty state")
             hideEmptyState()
-        }
-    }
-    
-    override func viewDidAppear(_ animated: Bool) {
-        super.viewDidAppear(animated)
-        
-        // Scroll to bottom on initial load to show latest messages
-        if let viewModel = viewModel, !viewModel.messages.isEmpty {
+
+            // Scroll to bottom SYNCHRONOUSLY to prevent visual flash of showing oldest messages first
+            // Force layout to complete before scrolling
+            messagesCollectionView.layoutIfNeeded()
             print("⬇️ [CustomMessagesViewController] Scrolling to latest message")
             messagesCollectionView.scrollToLastItem(animated: false)
         }
-        
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+
         // Auto-focus text input for immediate typing
         messageInputBar.inputTextView.becomeFirstResponder()
     }

@@ -72,7 +72,9 @@ class FirebaseAIService: AIServiceProtocol {
             dateRange: response.dateRange ?? "",
             generatedAt: generatedAt,
             cached: response.cached,
-            messagesSinceCache: response.messagesSinceCache
+            messagesSinceCache: response.messagesSinceCache,
+            lastMessageId: response.lastMessageId,
+            messageCount: response.messageCount
         )
 
         print("✅ [FirebaseAIService] Mapped to ThreadSummary successfully")

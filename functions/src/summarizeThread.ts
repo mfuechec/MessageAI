@@ -143,6 +143,30 @@ export const summarizeThread = functions
             console.log(`[summarizeThread] Returning cached summary (fresh)`);
             const cachedResult = JSON.parse(cacheData!.result);
 
+            // Also store in Firestore for instant client access (per-user)
+            const latestMessageId = messages[0]?.id || "";
+            const summaryData = {
+              summary: cachedResult.summary,
+              keyPoints: cachedResult.keyPoints || [],
+              priorityMessages: cachedResult.priorityMessages || [],
+              participants: cachedResult.participants || [],
+              dateRange: cachedResult.dateRange || "",
+              generatedAt: cacheData!.generatedAt || admin.firestore.FieldValue.serverTimestamp(),
+              lastMessageId: latestMessageId,
+              messageCount: messages.length,
+              expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+              conversationId: conversationId,
+            };
+
+            await admin.firestore()
+              .collection("users")
+              .doc(userId)
+              .collection("conversation_summaries")
+              .doc(conversationId)
+              .set(summaryData);
+
+            console.log(`[summarizeThread] Updated Firestore with cached summary for user ${userId}`);
+
             return {
               success: true,
               summary: cachedResult.summary,
@@ -388,6 +412,33 @@ ${formattedMessages.map((m, i) => `${i}. ${m.text}`).join("\n")}`,
         messages.length,
         24 // 24 hours expiration
       );
+
+      // ========================================
+      // 10.5. STORE SUMMARY IN FIRESTORE (For instant client loading)
+      // ========================================
+      // Store summary per-user for personalization and privacy
+      const latestMessageId = messages[0]?.id || "";
+      const summaryData = {
+        summary: aiSummary.summary,
+        keyPoints: aiSummary.keyPoints,
+        priorityMessages: aiSummary.priorityMessages,
+        participants: aiSummary.participants,
+        dateRange: aiSummary.dateRange,
+        generatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        lastMessageId: latestMessageId, // For staleness detection
+        messageCount: messages.length,   // For staleness detection
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours
+        conversationId: conversationId,  // Store conversation ID for reference
+      };
+
+      await admin.firestore()
+        .collection("users")
+        .doc(userId)
+        .collection("conversation_summaries")
+        .doc(conversationId)
+        .set(summaryData);
+
+      console.log(`[summarizeThread] Stored summary in Firestore: users/${userId}/conversation_summaries/${conversationId}`);
 
       // ========================================
       // 11. RETURN STRUCTURED RESPONSE

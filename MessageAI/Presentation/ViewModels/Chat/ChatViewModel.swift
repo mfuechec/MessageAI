@@ -520,7 +520,8 @@ class ChatViewModel: ObservableObject {
                     "lastMessage": message.text,
                     "lastMessageTimestamp": message.timestamp,
                     "lastMessageSenderId": currentUserId,
-                    "lastMessageId": message.id
+                    "lastMessageId": message.id,
+                    "lastMessageReadBy": message.readBy  // Include read status
                 ]
             )
         } catch {
@@ -1066,6 +1067,22 @@ class ChatViewModel: ObservableObject {
             print("   🔄 Calling repository.markMessagesAsRead()...")
             try await messageRepository.markMessagesAsRead(messageIds: messageIds, userId: currentUserId)
             print("✅ Messages marked as read in Firestore")
+
+            // Update conversation's lastMessageReadBy if we read the last message
+            if let conversation = conversation,
+               let lastMessageId = conversation.lastMessageId,
+               let lastMessage = messages.first(where: { $0.id == lastMessageId }) {
+
+                // Update conversation with new readBy list for last message
+                let lastMessageReadBy = lastMessage.readBy
+                print("   🔄 Updating conversation lastMessageReadBy: \(lastMessageReadBy)")
+
+                try await conversationRepository.updateConversation(
+                    id: conversationId,
+                    updates: ["lastMessageReadBy": lastMessageReadBy]
+                )
+                print("✅ Updated conversation lastMessageReadBy")
+            }
         } catch {
             // Non-critical error: Firestore listener will eventually sync
             print("⚠️ Failed to mark messages as read: \(error.localizedDescription)")

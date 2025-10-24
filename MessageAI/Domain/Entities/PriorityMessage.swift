@@ -12,7 +12,7 @@ import Foundation
 ///
 /// Represents an urgent or important message identified in a conversation
 /// with reference to the source message for navigation.
-struct PriorityMessage {
+struct PriorityMessage: Codable {
     /// The priority message text
     let text: String
 

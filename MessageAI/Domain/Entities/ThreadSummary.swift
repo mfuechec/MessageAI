@@ -12,7 +12,7 @@ import Foundation
 ///
 /// Contains a summary of a conversation thread with key points,
 /// participants, and metadata about when it was generated.
-struct ThreadSummary {
+struct ThreadSummary: Codable {
     /// The summary text (150-300 words)
     let summary: String
 
@@ -36,4 +36,10 @@ struct ThreadSummary {
 
     /// Number of new messages since this summary was cached (0 if fresh)
     let messagesSinceCache: Int
+
+    /// For Firestore cache: ID of last message analyzed (staleness detection)
+    let lastMessageId: String?
+
+    /// For Firestore cache: Number of messages analyzed (staleness detection)
+    let messageCount: Int?
 }

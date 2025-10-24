@@ -8,6 +8,7 @@
 
 import Foundation
 import Combine
+import FirebaseFirestore
 
 /// ViewModel for managing thread summarization feature
 ///
@@ -43,7 +44,9 @@ class SummaryViewModel: ObservableObject, Identifiable {
 
     private let aiService: AIServiceProtocol
     private let conversationId: String
+    private let userId: String
     private let messageIds: [String]?
+    private let db = Firestore.firestore()
 
     // MARK: - Initialization
 
@@ -51,19 +54,23 @@ class SummaryViewModel: ObservableObject, Identifiable {
     ///
     /// - Parameters:
     ///   - conversationId: The conversation to summarize
+    ///   - userId: Current user ID for per-user cache
     ///   - messageIds: Optional specific message IDs to summarize (nil = last 100 messages)
     ///   - aiService: AI service for generating summaries
     init(
         conversationId: String,
+        userId: String,
         messageIds: [String]? = nil,
         aiService: AIServiceProtocol
     ) {
         print("🟢 [SummaryViewModel] init() called")
         print("   conversationId: \(conversationId)")
+        print("   userId: \(userId)")
         print("   messageIds count: \(messageIds?.count ?? 0)")
         print("   Initial isLoading: true")
 
         self.conversationId = conversationId
+        self.userId = userId
         self.messageIds = messageIds
         self.aiService = aiService
 
@@ -74,17 +81,40 @@ class SummaryViewModel: ObservableObject, Identifiable {
 
     /// Load summary for the conversation
     ///
-    /// Calls AI service to generate or retrieve cached summary.
+    /// Optimistic loading: First checks Firestore cache for instant display,
+    /// then calls Cloud Function only if cache is missing or explicitly bypassed.
     /// Updates published properties with results or errors.
     func loadSummary(bypassCache: Bool = false) async {
         print("🟡 [SummaryViewModel] Starting loadSummary()")
         print("   Conversation ID: \(conversationId)")
+        print("   User ID: \(userId)")
         print("   Message IDs: \(messageIds?.count ?? 0)")
         print("   Bypass cache: \(bypassCache)")
 
         isLoading = true
         errorMessage = nil
 
+        // Step 1: Try to load from Firestore cache first (unless bypassing)
+        if !bypassCache {
+            do {
+                if let cachedSummary = try await loadFromFirestoreCache() {
+                    print("✅ [SummaryViewModel] Loaded summary from Firestore cache")
+                    print("   Summary length: \(cachedSummary.summary.count) characters")
+                    print("   Generated at: \(cachedSummary.generatedAt)")
+
+                    summary = cachedSummary
+                    isLoading = false
+                    return  // Display cached summary, done!
+                } else {
+                    print("ℹ️  [SummaryViewModel] No Firestore cache found, will call Cloud Function")
+                }
+            } catch {
+                print("⚠️  [SummaryViewModel] Failed to load from Firestore cache: \(error.localizedDescription)")
+                print("   Will fall through to Cloud Function")
+            }
+        }
+
+        // Step 2: No cache or bypassing - call Cloud Function
         do {
             print("🔵 [SummaryViewModel] Calling aiService.summarizeThread()")
             let result = try await aiService.summarizeThread(
@@ -122,6 +152,77 @@ class SummaryViewModel: ObservableObject, Identifiable {
             print("   Localized: \(error.localizedDescription)")
             handleError(.unknown(error.localizedDescription))
         }
+    }
+
+    /// Load summary from Firestore cache
+    ///
+    /// Returns cached summary if available, nil if not found.
+    private func loadFromFirestoreCache() async throws -> ThreadSummary? {
+        print("📖 [SummaryViewModel] Reading from Firestore cache")
+        print("   Path: users/\(userId)/conversation_summaries/\(conversationId)")
+
+        let docRef = db.collection("users")
+            .document(userId)
+            .collection("conversation_summaries")
+            .document(conversationId)
+
+        let snapshot = try await docRef.getDocument()
+
+        guard snapshot.exists else {
+            print("   Cache miss - document doesn't exist")
+            return nil
+        }
+
+        guard let data = snapshot.data() else {
+            print("   Cache miss - no data in document")
+            return nil
+        }
+
+        print("   Cache hit! Parsing summary data")
+
+        // Parse Firestore document into ThreadSummary
+        let summary = data["summary"] as? String ?? ""
+        let keyPoints = data["keyPoints"] as? [String] ?? []
+        let participants = data["participants"] as? [String] ?? []
+        let dateRange = data["dateRange"] as? String ?? ""
+        let lastMessageId = data["lastMessageId"] as? String
+        let messageCount = data["messageCount"] as? Int
+
+        // Parse generatedAt timestamp
+        let generatedAt: Date
+        if let timestamp = data["generatedAt"] as? Timestamp {
+            generatedAt = timestamp.dateValue()
+        } else {
+            generatedAt = Date()
+        }
+
+        // Parse priority messages
+        let priorityMessagesData = data["priorityMessages"] as? [[String: Any]] ?? []
+        let priorityMessages = priorityMessagesData.compactMap { dict -> PriorityMessage? in
+            guard let text = dict["text"] as? String,
+                  let sourceMessageId = dict["sourceMessageId"] as? String,
+                  let priorityStr = dict["priority"] as? String else {
+                return nil
+            }
+            return PriorityMessage(
+                text: text,
+                sourceMessageId: sourceMessageId,
+                priority: priorityStr
+            )
+        }
+
+        return ThreadSummary(
+            summary: summary,
+            keyPoints: keyPoints,
+            priorityMessages: priorityMessages,
+            participants: participants,
+            dateRange: dateRange,
+            generatedAt: generatedAt,
+            cached: true,
+            messagesSinceCache: 0,  // TODO: Calculate staleness in future
+            lastMessageId: lastMessageId,
+            messageCount: messageCount
+        )
     }
 
     /// Regenerate summary (bypass cache)

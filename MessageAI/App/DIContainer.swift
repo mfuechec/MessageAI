@@ -201,7 +201,8 @@ class DIContainer {
             notificationAnalysisRepository: notificationAnalysisRepository,
             currentUserId: currentUserId,
             networkMonitor: networkMonitor,
-            messageRepository: messageRepository  // For notification simulation in DEBUG
+            aiService: aiService,  // For summary staleness detection
+            messageRepository: messageRepository  // For notification simulation in DEBUG + staleness detection
         )
     }
     
@@ -218,14 +219,17 @@ class DIContainer {
     /// Creates SummaryViewModel for thread summarization (Story 3.2)
     /// - Parameters:
     ///   - conversationId: The conversation to summarize
+    ///   - userId: Current user ID for per-user cache
     ///   - messageIds: Optional specific message IDs to summarize
     /// - Returns: Configured SummaryViewModel instance
     func makeSummaryViewModel(
         conversationId: String,
+        userId: String,
         messageIds: [String]? = nil
     ) -> SummaryViewModel {
         SummaryViewModel(
             conversationId: conversationId,
+            userId: userId,
             messageIds: messageIds,
             aiService: aiService
         )

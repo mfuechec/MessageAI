@@ -27,7 +27,7 @@ service cloud.firestore {
     // Conversations collection
     match /conversations/{conversationId} {
       allow read: if isParticipant(resource.data);
-      allow create: if isAuthenticated() && 
+      allow create: if isAuthenticated() &&
                        request.auth.uid in request.resource.data.participantIds &&
                        request.resource.data.participantIds.size() <= 10;
       allow update: if isParticipant(resource.data);
@@ -79,6 +79,14 @@ service cloud.firestore {
     match /_monitoring/{document=**} {
       allow read: if isAuthenticated();
       allow write: if false;  // Read-only for clients
+    }
+
+    // User activity tracking (top-level collection for active conversation monitoring)
+    // Story 6.6: Track which conversation user is currently viewing
+    match /user_activity/{userId} {
+      allow read: if isAuthenticated() && userId == request.auth.uid;
+      allow write: if isAuthenticated() && userId == request.auth.uid;
+      allow delete: if isAuthenticated() && userId == request.auth.uid;
     }
 
     // === Epic 6: Smart Notifications Collections ===
@@ -143,6 +151,13 @@ service cloud.firestore {
     // Context cache (user subcollection, server-only)
     match /users/{userId}/context_cache/{doc} {
       allow read, write: if false; // Only server
+    }
+
+    // AI conversation summaries (user subcollection, personalized per-user)
+    match /users/{userId}/conversation_summaries/{conversationId} {
+      allow read: if isAuthenticated() &&
+                    userId == request.auth.uid;
+      allow write: if false; // Only Cloud Functions can write summaries
     }
 
     // False negatives log (optional, server-only)

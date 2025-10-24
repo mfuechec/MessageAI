@@ -8,6 +8,7 @@ struct Conversation: Codable, Equatable, Identifiable {
     var lastMessageTimestamp: Date?
     var lastMessageSenderId: String?
     var lastMessageId: String?
+    var lastMessageReadBy: [String]?  // Track who has read the last message
     var unreadCounts: [String: Int]
     var typingUsers: [String]
     let createdAt: Date
@@ -69,6 +70,7 @@ struct Conversation: Codable, Equatable, Identifiable {
         lastMessageTimestamp: Date? = nil,
         lastMessageSenderId: String? = nil,
         lastMessageId: String? = nil,
+        lastMessageReadBy: [String]? = nil,
         unreadCounts: [String: Int] = [:],
         typingUsers: [String] = [],
         createdAt: Date = Date(),
@@ -91,6 +93,7 @@ struct Conversation: Codable, Equatable, Identifiable {
         self.lastMessageTimestamp = lastMessageTimestamp
         self.lastMessageSenderId = lastMessageSenderId
         self.lastMessageId = lastMessageId
+        self.lastMessageReadBy = lastMessageReadBy
         self.unreadCounts = unreadCounts
         self.typingUsers = typingUsers
         self.createdAt = createdAt
