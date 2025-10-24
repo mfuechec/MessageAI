@@ -14,19 +14,21 @@ export {generateSmartSearchResults} from "./generateSmartSearchResults";
 // AI NOTIFICATION ANALYSIS (Story 6.2 & 6.3)
 // ========================================
 export {analyzeForNotification} from "./analyzeForNotification";
+export {embedMessageOnCreate} from "./embedMessageOnCreate";
 
 // ========================================
 // NOTIFICATION FEEDBACK & LEARNING (Story 6.5)
 // ========================================
 export {submitNotificationFeedback} from "./submitNotificationFeedback";
 export {generateNotificationAnalytics} from "./generateNotificationAnalytics";
-export {updateUserNotificationProfile} from "./updateUserNotificationProfile";
+export {updateUserNotificationProfileScheduled, updateUserNotificationProfileManual} from "./updateUserNotificationProfile";
 
 // ========================================
 // TESTING UTILITIES (DEBUG ONLY)
 // ========================================
 export {populateTestMessages} from "./populateTestMessages";
 export {testOpenAI} from "./testOpenAI";
+
 
 // ========================================
 // MESSAGING CLOUD FUNCTIONS

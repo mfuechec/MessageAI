@@ -5,6 +5,7 @@ struct Message: Codable, Equatable, Identifiable {
     let id: String
     let conversationId: String
     let senderId: String
+    var senderName: String?  // Denormalized for performance (Epic 6 Optimization)
     var text: String
     let timestamp: Date
     var status: MessageStatus
@@ -28,6 +29,7 @@ struct Message: Codable, Equatable, Identifiable {
         id: String = UUID().uuidString,
         conversationId: String,
         senderId: String,
+        senderName: String? = nil,
         text: String,
         timestamp: Date = Date(),
         status: MessageStatus = .sending,
@@ -48,6 +50,7 @@ struct Message: Codable, Equatable, Identifiable {
         self.id = id
         self.conversationId = conversationId
         self.senderId = senderId
+        self.senderName = senderName
         self.text = text
         self.timestamp = timestamp
         self.status = status

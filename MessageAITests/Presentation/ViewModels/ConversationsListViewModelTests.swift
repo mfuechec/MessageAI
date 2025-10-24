@@ -9,21 +9,24 @@ final class ConversationsListViewModelTests: XCTestCase {
     var sut: ConversationsListViewModel!
     var mockConversationRepo: MockConversationRepository!
     var mockUserRepo: MockUserRepository!
+    var mockNotificationAnalysisRepo: MockNotificationAnalysisRepository!
     var mockNetworkMonitor: MockNetworkMonitor!
     var cancellables: Set<AnyCancellable>!
-    
+
     override func setUp() {
         super.setUp()
         mockConversationRepo = MockConversationRepository()
         mockUserRepo = MockUserRepository()
+        mockNotificationAnalysisRepo = MockNotificationAnalysisRepository()
         mockNetworkMonitor = MockNetworkMonitor()
         cancellables = Set<AnyCancellable>()
     }
-    
+
     override func tearDown() {
         sut = nil
         mockConversationRepo = nil
         mockUserRepo = nil
+        mockNotificationAnalysisRepo = nil
         mockNetworkMonitor = nil
         cancellables = nil
         super.tearDown()
@@ -49,6 +52,7 @@ final class ConversationsListViewModelTests: XCTestCase {
         sut = ConversationsListViewModel(
             conversationRepository: mockConversationRepo,
             userRepository: mockUserRepo,
+            notificationAnalysisRepository: mockNotificationAnalysisRepo,
             currentUserId: "user-1",
             networkMonitor: mockNetworkMonitor
         )
@@ -71,6 +75,7 @@ final class ConversationsListViewModelTests: XCTestCase {
         sut = ConversationsListViewModel(
             conversationRepository: mockConversationRepo,
             userRepository: mockUserRepo,
+            notificationAnalysisRepository: mockNotificationAnalysisRepo,
             currentUserId: "user-1",
             networkMonitor: mockNetworkMonitor
         )
@@ -122,6 +127,7 @@ final class ConversationsListViewModelTests: XCTestCase {
         sut = ConversationsListViewModel(
             conversationRepository: mockConversationRepo,
             userRepository: mockUserRepo,
+            notificationAnalysisRepository: mockNotificationAnalysisRepo,
             currentUserId: "user-1",
             networkMonitor: mockNetworkMonitor
         )
@@ -164,6 +170,7 @@ final class ConversationsListViewModelTests: XCTestCase {
         sut = ConversationsListViewModel(
             conversationRepository: mockConversationRepo,
             userRepository: mockUserRepo,
+            notificationAnalysisRepository: mockNotificationAnalysisRepo,
             currentUserId: "user-1",
             networkMonitor: mockNetworkMonitor
         )
@@ -198,6 +205,7 @@ final class ConversationsListViewModelTests: XCTestCase {
         sut = ConversationsListViewModel(
             conversationRepository: mockConversationRepo,
             userRepository: mockUserRepo,
+            notificationAnalysisRepository: mockNotificationAnalysisRepo,
             currentUserId: "user-1",
             networkMonitor: mockNetworkMonitor
         )
@@ -228,6 +236,7 @@ final class ConversationsListViewModelTests: XCTestCase {
         sut = ConversationsListViewModel(
             conversationRepository: mockConversationRepo,
             userRepository: mockUserRepo,
+            notificationAnalysisRepository: mockNotificationAnalysisRepo,
             currentUserId: "user-1",
             networkMonitor: mockNetworkMonitor
         )
@@ -264,6 +273,7 @@ final class ConversationsListViewModelTests: XCTestCase {
         sut = ConversationsListViewModel(
             conversationRepository: mockConversationRepo,
             userRepository: mockUserRepo,
+            notificationAnalysisRepository: mockNotificationAnalysisRepo,
             currentUserId: "user-1",
             networkMonitor: mockNetworkMonitor
         )
@@ -295,6 +305,7 @@ final class ConversationsListViewModelTests: XCTestCase {
         sut = ConversationsListViewModel(
             conversationRepository: mockConversationRepo,
             userRepository: mockUserRepo,
+            notificationAnalysisRepository: mockNotificationAnalysisRepo,
             currentUserId: "user-1",
             networkMonitor: mockNetworkMonitor
         )
@@ -327,6 +338,7 @@ final class ConversationsListViewModelTests: XCTestCase {
         sut = ConversationsListViewModel(
             conversationRepository: mockConversationRepo,
             userRepository: mockUserRepo,
+            notificationAnalysisRepository: mockNotificationAnalysisRepo,
             currentUserId: "user-1",
             networkMonitor: mockNetworkMonitor
         )
@@ -358,6 +370,7 @@ final class ConversationsListViewModelTests: XCTestCase {
         sut = ConversationsListViewModel(
             conversationRepository: mockConversationRepo,
             userRepository: mockUserRepo,
+            notificationAnalysisRepository: mockNotificationAnalysisRepo,
             currentUserId: "user-1",
             networkMonitor: mockNetworkMonitor
         )
@@ -396,6 +409,7 @@ final class ConversationsListViewModelTests: XCTestCase {
         sut = ConversationsListViewModel(
             conversationRepository: mockConversationRepo,
             userRepository: mockUserRepo,
+            notificationAnalysisRepository: mockNotificationAnalysisRepo,
             currentUserId: "user-1",
             networkMonitor: mockNetworkMonitor
         )
@@ -419,6 +433,7 @@ final class ConversationsListViewModelTests: XCTestCase {
         sut = ConversationsListViewModel(
             conversationRepository: mockConversationRepo,
             userRepository: mockUserRepo,
+            notificationAnalysisRepository: mockNotificationAnalysisRepo,
             currentUserId: "user-1",
             networkMonitor: mockNetworkMonitor
         )
@@ -454,6 +469,7 @@ final class ConversationsListViewModelTests: XCTestCase {
         sut = ConversationsListViewModel(
             conversationRepository: mockConversationRepo,
             userRepository: mockUserRepo,
+            notificationAnalysisRepository: mockNotificationAnalysisRepo,
             currentUserId: "user-1",
             networkMonitor: mockNetworkMonitor
         )
@@ -484,6 +500,7 @@ final class ConversationsListViewModelTests: XCTestCase {
         sut = ConversationsListViewModel(
             conversationRepository: mockConversationRepo,
             userRepository: mockUserRepo,
+            notificationAnalysisRepository: mockNotificationAnalysisRepo,
             currentUserId: "user-1"
         )
         
@@ -533,6 +550,7 @@ final class ConversationsListViewModelTests: XCTestCase {
         sut = ConversationsListViewModel(
             conversationRepository: mockConversationRepo,
             userRepository: mockUserRepo,
+            notificationAnalysisRepository: mockNotificationAnalysisRepo,
             currentUserId: "user-1"
         )
         
@@ -575,6 +593,7 @@ final class ConversationsListViewModelTests: XCTestCase {
         sut = ConversationsListViewModel(
             conversationRepository: mockConversationRepo,
             userRepository: mockUserRepo,
+            notificationAnalysisRepository: mockNotificationAnalysisRepo,
             currentUserId: "user-1"
         )
         

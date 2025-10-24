@@ -100,6 +100,12 @@ class DIContainer {
         FirebaseNotificationAnalysisRepository(firebaseService: firebaseService)
     }()
 
+    /// Notification history repository (Epic 6 - Story 6.5)
+    /// Manages notification decision history and user feedback
+    internal lazy var notificationHistoryRepository: NotificationHistoryRepositoryProtocol = {
+        FirebaseNotificationHistoryRepository()
+    }()
+
     // MARK: - Notification Services (Epic 6)
 
     /// Conversation activity monitor (Epic 6 - Story 6.1)
@@ -233,6 +239,19 @@ class DIContainer {
             repository: notificationPreferencesRepository,
             userId: userId
         )
+    }
+
+    /// Creates NotificationHistoryViewModel for viewing notification history (Epic 6 - Story 6.5)
+    /// - Parameter userId: The user ID for history
+    /// - Returns: Configured NotificationHistoryViewModel instance
+    func makeNotificationHistoryViewModel(userId: String) -> NotificationHistoryViewModel {
+        print("🏭 [DIContainer] Creating NotificationHistoryViewModel for userId: \(userId)")
+        let vm = NotificationHistoryViewModel(
+            repository: notificationHistoryRepository,
+            userId: userId
+        )
+        print("🏭 [DIContainer] NotificationHistoryViewModel created")
+        return vm
     }
 }
 

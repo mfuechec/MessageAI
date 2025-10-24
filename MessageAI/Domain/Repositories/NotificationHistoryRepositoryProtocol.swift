@@ -33,11 +33,13 @@ protocol NotificationHistoryRepositoryProtocol {
     ///   - conversationId: The conversation the notification was about
     ///   - messageId: The message that triggered the notification
     ///   - feedback: "helpful" or "not_helpful"
+    ///   - decision: The original notification decision being evaluated
     /// - Throws: RepositoryError if submission fails
     func submitFeedback(
         userId: String,
         conversationId: String,
         messageId: String,
-        feedback: String
+        feedback: String,
+        decision: NotificationDecision
     ) async throws
 }

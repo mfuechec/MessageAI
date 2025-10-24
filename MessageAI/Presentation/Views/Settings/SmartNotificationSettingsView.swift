@@ -188,6 +188,23 @@ struct SmartNotificationSettingsView: View {
                 Text("Test notification analysis with your most recent conversation.")
             }
 
+            // Notification History
+            Section {
+                NavigationLink {
+                    NotificationHistoryView(
+                        viewModel: DIContainer.shared.makeNotificationHistoryViewModel(
+                            userId: authViewModel.currentUser?.id ?? ""
+                        )
+                    )
+                } label: {
+                    Label("Notification History", systemImage: "clock.arrow.circlepath")
+                }
+            } header: {
+                Text("History")
+            } footer: {
+                Text("View your recent smart notification decisions and provide feedback.")
+            }
+
             // Account Actions
             Section {
                 Button(role: .destructive) {

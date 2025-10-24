@@ -57,8 +57,9 @@ export const generateNotificationAnalytics = functions
       new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
     );
 
-    const feedbackSnapshot = await db.collection("notification_feedback")
-      .where("userId", "==", data.userId)
+    const feedbackSnapshot = await db.collection("users")
+      .doc(data.userId)
+      .collection("notification_feedback")
       .where("timestamp", ">", thirtyDaysAgo)
       .orderBy("timestamp", "desc")
       .get();

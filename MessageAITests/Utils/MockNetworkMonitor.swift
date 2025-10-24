@@ -46,6 +46,11 @@ class MockNetworkMonitor: NetworkMonitorProtocol {
         return isFirestoreConnected
     }
 
+    /// Publisher for effective connectivity changes (source of truth)
+    var isEffectivelyConnectedPublisher: Published<Bool>.Publisher {
+        $isFirestoreConnected
+    }
+
     // MARK: - Public Methods
 
     /// Simulates network disconnection (airplane mode, WiFi off, etc.)

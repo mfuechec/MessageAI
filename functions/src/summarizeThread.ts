@@ -228,7 +228,7 @@ export const summarizeThread = functions
 
       try {
         const completion = await openai.chat.completions.create({
-          model: "gpt-4-turbo-preview",
+          model: "gpt-4o-mini",
           temperature: 0.3, // Lower = more deterministic
           max_tokens: 300,
           messages: [

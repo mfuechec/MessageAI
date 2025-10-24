@@ -149,7 +149,10 @@ export async function indexConversationForRAG(
 /**
  * Get or create embeddings for conversation messages
  *
- * Convenience wrapper that fetches recent messages and indexes them
+ * Epic 6 - Optimization #4: Check for pre-computed embeddings first
+ *
+ * With embedMessageOnCreate trigger, most messages will already have embeddings.
+ * This function only generates embeddings for old messages (fallback).
  *
  * @param conversationId - Conversation ID
  * @param limit - Max number of recent messages to index (default: 30)
@@ -161,14 +164,44 @@ export async function indexRecentMessages(
 ): Promise<IndexingResult> {
   const db = admin.firestore();
 
-  // Fetch recent messages
   const messagesSnapshot = await db.collection("messages")
     .where("conversationId", "==", conversationId)
     .orderBy("timestamp", "desc")
     .limit(limit)
     .get();
 
-  const messageIds = messagesSnapshot.docs.map(doc => doc.id);
+  let embeddedCount = 0;
+  const batchUpdates: Promise<void>[] = [];
 
-  return indexConversationForRAG(conversationId, messageIds);
+  for (const doc of messagesSnapshot.docs) {
+    const messageData = doc.data();
+
+    // ✅ Check if already embedded (by onCreate trigger)
+    if (messageData.embedding) {
+      embeddedCount++;
+      continue; // Skip - already done by onCreate trigger
+    }
+
+    // ❌ Fallback: Embed on-demand (for old messages only)
+    const text = messageData.text || "";
+    if (text.trim().length === 0) continue;
+
+    batchUpdates.push(
+      generateEmbeddingsBatch([text]).then(async (embeddings) => {
+        await doc.ref.update({
+          embedding: embeddings[0],
+          embeddedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+      })
+    );
+    embeddedCount++;
+  }
+
+  // Wait for any fallback embeddings
+  if (batchUpdates.length > 0) {
+    console.log(`[indexRecentMessages] Embedding ${batchUpdates.length} old messages (fallback)`);
+    await Promise.all(batchUpdates);
+  }
+
+  return {embeddedCount, reusedCount: 0, totalTime: 0};
 }

@@ -46,6 +46,7 @@ final class SummaryViewModelTests: XCTestCase {
         let expectedSummary = ThreadSummary(
             summary: "Test summary",
             keyPoints: ["Point 1", "Point 2"],
+            priorityMessages: [],
             participants: ["Alice", "Bob"],
             dateRange: "Oct 1 - Oct 23",
             generatedAt: Date(),
@@ -72,6 +73,7 @@ final class SummaryViewModelTests: XCTestCase {
         let cachedSummary = ThreadSummary(
             summary: "Cached summary",
             keyPoints: [],
+            priorityMessages: [],
             participants: [],
             dateRange: "",
             generatedAt: Date(),
@@ -145,6 +147,7 @@ final class SummaryViewModelTests: XCTestCase {
         let initialSummary = ThreadSummary(
             summary: "Initial summary",
             keyPoints: [],
+            priorityMessages: [],
             participants: [],
             dateRange: "",
             generatedAt: Date().addingTimeInterval(-3600), // 1 hour ago
@@ -161,6 +164,7 @@ final class SummaryViewModelTests: XCTestCase {
         let newSummary = ThreadSummary(
             summary: "Regenerated summary",
             keyPoints: ["New point"],
+            priorityMessages: [],
             participants: ["Charlie"],
             dateRange: "Oct 23",
             generatedAt: Date(),
@@ -186,6 +190,7 @@ final class SummaryViewModelTests: XCTestCase {
         let summary = ThreadSummary(
             summary: "Test",
             keyPoints: [],
+            priorityMessages: [],
             participants: [],
             dateRange: "",
             generatedAt: Date(),
@@ -212,6 +217,7 @@ final class SummaryViewModelTests: XCTestCase {
         let summary = ThreadSummary(
             summary: "Test",
             keyPoints: [],
+            priorityMessages: [],
             participants: [],
             dateRange: "",
             generatedAt: Date().addingTimeInterval(-30), // 30 seconds ago
@@ -245,6 +251,7 @@ final class SummaryViewModelTests: XCTestCase {
         let summary = ThreadSummary(
             summary: "Test",
             keyPoints: [],
+            priorityMessages: [],
             participants: [],
             dateRange: "",
             generatedAt: Date().addingTimeInterval(-300), // 5 minutes ago
@@ -271,6 +278,7 @@ final class SummaryViewModelTests: XCTestCase {
         let summary = ThreadSummary(
             summary: "Test",
             keyPoints: [],
+            priorityMessages: [],
             participants: [],
             dateRange: "",
             generatedAt: Date().addingTimeInterval(-7200), // 2 hours ago
@@ -300,6 +308,7 @@ final class SummaryViewModelTests: XCTestCase {
         mockAIService.mockSummary = ThreadSummary(
             summary: "Test",
             keyPoints: [],
+            priorityMessages: [],
             participants: [],
             dateRange: "",
             generatedAt: Date(),

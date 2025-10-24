@@ -115,6 +115,9 @@ class ChatViewModel: ObservableObject {
     private let failedMessageStore = FailedMessageStore()
     let offlineQueueStore: OfflineQueueStore  // Story 2.9: Expose for OfflineQueueViewModel
 
+    /// Tracks if we've seen the initial network state to prevent false reconnection banners on launch
+    private var hasSeenInitialNetworkState = false
+
     // MARK: - AI Services (Story 3.2)
     private let aiService: AIServiceProtocol?
 
@@ -332,6 +335,14 @@ class ChatViewModel: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] isConnected in
                 guard let self = self else { return }
+
+                // Skip the first emission to prevent false reconnection banners on initialization
+                if !self.hasSeenInitialNetworkState {
+                    self.hasSeenInitialNetworkState = true
+                    self.isOffline = !isConnected
+                    print("🌐 [ChatViewModel] Initial network state: isConnected=\(isConnected), isOffline=\(self.isOffline)")
+                    return  // Don't trigger reconnection logic on initialization
+                }
 
                 // Capture previous state BEFORE update
                 let wasOffline = self.isOffline

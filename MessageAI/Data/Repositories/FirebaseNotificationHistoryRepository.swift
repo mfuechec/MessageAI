@@ -14,8 +14,9 @@ final class FirebaseNotificationHistoryRepository: NotificationHistoryRepository
         print("📚 [NotificationHistory] Fetching recent decisions for user: \(userId)")
 
         do {
-            let snapshot = try await db.collection("notification_decisions")
-                .whereField("userId", isEqualTo: userId)
+            let snapshot = try await db.collection("users")
+                .document(userId)
+                .collection("notification_decisions")
                 .order(by: "timestamp", descending: true)
                 .limit(to: limit)
                 .getDocuments()
@@ -94,7 +95,8 @@ final class FirebaseNotificationHistoryRepository: NotificationHistoryRepository
         userId: String,
         conversationId: String,
         messageId: String,
-        feedback: String
+        feedback: String,
+        decision: NotificationDecision
     ) async throws {
         print("👍 [NotificationHistory] Submitting feedback: \(feedback) for message: \(messageId)")
 
@@ -102,7 +104,13 @@ final class FirebaseNotificationHistoryRepository: NotificationHistoryRepository
             let data: [String: Any] = [
                 "conversationId": conversationId,
                 "messageId": messageId,
-                "feedback": feedback
+                "feedback": feedback,
+                "decision": [
+                    "shouldNotify": decision.shouldNotify,
+                    "reason": decision.reason,
+                    "notificationText": decision.notificationText ?? "",
+                    "priority": decision.priority.rawValue
+                ]
             ]
 
             _ = try await functions.httpsCallable("submitNotificationFeedback").call(data)

@@ -80,6 +80,80 @@ service cloud.firestore {
       allow read: if isAuthenticated();
       allow write: if false;  // Read-only for clients
     }
+
+    // === Epic 6: Smart Notifications Collections ===
+
+    // Message embeddings (write-only from Cloud Functions)
+    match /message_embeddings/{embeddingId} {
+      allow read: if isAuthenticated(); // Authenticated users can read
+      allow write: if false; // Only server (Cloud Functions) can write
+    }
+
+    // AI notification cache (read by owner, write by server)
+    match /ai_notification_cache/{cacheId} {
+      allow read: if isAuthenticated();
+      allow write: if false; // Only server can write
+    }
+
+    // === User-Specific Subcollections ===
+    // All notification-related data stored under /users/{userId}/
+
+    // User notification preferences (subcollection)
+    match /users/{userId}/ai_notification_preferences/{doc} {
+      allow read, write: if isAuthenticated() &&
+                           userId == request.auth.uid;
+    }
+
+    // AI notification profile (subcollection, server-managed)
+    match /users/{userId}/ai_notification_profile/{doc} {
+      allow read: if isAuthenticated() &&
+                    userId == request.auth.uid;
+      allow write: if false; // Only server updates profile
+    }
+
+    // Notification decisions log (user subcollection, server-managed)
+    match /users/{userId}/notification_decisions/{decisionId} {
+      allow read: if isAuthenticated() &&
+                    userId == request.auth.uid;
+      allow write: if false; // Only server can write
+    }
+
+    // Notification feedback (user subcollection)
+    match /users/{userId}/notification_feedback/{feedbackId} {
+      allow read: if isAuthenticated() &&
+                    userId == request.auth.uid;
+      allow create: if isAuthenticated() &&
+                      userId == request.auth.uid;
+      allow update: if false; // No updates, only create
+      allow delete: if false; // No deletes
+    }
+
+    // User activity tracking (user subcollection, for active conversation suppression)
+    match /users/{userId}/activity/{doc} {
+      allow read: if false; // Only server reads this
+      allow write: if isAuthenticated() &&
+                     userId == request.auth.uid;
+    }
+
+    // Rate limits (user subcollection, server-only)
+    match /users/{userId}/rate_limits/{doc} {
+      allow read, write: if false; // Only server
+    }
+
+    // Context cache (user subcollection, server-only)
+    match /users/{userId}/context_cache/{doc} {
+      allow read, write: if false; // Only server
+    }
+
+    // False negatives log (optional, server-only)
+    match /false_negatives/{docId} {
+      allow read, write: if false; // Only server
+    }
+
+    // AI usage logs (server-only)
+    match /ai_usage_logs/{logId} {
+      allow read, write: if false; // Only server
+    }
   }
 }
 

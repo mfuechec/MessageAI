@@ -6,36 +6,36 @@ struct NotificationHistoryView: View {
     @SwiftUI.Environment(\.presentationMode) var presentationMode
 
     var body: some View {
-        NavigationView {
-            Group {
-                if viewModel.isLoading && viewModel.history.isEmpty {
-                    ProgressView("Loading notification history...")
-                } else if viewModel.history.isEmpty {
-                    emptyStateView
-                } else {
-                    historyList
-                }
+        let _ = print("🔴 [NotificationHistoryView] body computed - isLoading: \(viewModel.isLoading), history.count: \(viewModel.history.count), isEmpty: \(viewModel.history.isEmpty)")
+        Group {
+            if viewModel.isLoading && viewModel.history.isEmpty {
+                let _ = print("🟢 [NotificationHistoryView] Showing LOADING state")
+                ProgressView("Loading notification history...")
+            } else if viewModel.history.isEmpty {
+                let _ = print("🟡 [NotificationHistoryView] Showing EMPTY state")
+                emptyStateView
+            } else {
+                let _ = print("🔵 [NotificationHistoryView] Showing HISTORY LIST")
+                historyList
             }
-            .navigationTitle("Notification History")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Done") {
-                        presentationMode.wrappedValue.dismiss()
-                    }
-                }
+        }
+        .navigationTitle("Notification History")
+        .navigationBarTitleDisplayMode(.inline)
+        .task {
+            print("🚀 [NotificationHistoryView] .task modifier FIRED")
+            await viewModel.loadHistory()
+            print("✅ [NotificationHistoryView] .task modifier COMPLETED")
+        }
+        .onAppear {
+            print("👀 [NotificationHistoryView] onAppear - isLoading: \(viewModel.isLoading), history.count: \(viewModel.history.count)")
+        }
+        .alert("Error", isPresented: .constant(viewModel.errorMessage != nil)) {
+            Button("OK") {
+                viewModel.errorMessage = nil
             }
-            .task {
-                await viewModel.loadHistory()
-            }
-            .alert("Error", isPresented: .constant(viewModel.errorMessage != nil)) {
-                Button("OK") {
-                    viewModel.errorMessage = nil
-                }
-            } message: {
-                if let error = viewModel.errorMessage {
-                    Text(error)
-                }
+        } message: {
+            if let error = viewModel.errorMessage {
+                Text(error)
             }
         }
     }
@@ -90,6 +90,8 @@ struct NotificationHistoryView: View {
 struct NotificationHistoryRowView: View {
     let entry: NotificationHistoryEntry
     let onFeedback: (String) -> Void
+    @State private var isSubmitting = false
+    @State private var optimisticFeedback: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -153,38 +155,77 @@ struct NotificationHistoryRowView: View {
 
     @ViewBuilder
     private var feedbackButtons: some View {
-        if let feedback = entry.userFeedback {
-            // Feedback already provided
+        let displayedFeedback = optimisticFeedback ?? entry.userFeedback
+
+        if let feedback = displayedFeedback {
+            // Feedback already provided - show filled icon with background
             HStack(spacing: 8) {
                 if feedback == "helpful" {
                     Label("Helpful", systemImage: "hand.thumbsup.fill")
                         .font(.caption)
-                        .foregroundColor(.green)
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.green)
+                        .cornerRadius(8)
                 } else {
                     Label("Not Helpful", systemImage: "hand.thumbsdown.fill")
                         .font(.caption)
-                        .foregroundColor(.red)
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.red)
+                        .cornerRadius(8)
                 }
             }
+        } else if isSubmitting {
+            // Show loading indicator while submitting
+            ProgressView()
+                .progressViewStyle(.circular)
+                .scaleEffect(0.8)
         } else {
             // Feedback buttons
-            HStack(spacing: 12) {
+            HStack(spacing: 16) {
                 Button(action: {
-                    onFeedback("helpful")
+                    submitFeedback("helpful")
                 }) {
                     Image(systemName: "hand.thumbsup")
+                        .font(.title3)
                         .foregroundColor(.green)
+                        .padding(8)
+                        .background(Color.green.opacity(0.1))
+                        .cornerRadius(8)
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(.plain)
 
                 Button(action: {
-                    onFeedback("not_helpful")
+                    submitFeedback("not_helpful")
                 }) {
                     Image(systemName: "hand.thumbsdown")
+                        .font(.title3)
                         .foregroundColor(.red)
+                        .padding(8)
+                        .background(Color.red.opacity(0.1))
+                        .cornerRadius(8)
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(.plain)
             }
+        }
+    }
+
+    // MARK: - Submit Feedback Helper
+
+    private func submitFeedback(_ feedback: String) {
+        // Optimistic update - show immediately
+        optimisticFeedback = feedback
+        isSubmitting = true
+
+        // Submit feedback
+        onFeedback(feedback)
+
+        // Clear submitting state after delay (actual state will come from entry update)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            isSubmitting = false
         }
     }
 
@@ -262,7 +303,7 @@ class MockNotificationHistoryRepository: NotificationHistoryRepositoryProtocol {
         ]
     }
 
-    func submitFeedback(userId: String, conversationId: String, messageId: String, feedback: String) async throws {
+    func submitFeedback(userId: String, conversationId: String, messageId: String, feedback: String, decision: NotificationDecision) async throws {
         // Mock submission
     }
 }

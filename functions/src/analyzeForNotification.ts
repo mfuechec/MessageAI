@@ -13,6 +13,7 @@ import {
 } from "./prompts/notification-analysis-prompt";
 import {fallbackNotificationDecision} from "./helpers/fallback-notification-logic";
 import {NotificationDecision} from "./types/NotificationPreferences";
+import {applyFastHeuristics} from "./helpers/fast-heuristic-filter";
 
 /**
  * Cloud Function: Analyze conversation for notification decision
@@ -143,6 +144,103 @@ export const analyzeForNotification = functions
     console.log(`[analyzeForNotification] Cache miss, proceeding with analysis`);
 
     // ========================================
+    // 3.5. FAST HEURISTIC FILTER (OPTIMIZATION #2)
+    // ========================================
+    const firstUnreadMessage = unreadMessages[0].data();
+    const firstUnreadText = firstUnreadMessage.text || "";
+    const firstUnreadSenderId = firstUnreadMessage.senderId;
+
+    // Fetch user displayName for heuristics
+    let userDisplayName = "Unknown";
+    try {
+      const userDoc = await db.collection("users").doc(userId).get();
+      userDisplayName = userDoc.data()?.displayName || "Unknown";
+    } catch (error) {
+      console.error("[analyzeForNotification] Error fetching user displayName:", error);
+    }
+
+    // Fetch sender name for heuristics
+    let senderName = "Unknown";
+    try {
+      const senderDoc = await db.collection("users").doc(firstUnreadSenderId).get();
+      senderName = senderDoc.data()?.displayName || "Unknown";
+    } catch (error) {
+      console.error("[analyzeForNotification] Error fetching sender name:", error);
+    }
+
+    // Apply fast heuristics
+    const heuristicResult = applyFastHeuristics(
+      {
+        text: firstUnreadText,
+        senderId: firstUnreadSenderId,
+        senderName: senderName,
+      },
+      {
+        id: userId,
+        displayName: userDisplayName,
+        preferredKeywords: [], // Will load from preferences if available
+      }
+    );
+
+    console.log(`[analyzeForNotification] Heuristic decision: ${heuristicResult.decision} (${heuristicResult.reason})`);
+
+    if (heuristicResult.decision === "DEFINITELY_NOTIFY") {
+      console.log(`[analyzeForNotification] ⚡ FAST PATH: Notify (${heuristicResult.reason})`);
+
+      const fastDecision: NotificationDecision = {
+        shouldNotify: true,
+        reason: heuristicResult.reason,
+        notificationText: `${senderName}: ${firstUnreadText.substring(0, 80)}`,
+        priority: heuristicResult.priority || "high",
+      };
+
+      // Log decision
+      await logNotificationDecision(userId, conversationId, fastDecision, unreadMessages);
+
+      // Send notification
+      if (fastDecision.shouldNotify) {
+        try {
+          await sendFCMNotification(userId, conversationId, fastDecision, unreadMessages, db);
+        } catch (error) {
+          console.error("[analyzeForNotification] Error sending FCM notification:", error);
+        }
+      }
+
+      // Cache decision
+      await storeNotificationCache(cacheKey, fastDecision, conversationId, unreadMessages.map(doc => doc.id));
+
+      const elapsedTime = Date.now() - startTime;
+      console.log(`[analyzeForNotification] ⚡ Fast path completed in ${elapsedTime}ms`);
+
+      return fastDecision;
+    }
+
+    if (heuristicResult.decision === "DEFINITELY_SKIP") {
+      console.log(`[analyzeForNotification] ⚡ FAST PATH: Skip (${heuristicResult.reason})`);
+
+      const fastDecision: NotificationDecision = {
+        shouldNotify: false,
+        reason: heuristicResult.reason,
+        notificationText: "",
+        priority: "low",
+      };
+
+      // Log decision
+      await logNotificationDecision(userId, conversationId, fastDecision, unreadMessages);
+
+      // Cache decision
+      await storeNotificationCache(cacheKey, fastDecision, conversationId, unreadMessages.map(doc => doc.id));
+
+      const elapsedTime = Date.now() - startTime;
+      console.log(`[analyzeForNotification] ⚡ Fast path completed in ${elapsedTime}ms`);
+
+      return fastDecision;
+    }
+
+    // If NEED_LLM, continue with existing RAG + GPT-4 flow...
+    console.log(`[analyzeForNotification] 🤖 LLM PATH: Requires AI analysis`);
+
+    // ========================================
     // 4. LOAD USER CONTEXT (RAG)
     // ========================================
     let userContext;
@@ -204,27 +302,16 @@ export const analyzeForNotification = functions
     // ========================================
     // 7. FORMAT MESSAGES FOR LLM
     // ========================================
-    const messagesForLLM = await Promise.all(
-      unreadMessages.map(async (doc) => {
-        const msgData = doc.data();
+    const messagesForLLM = unreadMessages.map((doc) => {
+      const msgData = doc.data();
 
-        // Fetch sender name
-        let senderName = "Unknown";
-        try {
-          const senderDoc = await db.collection("users").doc(msgData.senderId).get();
-          senderName = senderDoc.data()?.displayName || "Unknown";
-        } catch (error) {
-          console.error(`Error fetching sender ${msgData.senderId}:`, error);
-        }
-
-        return {
-          text: msgData.text || "",
-          senderId: msgData.senderId,
-          senderName,
-          timestamp: msgData.timestamp.toDate(),
-        };
-      })
-    );
+      return {
+        text: msgData.text || "",
+        senderId: msgData.senderId,
+        senderName: msgData.senderName || "Unknown", // Read from denormalized field (Epic 6 Optimization)
+        timestamp: msgData.timestamp.toDate(),
+      };
+    });
 
     const formattedMessages = formatMessagesForPrompt(messagesForLLM);
 
@@ -480,6 +567,7 @@ async function logNotificationDecision(
   const logData = {
     userId,
     conversationId,
+    messageId: unreadMessages.length > 0 ? unreadMessages[0].id : "", // Store first unread message ID for feedback
     timestamp: admin.firestore.FieldValue.serverTimestamp(),
     decision: decision.shouldNotify,
     priority: decision.priority,
@@ -490,7 +578,10 @@ async function logNotificationDecision(
     messageCount: unreadMessages.length,
   };
 
-  await db.collection("notification_decisions").add(logData);
+  await db.collection("users")
+    .doc(userId)
+    .collection("notification_decisions")
+    .add(logData);
   console.log(`[analyzeForNotification] Logged decision for user ${userId}`);
 }
 
@@ -517,7 +608,11 @@ async function sendFCMNotification(
   // ========================================
   // 1. CHECK ACTIVE CONVERSATION SUPPRESSION
   // ========================================
-  const activityDoc = await db.collection("user_activity").doc(userId).get();
+  const activityDoc = await db.collection("users")
+    .doc(userId)
+    .collection("activity")
+    .doc("current")
+    .get();
   if (activityDoc.exists) {
     const activityData = activityDoc.data();
     const activeConversationId = activityData?.activeConversationId;
@@ -538,7 +633,11 @@ async function sendFCMNotification(
   // ========================================
   // 2. CHECK RATE LIMITING
   // ========================================
-  const rateLimitDoc = await db.collection("rate_limits").doc(userId).get();
+  const rateLimitDoc = await db.collection("users")
+    .doc(userId)
+    .collection("rate_limits")
+    .doc("default")
+    .get();
   if (rateLimitDoc.exists) {
     const rateLimitData = rateLimitDoc.data();
     const count = rateLimitData?.count || 0;
@@ -564,10 +663,14 @@ async function sendFCMNotification(
 
   // Update rate limit counter
   const oneHourFromNow = admin.firestore.Timestamp.fromDate(new Date(Date.now() + 60 * 60 * 1000));
-  await db.collection("rate_limits").doc(userId).set({
-    count: admin.firestore.FieldValue.increment(1),
-    resetAt: oneHourFromNow,
-  }, { merge: true });
+  await db.collection("users")
+    .doc(userId)
+    .collection("rate_limits")
+    .doc("default")
+    .set({
+      count: admin.firestore.FieldValue.increment(1),
+      resetAt: oneHourFromNow,
+    }, { merge: true });
 
   // ========================================
   // 3. LOAD USER FCM TOKEN
@@ -660,8 +763,9 @@ async function sendFCMNotification(
     console.log(`[sendFCMNotification] Successfully sent notification: ${response}`);
 
     // Update log to mark as delivered
-    const decisionsSnapshot = await db.collection("notification_decisions")
-      .where("userId", "==", userId)
+    const decisionsSnapshot = await db.collection("users")
+      .doc(userId)
+      .collection("notification_decisions")
       .where("conversationId", "==", conversationId)
       .orderBy("timestamp", "desc")
       .limit(1)

@@ -44,7 +44,19 @@ final class FirebaseMessageRepository: MessageRepositoryProtocol {
     func sendMessage(_ message: Message) async throws {
         try await NetworkRetryPolicy.retry {
             do {
-                let data = try Firestore.Encoder.default.encode(message)
+                // Fetch sender's displayName for denormalization (Epic 6 Optimization)
+                var enrichedMessage = message
+                if enrichedMessage.senderName == nil {
+                    do {
+                        let senderDoc = try await self.db.collection("users").document(message.senderId).getDocument()
+                        enrichedMessage.senderName = senderDoc.data()?["displayName"] as? String ?? "Unknown"
+                    } catch {
+                        print("⚠️ Failed to fetch sender displayName, using fallback: \(error.localizedDescription)")
+                        enrichedMessage.senderName = "Unknown"
+                    }
+                }
+
+                let data = try Firestore.Encoder.default.encode(enrichedMessage)
                 try await self.db.collection("messages").document(message.id).setData(data)
                 print("✅ Message sent: \(message.id)")
             } catch let error as EncodingError {

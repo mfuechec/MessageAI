@@ -41,7 +41,7 @@ export const submitNotificationFeedback = functions
     if (!data.messageId || typeof data.messageId !== "string") {
       throw new functions.https.HttpsError(
         "invalid-argument",
-        "messageId must be a non-empty string"
+        "Cannot submit feedback for this notification. The notification data may be incomplete. Please refresh and try again."
       );
     }
 
@@ -89,19 +89,46 @@ export const submitNotificationFeedback = functions
     // ========================================
     const feedbackId = `${userId}_${data.conversationId}_${data.messageId}`;
 
-    await db.collection("notification_feedback").doc(feedbackId).set({
-      userId,
-      conversationId: data.conversationId,
-      messageId: data.messageId,
-      decision: data.decision,
-      feedback: data.feedback,
-      timestamp: admin.firestore.FieldValue.serverTimestamp(),
-    });
+    // Store in notification_feedback collection
+    await db.collection("users")
+      .doc(userId)
+      .collection("notification_feedback")
+      .doc(feedbackId)
+      .set({
+        userId,
+        conversationId: data.conversationId,
+        messageId: data.messageId,
+        decision: data.decision,
+        feedback: data.feedback,
+        timestamp: admin.firestore.FieldValue.serverTimestamp(),
+      });
 
     console.log(`[submitNotificationFeedback] Feedback stored: ${feedbackId}`);
 
     // ========================================
-    // 4. RETURN SUCCESS
+    // 4. UPDATE NOTIFICATION_DECISIONS DOCUMENT
+    // ========================================
+    // Find and update the original notification decision with the feedback
+    const decisionsQuery = await db.collection("users")
+      .doc(userId)
+      .collection("notification_decisions")
+      .where("conversationId", "==", data.conversationId)
+      .where("messageId", "==", data.messageId)
+      .limit(1)
+      .get();
+
+    if (!decisionsQuery.empty) {
+      const decisionDoc = decisionsQuery.docs[0];
+      await decisionDoc.ref.update({
+        userFeedback: data.feedback,
+      });
+      console.log(`[submitNotificationFeedback] Updated notification_decisions doc: ${decisionDoc.id}`);
+    } else {
+      console.warn(`[submitNotificationFeedback] No matching notification_decisions document found`);
+    }
+
+    // ========================================
+    // 5. RETURN SUCCESS
     // ========================================
     return {
       success: true,

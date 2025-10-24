@@ -245,7 +245,10 @@ export function formatUserContextForLLM(context: UserContext): string {
   if (context.recentMessages.length > 0) {
     parts.push(`\nRecent Messages (sample):`);
     for (const msg of context.recentMessages.slice(0, 10)) {
-      const timestamp = msg.timestamp.toISOString();
+      // Handle both Date objects (fresh) and Firestore Timestamps (from cache)
+      const timestamp = (msg.timestamp as any).toDate ?
+        (msg.timestamp as any).toDate().toISOString() :
+        msg.timestamp.toISOString();
       parts.push(`[${timestamp}] ${msg.senderName}: ${msg.text.substring(0, 100)}`);
     }
   }
