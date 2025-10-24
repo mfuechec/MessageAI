@@ -248,4 +248,11 @@ class NotificationPreferencesViewModel: ObservableObject {
             }
             .store(in: &cancellables)
     }
+
+    /// Clean up all active listeners and subscriptions
+    /// Should be called when user logs out or ViewModel is no longer needed
+    func cleanup() {
+        cancellables.removeAll()
+        print("🧹 NotificationPreferencesViewModel cleaned up")
+    }
 }

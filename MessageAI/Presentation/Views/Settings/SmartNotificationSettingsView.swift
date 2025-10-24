@@ -222,6 +222,10 @@ struct SmartNotificationSettingsView: View {
         }
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
+        .onDisappear {
+            // Clean up Firestore listeners when view disappears
+            viewModel.cleanup()
+        }
         .sheet(isPresented: $showTestResult) {
             TestResultView(decision: viewModel.testDecision)
         }
@@ -252,6 +256,8 @@ struct SmartNotificationSettingsView: View {
         .alert("Logout?", isPresented: $showLogoutConfirmation) {
             Button("Cancel", role: .cancel) { }
             Button("Logout", role: .destructive) {
+                // Clean up listeners BEFORE logout to prevent permission errors
+                viewModel.cleanup()
                 Task {
                     await authViewModel.signOut()
                 }

@@ -96,6 +96,12 @@ final class FirebaseNotificationPreferencesRepository: NotificationPreferencesRe
     }
 
     func observePreferences(userId: String) -> AnyPublisher<NotificationPreferences, Never> {
+        // Don't set up listener if userId is empty (prevents "document path cannot be empty" error)
+        guard !userId.isEmpty else {
+            print("⚠️ Cannot observe preferences: userId is empty")
+            return Empty<NotificationPreferences, Never>().eraseToAnyPublisher()
+        }
+
         let subject = PassthroughSubject<NotificationPreferences, Never>()
 
         let listener = db.collection("users")
@@ -104,6 +110,16 @@ final class FirebaseNotificationPreferencesRepository: NotificationPreferencesRe
             .document("preferences")
             .addSnapshotListener { snapshot, error in
                 if let error = error {
+                    let nsError = error as NSError
+
+                    // Check if this is a permission error (expected on logout)
+                    if nsError.domain == FirestoreErrorDomain &&
+                       nsError.code == FirestoreErrorCode.permissionDenied.rawValue {
+                        print("ℹ️ Preferences listener permission denied (user likely logged out)")
+                        return
+                    }
+
+                    // Log other errors (unexpected)
                     print("❌ Preferences observation error: \(error.localizedDescription)")
                     return
                 }
