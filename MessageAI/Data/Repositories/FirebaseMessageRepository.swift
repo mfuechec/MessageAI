@@ -84,23 +84,39 @@ final class FirebaseMessageRepository: MessageRepositoryProtocol {
                     subject.send([])
                     return
                 }
-                
+
                 guard let documents = snapshot?.documents else {
                     subject.send([])
                     return
                 }
-                
+
+                // Log only if there are actual changes
+                if let changes = snapshot?.documentChanges, !changes.isEmpty {
+                    print("🔥 [Messages] \(changes.count) change(s) in \(conversationId.prefix(8))...")
+                    for change in changes {
+                        switch change.type {
+                        case .added:
+                            print("   ➕ \(change.document.documentID.prefix(8))...")
+                        case .modified:
+                            let data = change.document.data()
+                            let readCount = data["readCount"] as? Int ?? 0
+                            print("   ✏️  \(change.document.documentID.prefix(8))... (readCount=\(readCount))")
+                        case .removed:
+                            print("   ➖ \(change.document.documentID.prefix(8))...")
+                        }
+                    }
+                }
+
                 let messages = documents.compactMap { doc -> Message? in
                     try? Firestore.Decoder.default.decode(Message.self, from: doc.data())
                 }
-                
-                print("✅ Messages updated: \(messages.count) messages in conversation \(conversationId)")
+
                 subject.send(messages)
             }
-        
+
         // Store listener for cleanup
         activeListeners.append(listener)
-        
+
         return subject.eraseToAnyPublisher()
     }
     

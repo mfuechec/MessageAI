@@ -2,7 +2,25 @@
 
 This file tracks key decisions, implementation patterns, and learnings across development sessions.
 
-## Latest Session: Story 3.2 Completion - Comprehensive AI Analysis & Test Infrastructure (Oct 23, 2024)
+## Latest Session: UX Improvements - Priority Badges & Deleted Message Handling (Oct 24, 2024)
+
+**Full details**: See `docs/memory-bank/ux-improvements-badges-deleted-messages.md`
+
+**Quick Summary**:
+- ✅ Added priority badges to conversation list (orange `[!N]` badge for urgent messages)
+- ✅ Adaptive unread badge color (red for urgent, blue for normal)
+- ✅ Fixed Cloud Function to sync priority metadata to conversation documents
+- ✅ Fixed deleted message handling to show next non-deleted message instead of "[Message deleted]"
+- ✅ Deployed Cloud Function updates to `messageai-dev-1f2ec`
+
+**Key Files Modified**:
+- `ConversationRowView.swift` - Badge UI components
+- `functions/src/summarizeThread.ts` - Priority metadata sync
+- `ChatViewModel.swift` - Smart deleted message fallback
+
+---
+
+## Previous Session: Story 3.2 Completion - Comprehensive AI Analysis & Test Infrastructure (Oct 23, 2024)
 
 ### What Was Built
 

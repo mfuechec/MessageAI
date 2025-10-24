@@ -40,13 +40,18 @@ class SummaryViewModel: ObservableObject, Identifiable {
     /// Error message if summary generation failed
     @Published var errorMessage: String?
 
+    /// Network offline state (for offline banner)
+    @Published var isOffline: Bool = false
+
     // MARK: - Dependencies
 
     private let aiService: AIServiceProtocol
     private let conversationId: String
     private let userId: String
     private let messageIds: [String]?
+    private let networkMonitor: any NetworkMonitorProtocol
     private let db = Firestore.firestore()
+    private var cancellables = Set<AnyCancellable>()
 
     // MARK: - Initialization
 
@@ -57,11 +62,13 @@ class SummaryViewModel: ObservableObject, Identifiable {
     ///   - userId: Current user ID for per-user cache
     ///   - messageIds: Optional specific message IDs to summarize (nil = last 100 messages)
     ///   - aiService: AI service for generating summaries
+    ///   - networkMonitor: Network monitoring service for offline detection
     init(
         conversationId: String,
         userId: String,
         messageIds: [String]? = nil,
-        aiService: AIServiceProtocol
+        aiService: AIServiceProtocol,
+        networkMonitor: any NetworkMonitorProtocol = NetworkMonitor()
     ) {
         print("🟢 [SummaryViewModel] init() called")
         print("   conversationId: \(conversationId)")
@@ -73,6 +80,10 @@ class SummaryViewModel: ObservableObject, Identifiable {
         self.userId = userId
         self.messageIds = messageIds
         self.aiService = aiService
+        self.networkMonitor = networkMonitor
+
+        // Observe network status for offline banner
+        observeNetworkStatus()
 
         print("🟢 [SummaryViewModel] init() complete")
     }
@@ -180,24 +191,42 @@ class SummaryViewModel: ObservableObject, Identifiable {
 
         print("   Cache hit! Parsing summary data")
 
+        print("   ========== Parsing Firestore Document ==========")
+        print("   Document keys: \(data.keys.joined(separator: ", "))")
+
         // Parse Firestore document into ThreadSummary
         let summary = data["summary"] as? String ?? ""
+        print("   ✅ summary: \(summary.prefix(50))... (\(summary.count) chars)")
+
         let keyPoints = data["keyPoints"] as? [String] ?? []
+        print("   ✅ keyPoints: \(keyPoints.count) items")
+
         let participants = data["participants"] as? [String] ?? []
+        print("   ✅ participants: \(participants.joined(separator: ", "))")
+
         let dateRange = data["dateRange"] as? String ?? ""
+        print("   ✅ dateRange: \(dateRange)")
+
         let lastMessageId = data["lastMessageId"] as? String
+        print("   ✅ lastMessageId: \(lastMessageId ?? "nil")")
+
         let messageCount = data["messageCount"] as? Int
+        print("   ✅ messageCount: \(messageCount ?? 0)")
 
         // Parse generatedAt timestamp
         let generatedAt: Date
         if let timestamp = data["generatedAt"] as? Timestamp {
             generatedAt = timestamp.dateValue()
+            print("   ✅ generatedAt: \(generatedAt)")
         } else {
             generatedAt = Date()
+            print("   ⚠️  generatedAt: using fallback Date()")
         }
 
         // Parse priority messages
+        print("   Parsing priorityMessages...")
         let priorityMessagesData = data["priorityMessages"] as? [[String: Any]] ?? []
+        print("   Raw priorityMessages count: \(priorityMessagesData.count)")
         let priorityMessages = priorityMessagesData.compactMap { dict -> PriorityMessage? in
             guard let text = dict["text"] as? String,
                   let sourceMessageId = dict["sourceMessageId"] as? String,
@@ -211,10 +240,58 @@ class SummaryViewModel: ObservableObject, Identifiable {
             )
         }
 
+        print("   ✅ Parsed \(priorityMessages.count) priority messages")
+
+        // Parse meetings
+        print("   Parsing meetings...")
+        let meetingsData = data["meetings"] as? [[String: Any]] ?? []
+        print("   Raw meetings count: \(meetingsData.count)")
+        let meetings = meetingsData.compactMap { dict -> Meeting? in
+            print("   - Parsing meeting: \(dict.keys.joined(separator: ", "))")
+            guard let topic = dict["topic"] as? String,
+                  let sourceMessageId = dict["sourceMessageId"] as? String,
+                  let type = dict["type"] as? String,
+                  let durationMinutes = dict["durationMinutes"] as? Int,
+                  let urgency = dict["urgency"] as? String,
+                  let participants = dict["participants"] as? [String] else {
+                return nil
+            }
+
+            // Parse optional scheduledTime
+            let scheduledTime: Date?
+            if let scheduledTimeStr = dict["scheduledTime"] as? String,
+               let date = ISO8601DateFormatter().date(from: scheduledTimeStr) {
+                scheduledTime = date
+            } else {
+                scheduledTime = nil
+            }
+
+            let meeting = Meeting(
+                topic: topic,
+                sourceMessageId: sourceMessageId,
+                type: type,
+                scheduledTime: scheduledTime,
+                durationMinutes: durationMinutes,
+                urgency: urgency,
+                participants: participants
+            )
+            print("     ✅ Created meeting: \(topic) (type: \(type), urgency: \(urgency))")
+            return meeting
+        }
+
+        print("   ✅ Parsed \(meetings.count) meetings")
+        print("   ========== Final ThreadSummary ==========")
+        print("   - summary: \(summary.count) chars")
+        print("   - keyPoints: \(keyPoints.count)")
+        print("   - priorityMessages: \(priorityMessages.count)")
+        print("   - meetings: \(meetings.count)")
+        print("   - participants: \(participants.count)")
+
         return ThreadSummary(
             summary: summary,
             keyPoints: keyPoints,
             priorityMessages: priorityMessages,
+            meetings: meetings,
             participants: participants,
             dateRange: dateRange,
             generatedAt: generatedAt,
@@ -286,5 +363,17 @@ class SummaryViewModel: ObservableObject, Identifiable {
     private func handleError(_ error: AIServiceError) {
         isLoading = false
         errorMessage = error.errorDescription ?? "An unknown error occurred"
+    }
+
+    /// Observe network connectivity status
+    private func observeNetworkStatus() {
+        print("🌐 [SummaryViewModel] Setting up network status observer")
+        networkMonitor.isEffectivelyConnectedPublisher
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] isConnected in
+                print("🌐 [SummaryViewModel] Network status update: isConnected=\(isConnected)")
+                self?.isOffline = !isConnected
+            }
+            .store(in: &cancellables)
     }
 }

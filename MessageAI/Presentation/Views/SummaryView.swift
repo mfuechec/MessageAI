@@ -28,18 +28,31 @@ struct SummaryView: View {
 
         return NavigationView {
             ZStack {
-                if viewModel.isLoading {
-                    let _ = print("   → Showing loadingView")
-                    loadingView
-                } else if let errorMessage = viewModel.errorMessage {
-                    let _ = print("   → Showing errorView: \(errorMessage)")
-                    errorView(message: errorMessage)
-                } else if let summary = viewModel.summary {
-                    let _ = print("   → Showing summaryContentView")
-                    summaryContentView(summary: summary)
-                } else {
-                    let _ = print("   → Showing emptyView (BLANK SCREEN)")
-                    emptyView
+                // Main content
+                ZStack {
+                    if viewModel.isLoading {
+                        let _ = print("   → Showing loadingView")
+                        loadingView
+                    } else if let errorMessage = viewModel.errorMessage {
+                        let _ = print("   → Showing errorView: \(errorMessage)")
+                        errorView(message: errorMessage)
+                    } else if let summary = viewModel.summary {
+                        let _ = print("   → Showing summaryContentView")
+                        summaryContentView(summary: summary)
+                    } else {
+                        let _ = print("   → Showing emptyView (BLANK SCREEN)")
+                        emptyView
+                    }
+                }
+
+                // Offline toast overlay (shown at top)
+                VStack {
+                    if viewModel.isOffline {
+                        offlineToast
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                    }
+
+                    Spacer()
                 }
             }
             .navigationTitle("AI Analysis")
@@ -155,7 +168,10 @@ struct SummaryView: View {
                 // 2. PRIORITY MESSAGES
                 priorityMessagesSection()
 
-                // 3. ACTION ITEMS
+                // 3. MEETINGS
+                meetingsSection()
+
+                // 4. ACTION ITEMS
                 actionItemsSection()
 
                 // 4. DECISION TRACKING
@@ -357,6 +373,168 @@ struct SummaryView: View {
         }
     }
 
+    private func meetingsSection() -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("Meetings", systemImage: "calendar")
+                .font(.subheadline)
+                .fontWeight(.semibold)
+                .foregroundColor(.purple)
+
+            if let summary = viewModel.summary {
+                if !summary.meetings.isEmpty {
+                    // Display meetings from AI
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(Array(summary.meetings.enumerated()), id: \.offset) { index, meeting in
+                            meetingRow(meeting: meeting)
+                        }
+                    }
+                } else {
+                    // Empty state
+                    Text("No meetings detected")
+                        .font(.body)
+                        .foregroundColor(.secondary)
+                        .italic()
+                }
+            } else {
+                Text("Loading...")
+                    .font(.body)
+                    .foregroundColor(.secondary)
+                    .italic()
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(Color.purple.opacity(0.08))
+        .cornerRadius(8)
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.purple.opacity(0.3), lineWidth: 1)
+        )
+    }
+
+    private func meetingRow(meeting: Meeting) -> some View {
+        Button(action: {
+            // Call the callback to navigate to the message
+            onPriorityMessageTapped?(meeting.sourceMessageId)
+            // Dismiss the summary view
+            presentationMode.wrappedValue.dismiss()
+        }) {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(alignment: .top, spacing: 8) {
+                    // Icon based on meeting type
+                    Image(systemName: iconForMeetingType(meeting.type))
+                        .font(.caption)
+                        .foregroundColor(colorForMeetingUrgency(meeting.urgency))
+                        .frame(width: 12)
+                        .padding(.top, 2)
+
+                    Text(meeting.topic)
+                        .font(.body)
+                        .foregroundColor(.primary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .multilineTextAlignment(.leading)
+
+                    Spacer()
+
+                    // Chevron to indicate it's tappable
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+
+                // Meeting metadata
+                HStack(spacing: 12) {
+                    // Duration
+                    HStack(spacing: 4) {
+                        Image(systemName: "clock")
+                            .font(.caption2)
+                        Text("\(meeting.durationMinutes) min")
+                            .font(.caption)
+                    }
+                    .foregroundColor(.secondary)
+
+                    // Participants
+                    if !meeting.participants.isEmpty {
+                        HStack(spacing: 4) {
+                            Image(systemName: "person.2")
+                                .font(.caption2)
+                            Text(meeting.participants.joined(separator: ", "))
+                                .font(.caption)
+                                .lineLimit(1)
+                        }
+                        .foregroundColor(.secondary)
+                    }
+
+                    // Scheduled time if available
+                    if let scheduledTime = meeting.scheduledTime {
+                        HStack(spacing: 4) {
+                            Image(systemName: "calendar.badge.clock")
+                                .font(.caption2)
+                            Text(formatMeetingTime(scheduledTime))
+                                .font(.caption)
+                        }
+                        .foregroundColor(.green)
+                    }
+                }
+                .padding(.leading, 20)
+            }
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+
+    // Helper to get icon based on meeting type
+    private func iconForMeetingType(_ type: String) -> String {
+        switch type.lowercased() {
+        case "scheduled":
+            return "calendar.badge.checkmark"  // Confirmed meeting
+        case "detected":
+            return "calendar.badge.plus"        // Meeting need detected
+        default:
+            return "calendar"
+        }
+    }
+
+    // Helper to get color based on urgency
+    private func colorForMeetingUrgency(_ urgency: String) -> Color {
+        switch urgency.lowercased() {
+        case "high":
+            return Color(red: 0.6, green: 0.2, blue: 0.8)      // Deep purple for high urgency
+        case "medium":
+            return Color(red: 0.7, green: 0.4, blue: 0.9)      // Medium purple
+        case "low":
+            return Color(red: 0.8, green: 0.6, blue: 1.0)      // Light purple
+        default:
+            return .purple
+        }
+    }
+
+    // Helper to format meeting time
+    private func formatMeetingTime(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .short
+        formatter.timeStyle = .short
+        return formatter.string(from: date)
+    }
+
+    // MARK: - Offline Toast
+
+    private var offlineToast: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "wifi.slash")
+                .font(.caption)
+            Text("You're offline")
+                .font(.caption)
+                .fontWeight(.medium)
+        }
+        .foregroundColor(.white)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(Color.red.opacity(0.9))
+        .cornerRadius(8)
+        .shadow(color: Color.black.opacity(0.2), radius: 4, x: 0, y: 2)
+        .padding(.top, 8)
+    }
+
     private func actionItemsSection() -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Label("✅ Action Items", systemImage: "checkmark.circle.fill")
@@ -491,6 +669,26 @@ struct SummaryView_Previews: PreviewProvider {
                             text: "Security vulnerabilities found - patch by EOD",
                             sourceMessageId: "msg-3",
                             priority: "high"
+                        )
+                    ],
+                    meetings: [
+                        Meeting(
+                            topic: "Q4 Planning Meeting",
+                            sourceMessageId: "msg-4",
+                            type: "scheduled",
+                            scheduledTime: Date().addingTimeInterval(86400), // Tomorrow
+                            durationMinutes: 60,
+                            urgency: "medium",
+                            participants: ["Alice", "Bob", "Charlie"]
+                        ),
+                        Meeting(
+                            topic: "Discuss architecture decisions",
+                            sourceMessageId: "msg-5",
+                            type: "detected",
+                            scheduledTime: nil,
+                            durationMinutes: 30,
+                            urgency: "high",
+                            participants: ["Alice", "Charlie"]
                         )
                     ],
                     participants: ["Alice", "Bob", "Charlie"],

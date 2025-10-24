@@ -10,20 +10,35 @@ struct ConversationRowView: View {
     let participants: [User]  // For group avatar display
     let currentUserId: String  // For read receipt display
     
+    /// Accessibility text that includes unread and priority status
+    private var accessibilityText: String {
+        var text = "\(displayName), \(conversation.lastMessage ?? "No messages"), \(formattedTimestamp)"
+
+        if conversation.hasUnreadPriority {
+            text += ", \(conversation.priorityCount) urgent"
+        }
+
+        if unreadCount > 0 {
+            text += ", \(unreadCount) unread"
+        }
+
+        return text
+    }
+
     var body: some View {
         HStack(spacing: 12) {
             // Profile image / avatar
             profileImage
-            
+
             // Conversation details
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
                     Text(displayName)
                         .font(.headline)
                         .lineLimit(1)
-                    
+
                     Spacer()
-                    
+
                     Text(formattedTimestamp)
                         .font(.caption)
                         .foregroundColor(.secondary)
@@ -43,6 +58,12 @@ struct ConversationRowView: View {
 
                     Spacer()
 
+                    // Priority indicator badge (urgent messages)
+                    if conversation.hasUnreadPriority {
+                        priorityBadge
+                    }
+
+                    // Unread count badge
                     if unreadCount > 0 {
                         unreadBadge
                     }
@@ -51,7 +72,7 @@ struct ConversationRowView: View {
         }
         .padding(.vertical, 8)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(displayName), \(conversation.lastMessage ?? "No messages"), \(formattedTimestamp), \(unreadCount) unread")
+        .accessibilityLabel(accessibilityText)
     }
     
     @ViewBuilder
@@ -126,8 +147,26 @@ struct ConversationRowView: View {
             .foregroundColor(.white)
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
-            .background(Color.accentColor)
+            .background(conversation.hasUnreadPriority ? Color.red : Color.accentColor)
             .clipShape(Capsule())
+    }
+
+    /// Priority indicator badge for urgent messages
+    private var priorityBadge: some View {
+        HStack(spacing: 2) {
+            Image(systemName: "exclamationmark.circle.fill")
+                .font(.caption)
+            if conversation.priorityCount > 0 {
+                Text("\(conversation.priorityCount)")
+                    .font(.caption2)
+                    .fontWeight(.bold)
+            }
+        }
+        .foregroundColor(.white)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 4)
+        .background(Color.orange)
+        .clipShape(Capsule())
     }
 
     /// Read receipt indicator for last message (shows for sender only)

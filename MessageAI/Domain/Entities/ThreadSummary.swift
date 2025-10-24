@@ -22,6 +22,9 @@ struct ThreadSummary: Codable {
     /// Priority messages that need attention
     let priorityMessages: [PriorityMessage]
 
+    /// Detected meeting needs and scheduled meetings
+    let meetings: [Meeting]
+
     /// Participant names in the conversation
     let participants: [String]
 

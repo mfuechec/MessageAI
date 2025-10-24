@@ -94,13 +94,24 @@ class CloudFunctionsService {
         do {
             let result = try await functions.httpsCallable("summarizeThread").call(data)
             print("✅ [CloudFunctions] summarizeThread succeeded")
+            print("📊 [CloudFunctions] Raw result type: \(type(of: result.data))")
 
             guard let response = result.data as? [String: Any] else {
-                print("❌ [CloudFunctions] Invalid response format: \(result.data)")
+                print("❌ [CloudFunctions] Invalid response format")
+                print("   Expected: [String: Any]")
+                print("   Got: \(type(of: result.data))")
+                print("   Value: \(result.data)")
                 throw AIServiceError.unknown("Invalid response format from Cloud Function")
             }
 
-            print("📦 [CloudFunctions] Response data keys: \(response.keys.joined(separator: ", "))")
+            print("📦 [CloudFunctions] ========== Response Structure ==========")
+            print("   Keys: \(response.keys.joined(separator: ", "))")
+            print("   success: \(response["success"] ?? "nil")")
+            print("   cached: \(response["cached"] ?? "nil")")
+            print("   summary length: \((response["summary"] as? String)?.count ?? 0)")
+            print("   keyPoints count: \((response["keyPoints"] as? [String])?.count ?? 0)")
+            print("   priorityMessages count: \((response["priorityMessages"] as? [[String: Any]])?.count ?? 0)")
+            print("   meetings count: \((response["meetings"] as? [[String: Any]])?.count ?? 0)")
 
             // Debug: Print priority messages if present
             if let priorityMessagesData = response["priorityMessages"] as? [[String: Any]] {
@@ -217,12 +228,32 @@ class CloudFunctionsService {
     #endif
 
     private func parseSummaryResponse(_ data: [String: Any]) throws -> SummaryResponse {
-        guard let success = data["success"] as? Bool,
-              let summary = data["summary"] as? String,
-              let cached = data["cached"] as? Bool,
-              let timestamp = data["timestamp"] as? String else {
-            throw AIServiceError.unknown("Missing required fields in summary response")
+        print("🔍 [CloudFunctions] ========== Parsing Summary Response ==========")
+
+        guard let success = data["success"] as? Bool else {
+            print("❌ [CloudFunctions] Missing 'success' field")
+            throw AIServiceError.unknown("Missing required field: success")
         }
+        print("✅ [CloudFunctions] success: \(success)")
+
+        guard let summary = data["summary"] as? String else {
+            print("❌ [CloudFunctions] Missing 'summary' field")
+            print("   Available keys: \(data.keys.joined(separator: ", "))")
+            throw AIServiceError.unknown("Missing required field: summary")
+        }
+        print("✅ [CloudFunctions] summary: \(summary.prefix(50))... (\(summary.count) chars)")
+
+        guard let cached = data["cached"] as? Bool else {
+            print("❌ [CloudFunctions] Missing 'cached' field")
+            throw AIServiceError.unknown("Missing required field: cached")
+        }
+        print("✅ [CloudFunctions] cached: \(cached)")
+
+        guard let timestamp = data["timestamp"] as? String else {
+            print("❌ [CloudFunctions] Missing 'timestamp' field")
+            throw AIServiceError.unknown("Missing required field: timestamp")
+        }
+        print("✅ [CloudFunctions] timestamp: \(timestamp)")
 
         let keyPoints = data["keyPoints"] as? [String]
         let participants = data["participants"] as? [String]
@@ -268,11 +299,70 @@ class CloudFunctionsService {
             print("⚠️  [CloudFunctions] priorityMessages not found or wrong type in response")
         }
 
+        // Parse meetings
+        var meetings: [MeetingDTO]? = nil
+        if let meetingsData = data["meetings"] as? [[String: Any]] {
+            print("🔍 [CloudFunctions] Parsing \(meetingsData.count) meetings")
+
+            meetings = meetingsData.compactMap { meetingData in
+                print("   Parsing meeting: \(meetingData)")
+
+                guard let topic = meetingData["topic"] as? String else {
+                    print("   ❌ Missing 'topic' field")
+                    return nil
+                }
+
+                guard let sourceMessageId = meetingData["sourceMessageId"] as? String else {
+                    print("   ❌ Missing 'sourceMessageId' field")
+                    return nil
+                }
+
+                guard let type = meetingData["type"] as? String else {
+                    print("   ❌ Missing 'type' field")
+                    return nil
+                }
+
+                guard let durationMinutes = meetingData["durationMinutes"] as? Int else {
+                    print("   ❌ Missing 'durationMinutes' field")
+                    return nil
+                }
+
+                guard let urgency = meetingData["urgency"] as? String else {
+                    print("   ❌ Missing 'urgency' field")
+                    return nil
+                }
+
+                guard let participants = meetingData["participants"] as? [String] else {
+                    print("   ❌ Missing 'participants' field")
+                    return nil
+                }
+
+                let scheduledTime = meetingData["scheduledTime"] as? String
+
+                let dto = MeetingDTO(
+                    topic: topic,
+                    sourceMessageId: sourceMessageId,
+                    type: type,
+                    scheduledTime: scheduledTime,
+                    durationMinutes: durationMinutes,
+                    urgency: urgency,
+                    participants: participants
+                )
+                print("   ✅ Created DTO: topic=\(topic), type=\(type), urgency=\(urgency)")
+                return dto
+            }
+
+            print("✅ [CloudFunctions] Successfully parsed \(meetings?.count ?? 0) meeting DTOs")
+        } else {
+            print("⚠️  [CloudFunctions] meetings not found or wrong type in response")
+        }
+
         let response = SummaryResponse(
             success: success,
             summary: summary,
             keyPoints: keyPoints,
             priorityMessages: priorityMessages,
+            meetings: meetings,
             participants: participants,
             dateRange: dateRange,
             cached: cached,
@@ -282,7 +372,7 @@ class CloudFunctionsService {
             messageCount: messageCount
         )
 
-        print("📦 [CloudFunctions] Final SummaryResponse created with \(response.priorityMessages?.count ?? 0) priority messages")
+        print("📦 [CloudFunctions] Final SummaryResponse created with \(response.priorityMessages?.count ?? 0) priority messages and \(response.meetings?.count ?? 0) meetings")
 
         return response
     }
@@ -400,6 +490,7 @@ struct SummaryResponse {
     let summary: String
     let keyPoints: [String]?
     let priorityMessages: [PriorityMessageDTO]?
+    let meetings: [MeetingDTO]?
     let participants: [String]?
     let dateRange: String?
     let cached: Bool
@@ -413,6 +504,16 @@ struct PriorityMessageDTO {
     let text: String
     let sourceMessageId: String  // Matches domain entity and ActionItemDTO
     let priority: String
+}
+
+struct MeetingDTO {
+    let topic: String
+    let sourceMessageId: String
+    let type: String
+    let scheduledTime: String?
+    let durationMinutes: Int
+    let urgency: String
+    let participants: [String]
 }
 
 struct ActionItemsResponse {

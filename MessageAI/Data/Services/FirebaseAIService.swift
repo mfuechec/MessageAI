@@ -64,10 +64,38 @@ class FirebaseAIService: AIServiceProtocol {
 
         print("✅ [FirebaseAIService] Mapped \(priorityMessages.count) priority messages to domain entities")
 
+        // Map meetings from DTO to domain entities
+        print("🔍 [FirebaseAIService] Mapping meetings from DTO")
+        print("   Response meetings count: \(response.meetings?.count ?? 0)")
+
+        let meetings = (response.meetings ?? []).map { dto in
+            // Parse scheduled time if present
+            let scheduledTime: Date?
+            if let scheduledTimeStr = dto.scheduledTime,
+               let date = ISO8601DateFormatter().date(from: scheduledTimeStr) {
+                scheduledTime = date
+            } else {
+                scheduledTime = nil
+            }
+
+            return Meeting(
+                topic: dto.topic,
+                sourceMessageId: dto.sourceMessageId,
+                type: dto.type,
+                scheduledTime: scheduledTime,
+                durationMinutes: dto.durationMinutes,
+                urgency: dto.urgency,
+                participants: dto.participants
+            )
+        }
+
+        print("✅ [FirebaseAIService] Mapped \(meetings.count) meetings to domain entities")
+
         let summary = ThreadSummary(
             summary: response.summary,
             keyPoints: response.keyPoints ?? [],
             priorityMessages: priorityMessages,
+            meetings: meetings,
             participants: response.participants ?? [],
             dateRange: response.dateRange ?? "",
             generatedAt: generatedAt,

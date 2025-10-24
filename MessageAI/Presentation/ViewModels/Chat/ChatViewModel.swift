@@ -190,7 +190,11 @@ class ChatViewModel: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] messages in
                 guard let self = self else { return }
-                print("🔄 [ChatViewModel] Messages updated: \(messages.count) messages")
+
+                // Only log if message count changed significantly
+                if abs(messages.count - self.messages.count) > 0 {
+                    print("📬 [ChatViewModel] \(messages.count) messages received")
+                }
 
                 let sortedMessages = messages.sorted { $0.timestamp < $1.timestamp }
 
@@ -242,9 +246,12 @@ class ChatViewModel: ObservableObject {
                     let newIds = Set(mergedMessages.map { $0.id })
 
                     if oldIds == newIds {
-                        // Same IDs - do spot check on first 5 messages for edits/status changes
+                        // Same IDs - check BOTH ends of array (first 5 and last 5 messages)
+                        // Read receipts typically update on newest messages (at end of sorted array)
                         let sampleSize = min(5, self.messages.count)
-                        needsRefresh = (0..<sampleSize).contains { idx in
+
+                        // Check first 5 messages (oldest)
+                        let firstChanged = (0..<sampleSize).contains { idx in
                             let old = self.messages[idx]
                             let new = mergedMessages[idx]
                             return old.text != new.text ||
@@ -253,6 +260,19 @@ class ChatViewModel: ObservableObject {
                                    old.status != new.status ||
                                    old.readCount != new.readCount
                         }
+
+                        // Check last 5 messages (newest) - where read receipts typically change
+                        let lastChanged = (max(0, self.messages.count - sampleSize)..<self.messages.count).contains { idx in
+                            let old = self.messages[idx]
+                            let new = mergedMessages[idx]
+                            return old.text != new.text ||
+                                   old.isEdited != new.isEdited ||
+                                   old.isDeleted != new.isDeleted ||
+                                   old.status != new.status ||
+                                   old.readCount != new.readCount
+                        }
+
+                        needsRefresh = firstChanged || lastChanged
                     } else {
                         needsRefresh = true  // IDs changed
                     }
@@ -271,7 +291,6 @@ class ChatViewModel: ObservableObject {
                 }
 
                 if needsRefresh {
-                    print("📝 [ChatViewModel] Content changed, forcing UI refresh")
                     self.messagesNeedRefresh = true
                 }
 
@@ -909,13 +928,49 @@ class ChatViewModel: ObservableObject {
     /// Updates conversation last message after deleting the most recent message
     private func updateConversationAfterDelete() async throws {
         print("🔄 [updateConversationAfterDelete] Starting update for conversation: \(conversationId)")
-        print("  📝 Setting lastMessage to: [Message deleted]")
-        
+
+        // Find the most recent non-deleted message
+        let nonDeletedMessages = messages.filter { !$0.isDeleted }
+        let sortedMessages = nonDeletedMessages.sorted { $0.timestamp > $1.timestamp }
+
+        let newLastMessage: String
+        let newLastMessageId: String?
+        let newLastMessageSenderId: String?
+        let newLastMessageTimestamp: Date?
+
+        if let mostRecentMessage = sortedMessages.first {
+            // Use the most recent non-deleted message
+            newLastMessage = mostRecentMessage.text
+            newLastMessageId = mostRecentMessage.id
+            newLastMessageSenderId = mostRecentMessage.senderId
+            newLastMessageTimestamp = mostRecentMessage.timestamp
+            print("  📝 Found non-deleted message: \(mostRecentMessage.text.prefix(30))...")
+        } else {
+            // No messages left in conversation
+            newLastMessage = "No messages yet"
+            newLastMessageId = nil
+            newLastMessageSenderId = nil
+            newLastMessageTimestamp = nil
+            print("  📝 No messages left, using placeholder")
+        }
+
+        var updates: [String: Any] = [
+            "lastMessage": newLastMessage
+        ]
+
+        if let messageId = newLastMessageId {
+            updates["lastMessageId"] = messageId
+        }
+        if let senderId = newLastMessageSenderId {
+            updates["lastMessageSenderId"] = senderId
+        }
+        if let timestamp = newLastMessageTimestamp {
+            updates["lastMessageTimestamp"] = timestamp
+        }
+
         try await conversationRepository.updateConversation(
             id: conversationId,
-            updates: [
-                "lastMessage": "[Message deleted]"
-            ]
+            updates: updates
         )
         print("✅ [updateConversationAfterDelete] Firestore update completed")
         print("  💡 ConversationsListViewModel listener should fire now...")
@@ -1005,13 +1060,8 @@ class ChatViewModel: ObservableObject {
     func markMessagesAsRead() async {
         print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
         print("📖 [READ RECEIPTS] markMessagesAsRead() called")
-        print("   Current User ID: \(currentUserId)")
+        print("   Current User ID: \(currentUserId.prefix(10))...")
         print("   Total Messages: \(messages.count)")
-        
-        // Debug: Show all messages and their read status
-        for (index, msg) in messages.enumerated() {
-            print("   Message [\(index)]: id=\(msg.id.prefix(8))... sender=\(msg.senderId.prefix(8))... status=\(msg.status) readBy=\(msg.readBy.count) users")
-        }
         
         // Find messages not yet read by current user (AC #2.3 - filter logic)
         let unreadMessages = messages.filter { message in

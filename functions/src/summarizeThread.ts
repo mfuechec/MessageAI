@@ -149,6 +149,7 @@ export const summarizeThread = functions
               summary: cachedResult.summary,
               keyPoints: cachedResult.keyPoints || [],
               priorityMessages: cachedResult.priorityMessages || [],
+              meetings: cachedResult.meetings || [],
               participants: cachedResult.participants || [],
               dateRange: cachedResult.dateRange || "",
               generatedAt: cacheData!.generatedAt || admin.firestore.FieldValue.serverTimestamp(),
@@ -167,11 +168,27 @@ export const summarizeThread = functions
 
             console.log(`[summarizeThread] Updated Firestore with cached summary for user ${userId}`);
 
+            // Update conversation with priority metadata from cache
+            const cachedPriorityMessages = cachedResult.priorityMessages || [];
+            const hasUnreadPriority = cachedPriorityMessages.length > 0;
+            const priorityCount = cachedPriorityMessages.length;
+
+            await admin.firestore()
+              .collection("conversations")
+              .doc(conversationId)
+              .update({
+                hasUnreadPriority,
+                priorityCount,
+              });
+
+            console.log(`[summarizeThread] Updated conversation from cache: hasUnreadPriority=${hasUnreadPriority}, priorityCount=${priorityCount}`);
+
             return {
               success: true,
               summary: cachedResult.summary,
               keyPoints: cachedResult.keyPoints || [],
               priorityMessages: cachedResult.priorityMessages || [],
+              meetings: cachedResult.meetings || [],
               participants: cachedResult.participants || [],
               dateRange: cachedResult.dateRange || "",
               cached: true,
@@ -246,6 +263,7 @@ export const summarizeThread = functions
         summary: string;
         keyPoints: string[];
         priorityMessages: Array<{text: string; sourceMessageId: string; priority: string}>;
+        meetings: Array<{topic: string; sourceMessageId: string; type: string; scheduledTime: string | null; durationMinutes: number; urgency: string; participants: string[]}>;
         participants: string[];
         dateRange: string;
       };
@@ -254,7 +272,7 @@ export const summarizeThread = functions
         const completion = await openai.chat.completions.create({
           model: "gpt-4o-mini",
           temperature: 0.3, // Lower = more deterministic
-          max_tokens: 300,
+          max_tokens: 800,  // Increased for meetings + priority messages
           messages: [
             {
               role: "system",
@@ -279,6 +297,17 @@ You also identify priority messages that require immediate attention.`,
       "messageIndex": 0,
       "priority": "high"
     }
+  ],
+  "meetings": [
+    {
+      "topic": "Brief meeting topic (5-10 words)",
+      "messageIndex": 0,
+      "type": "detected",
+      "scheduledTime": null,
+      "durationMinutes": 30,
+      "urgency": "medium",
+      "participants": ["Alice", "Bob"]
+    }
   ]
 }
 
@@ -290,6 +319,16 @@ For priorityMessages:
 - DO NOT include sender name
 - Priority levels: "high" (urgent), "medium" (important), "low" (notable)
 - Limit to top 3 most critical messages
+
+For meetings:
+- Detect mentions of needing to schedule meetings OR already scheduled meetings
+- type: "detected" (needs scheduling) or "scheduled" (already scheduled)
+- scheduledTime: null for detected needs, ISO date string for scheduled meetings
+- topic: Brief description of meeting purpose (5-10 words)
+- durationMinutes: Mentioned duration or reasonable default (30, 60, etc.)
+- urgency: "high" (urgent need), "medium" (should schedule), "low" (optional)
+- participants: Names mentioned in context (from conversation participants)
+- Limit to top 3 most relevant meetings
 
 Condensing guidelines:
 - Keep core problem + business impact
@@ -306,31 +345,70 @@ ${formattedMessages.map((m, i) => `${i}. ${m.text}`).join("\n")}`,
         const responseText = completion.choices[0]?.message?.content || "{}";
 
         console.log("[summarizeThread] ========== OpenAI Response ==========");
-        console.log("[summarizeThread] Raw response text:", responseText);
+        console.log("[summarizeThread] Model used:", completion.model);
+        console.log("[summarizeThread] Finish reason:", completion.choices[0]?.finish_reason);
+        console.log("[summarizeThread] Tokens used:", completion.usage?.total_tokens, "(prompt:", completion.usage?.prompt_tokens, "completion:", completion.usage?.completion_tokens, ")");
+        console.log("[summarizeThread] Response length:", responseText.length, "characters");
+        console.log("[summarizeThread] Raw response text:");
+        console.log("---START---");
+        console.log(responseText);
+        console.log("---END---");
 
         // Parse OpenAI's JSON response
         let parsedResponse;
         try {
+          console.log("[summarizeThread] ========== JSON Parsing ==========");
+
           // Strip markdown code blocks if present (```json ... ```)
           let cleanedText = responseText.trim();
+          console.log("[summarizeThread] Step 1: Trimmed, length:", cleanedText.length);
+
           if (cleanedText.startsWith("```")) {
+            console.log("[summarizeThread] Step 2: Detected markdown code block, stripping...");
             // Remove opening ```json or ```
             cleanedText = cleanedText.replace(/^```(?:json)?\s*\n?/, "");
             // Remove closing ```
             cleanedText = cleanedText.replace(/\n?```\s*$/, "");
+            console.log("[summarizeThread] Step 2: After stripping markdown, length:", cleanedText.length);
+          } else {
+            console.log("[summarizeThread] Step 2: No markdown detected, skipping");
           }
 
-          console.log("[summarizeThread] Cleaned JSON text:", cleanedText);
+          // Remove trailing commas before closing braces/brackets (common GPT error)
+          const beforeCommaFix = cleanedText;
+          cleanedText = cleanedText.replace(/,(\s*[}\]])/g, "$1");
+          if (beforeCommaFix !== cleanedText) {
+            console.log("[summarizeThread] Step 3: Removed trailing commas");
+          } else {
+            console.log("[summarizeThread] Step 3: No trailing commas found");
+          }
+
+          console.log("[summarizeThread] Step 4: Final cleaned text (first 200 chars):", cleanedText.substring(0, 200));
+          console.log("[summarizeThread] Step 5: Attempting JSON.parse()...");
+
           parsedResponse = JSON.parse(cleanedText);
-          console.log("[summarizeThread] Parsed response object:", JSON.stringify(parsedResponse, null, 2));
-        } catch (parseError) {
+
+          console.log("[summarizeThread] ✅ Step 6: JSON parse SUCCESS!");
+          console.log("[summarizeThread] Parsed keys:", Object.keys(parsedResponse).join(", "));
+          console.log("[summarizeThread] - summary length:", parsedResponse.summary?.length || 0);
+          console.log("[summarizeThread] - keyPoints count:", parsedResponse.keyPoints?.length || 0);
+          console.log("[summarizeThread] - priorityMessages count:", parsedResponse.priorityMessages?.length || 0);
+          console.log("[summarizeThread] - meetings count:", parsedResponse.meetings?.length || 0);
+          console.log("[summarizeThread] Full parsed object:", JSON.stringify(parsedResponse, null, 2));
+        } catch (parseError: any) {
           // Fallback if OpenAI doesn't return valid JSON
-          console.warn("[summarizeThread] Failed to parse OpenAI response as JSON, using fallback");
-          console.warn("[summarizeThread] Raw response:", responseText);
+          console.error("[summarizeThread] ❌ JSON PARSE FAILED!");
+          console.error("[summarizeThread] Parse error:", parseError.message);
+          console.error("[summarizeThread] Raw response (first 500 chars):", responseText.substring(0, 500));
+          console.error("[summarizeThread] This usually means:");
+          console.error("  1. OpenAI response was truncated (check max_tokens)");
+          console.error("  2. Response has invalid JSON syntax (trailing commas, unescaped quotes)");
+          console.error("  3. Response wrapped in unexpected text");
           parsedResponse = {
             summary: responseText.substring(0, 300),
             keyPoints: [],
             priorityMessages: [],
+            meetings: [],  // Include meetings in fallback
           };
         }
 
@@ -366,10 +444,46 @@ ${formattedMessages.map((m, i) => `${i}. ${m.text}`).join("\n")}`,
         console.log("[summarizeThread] ========== Final Priority Messages ==========");
         console.log("[summarizeThread] Priority messages after filtering:", JSON.stringify(priorityMessages, null, 2));
 
+        // Map meetings with actual message IDs
+        console.log("[summarizeThread] ========== Meeting Mapping ==========");
+        console.log("[summarizeThread] Raw meetings from AI:", parsedResponse.meetings);
+
+        const meetings = (parsedResponse.meetings || [])
+          .map((meeting: any, idx: number) => {
+            const messageIndex = meeting.messageIndex;
+            console.log(`[summarizeThread] Meeting ${idx}:`, {
+              topic: meeting.topic,
+              messageIndex,
+              type: meeting.type,
+              isValidIndex: messageIndex >= 0 && messageIndex < formattedMessages.length,
+            });
+
+            if (messageIndex >= 0 && messageIndex < formattedMessages.length) {
+              const mapped = {
+                topic: meeting.topic,
+                sourceMessageId: formattedMessages[messageIndex].id,
+                type: meeting.type || "detected",
+                scheduledTime: meeting.scheduledTime,
+                durationMinutes: meeting.durationMinutes || 30,
+                urgency: meeting.urgency || "medium",
+                participants: meeting.participants || [],
+              };
+              console.log(`[summarizeThread] Mapped to:`, mapped);
+              return mapped;
+            }
+            console.log(`[summarizeThread] SKIPPED - invalid index ${messageIndex}`);
+            return null;
+          })
+          .filter((meeting: any) => meeting !== null);
+
+        console.log("[summarizeThread] ========== Final Meetings ==========");
+        console.log("[summarizeThread] Meetings after filtering:", JSON.stringify(meetings, null, 2));
+
         aiSummary = {
           summary: parsedResponse.summary || "Summary generated",
           keyPoints: parsedResponse.keyPoints || [],
           priorityMessages,
+          meetings,
           participants: participantNames,
           dateRange,
         };
@@ -422,6 +536,7 @@ ${formattedMessages.map((m, i) => `${i}. ${m.text}`).join("\n")}`,
         summary: aiSummary.summary,
         keyPoints: aiSummary.keyPoints,
         priorityMessages: aiSummary.priorityMessages,
+        meetings: aiSummary.meetings,
         participants: aiSummary.participants,
         dateRange: aiSummary.dateRange,
         generatedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -441,6 +556,24 @@ ${formattedMessages.map((m, i) => `${i}. ${m.text}`).join("\n")}`,
       console.log(`[summarizeThread] Stored summary in Firestore: users/${userId}/conversation_summaries/${conversationId}`);
 
       // ========================================
+      // 10.6. UPDATE CONVERSATION WITH PRIORITY METADATA
+      // ========================================
+      // Update conversation document with priority information for conversation list badges
+      const hasUnreadPriority = aiSummary.priorityMessages.length > 0;
+      const priorityCount = aiSummary.priorityMessages.length;
+
+      await admin.firestore()
+        .collection("conversations")
+        .doc(conversationId)
+        .update({
+          hasUnreadPriority,
+          priorityCount,
+          lastAISummaryAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+      console.log(`[summarizeThread] Updated conversation with priority metadata: hasUnreadPriority=${hasUnreadPriority}, priorityCount=${priorityCount}`);
+
+      // ========================================
       // 11. RETURN STRUCTURED RESPONSE
       // ========================================
       const response = {
@@ -448,6 +581,7 @@ ${formattedMessages.map((m, i) => `${i}. ${m.text}`).join("\n")}`,
         summary: aiSummary.summary,
         keyPoints: aiSummary.keyPoints,
         priorityMessages: aiSummary.priorityMessages,
+        meetings: aiSummary.meetings,
         participants: aiSummary.participants,
         dateRange: aiSummary.dateRange,
         cached: false,
