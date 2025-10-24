@@ -11,21 +11,36 @@ export {extractActionItems} from "./extractActionItems";
 export {generateSmartSearchResults} from "./generateSmartSearchResults";
 
 // ========================================
+// AI NOTIFICATION ANALYSIS (Story 6.2 & 6.3)
+// ========================================
+export {analyzeForNotification} from "./analyzeForNotification";
+
+// ========================================
+// NOTIFICATION FEEDBACK & LEARNING (Story 6.5)
+// ========================================
+export {submitNotificationFeedback} from "./submitNotificationFeedback";
+export {generateNotificationAnalytics} from "./generateNotificationAnalytics";
+export {updateUserNotificationProfile} from "./updateUserNotificationProfile";
+
+// ========================================
 // TESTING UTILITIES (DEBUG ONLY)
 // ========================================
 export {populateTestMessages} from "./populateTestMessages";
+export {testOpenAI} from "./testOpenAI";
 
 // ========================================
 // MESSAGING CLOUD FUNCTIONS
 // ========================================
 
 /**
- * Cloud Function: Send push notification when new message is created
+ * DEPRECATED: Old notification function (replaced by AI-powered system in Epic 6)
  *
- * Triggers on: /messages/{messageId} document creation
- * Action: Sends FCM push notification to all conversation participants
- * except sender
+ * This function sent notifications for EVERY message without any filtering.
+ * Now replaced by analyzeForNotification which uses AI to decide when to notify.
+ *
+ * Disabled to prevent duplicate notifications alongside the smart notification system.
  */
+/*
 export const sendMessageNotification = functions.firestore
   .document("messages/{messageId}")
   .onCreate(async (snapshot, context) => {
@@ -165,6 +180,7 @@ export const sendMessageNotification = functions.firestore
       throw error;
     }
   });
+*/
 
 /**
  * Cloud Function: Clean up stale typing indicators

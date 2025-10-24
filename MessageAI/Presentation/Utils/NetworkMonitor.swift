@@ -8,6 +8,7 @@
 import Network
 import Combine
 import FirebaseFirestore
+import FirebaseAuth
 
 /// Protocol for network connectivity monitoring
 ///
@@ -27,6 +28,10 @@ protocol NetworkMonitorProtocol: ObservableObject {
 
     /// Effective connectivity state (source of truth combining OS and Firestore)
     var isEffectivelyConnected: Bool { get }
+
+    /// Publisher for effective connectivity changes (source of truth)
+    /// This is the recommended publisher to use for UI state management
+    var isEffectivelyConnectedPublisher: Published<Bool>.Publisher { get }
 }
 
 /// Monitors network connectivity status using Apple's Network framework and Firestore metadata
@@ -64,13 +69,16 @@ class NetworkMonitor: NetworkMonitorProtocol {
     /// Whether Firestore is connected and syncing
     @Published var isFirestoreConnected: Bool = true {
         didSet {
-            print("🔥 [NetworkMonitor] Firestore isConnected changed: \(oldValue) -> \(isFirestoreConnected)")
-            if !oldValue && isFirestoreConnected {
-                print("🔥 [NetworkMonitor] ✅ FIRESTORE RECONNECTED - was offline, now online")
-            } else if oldValue && !isFirestoreConnected {
-                print("🔥 [NetworkMonitor] ❌ FIRESTORE DISCONNECTED - was online, now offline")
+            // Only log real transitions after we've received first snapshot
+            if hasReceivedFirstSnapshot {
+                print("🔥 [NetworkMonitor] Firestore isConnected changed: \(oldValue) -> \(isFirestoreConnected)")
+                if !oldValue && isFirestoreConnected {
+                    print("🔥 [NetworkMonitor] ✅ FIRESTORE RECONNECTED - was offline, now online")
+                } else if oldValue && !isFirestoreConnected {
+                    print("🔥 [NetworkMonitor] ❌ FIRESTORE DISCONNECTED - was online, now offline")
+                }
+                checkForConflicts()
             }
-            checkForConflicts()
         }
     }
 
@@ -87,6 +95,13 @@ class NetworkMonitor: NetworkMonitorProtocol {
         return isFirestoreConnected
     }
 
+    /// Publisher for effective connectivity changes (source of truth)
+    /// This is the recommended publisher to use for UI state management
+    /// Returns the Firestore connectivity publisher as the source of truth
+    var isEffectivelyConnectedPublisher: Published<Bool>.Publisher {
+        $isFirestoreConnected
+    }
+
     /// Type of network connection (WiFi, cellular, etc.)
     @Published var connectionType: NWInterface.InterfaceType?
 
@@ -100,6 +115,13 @@ class NetworkMonitor: NetworkMonitorProtocol {
 
     /// Firestore snapshot listener for metadata changes
     private var firestoreListener: ListenerRegistration?
+
+    /// Track if we've received the first Firestore snapshot (to avoid false offline banner on launch)
+    private var hasReceivedFirstSnapshot = false
+
+    /// Grace period after app launch (prevents false offline banner during initial cache loads)
+    private var appLaunchTime = Date()
+    private let startupGracePeriodSeconds: TimeInterval = 3.0
 
     // MARK: - Initialization
 
@@ -178,9 +200,14 @@ class NetworkMonitor: NetworkMonitorProtocol {
         let db = Firestore.firestore()
 
         // Listen to a lightweight query with metadata changes
-        // We use a simple query to minimize data transfer
-        firestoreListener = db.collection("_connection_test")
-            .limit(to: 1)
+        // Use authenticated user's document to test connection (always has read permission)
+        guard let userId = Auth.auth().currentUser?.uid else {
+            print("🔥 [NetworkMonitor] ⚠️ No authenticated user - cannot set up connection listener")
+            return
+        }
+
+        firestoreListener = db.collection("users")
+            .document(userId)
             .addSnapshotListener(includeMetadataChanges: true) { [weak self] snapshot, error in
 
                 guard let self = self else { return }
@@ -201,7 +228,7 @@ class NetworkMonitor: NetworkMonitorProtocol {
                 let metadata = snapshot.metadata
 
                 // Log detailed metadata for debugging
-                print("🔥 [NetworkMonitor] Firestore metadata update:")
+                print("🔥 [NetworkMonitor] Firestore metadata update (first: \(!self.hasReceivedFirstSnapshot)):")
                 print("   - hasPendingWrites: \(metadata.hasPendingWrites)")
                 print("   - isFromCache: \(metadata.isFromCache)")
 
@@ -212,6 +239,29 @@ class NetworkMonitor: NetworkMonitorProtocol {
                 print("🔥 [NetworkMonitor] Firestore connection state: \(isConnected ? "ONLINE ✅" : "OFFLINE ❌")")
 
                 Task { @MainActor in
+                    // Handle first snapshot
+                    if !self.hasReceivedFirstSnapshot {
+                        self.hasReceivedFirstSnapshot = true
+                        print("🔥 [NetworkMonitor] First snapshot received (fromCache: \(metadata.isFromCache))")
+                    }
+
+                    // Grace period: Ignore offline states during app startup (prevents false banner from cached snapshots)
+                    let timeSinceLaunch = Date().timeIntervalSince(self.appLaunchTime)
+                    if timeSinceLaunch < self.startupGracePeriodSeconds {
+                        if isConnected {
+                            // Online state: update immediately (even during grace period)
+                            print("🔥 [NetworkMonitor] ⏳ Within grace period (\(String(format: "%.1f", timeSinceLaunch))s) - online state, updating immediately")
+                            self.isFirestoreConnected = true
+                        } else {
+                            // Offline state: ignore during grace period (likely from cache)
+                            print("🔥 [NetworkMonitor] ⏳ Within grace period (\(String(format: "%.1f", timeSinceLaunch))s) - ignoring offline state (likely cached)")
+                            // Don't update - stay at default true
+                        }
+                        return
+                    }
+
+                    // After grace period: update normally
+                    print("🔥 [NetworkMonitor] ⏱️ After grace period - updating to \(isConnected ? "ONLINE ✅" : "OFFLINE ❌")")
                     self.isFirestoreConnected = isConnected
                 }
             }

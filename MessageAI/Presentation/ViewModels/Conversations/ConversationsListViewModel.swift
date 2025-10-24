@@ -3,6 +3,21 @@ import Combine
 import UIKit
 import UserNotifications
 
+/// In-app smart notification to display
+struct InAppSmartNotification: Identifiable, Equatable {
+    let id = UUID()
+    let conversationId: String
+    let conversationName: String
+    let notificationText: String
+    let priority: NotificationPriority
+    let aiReasoning: String
+    let timestamp: Date
+
+    static func == (lhs: InAppSmartNotification, rhs: InAppSmartNotification) -> Bool {
+        lhs.id == rhs.id
+    }
+}
+
 /// ViewModel for managing conversations list display and real-time updates
 @MainActor
 class ConversationsListViewModel: ObservableObject {
@@ -23,13 +38,19 @@ class ConversationsListViewModel: ObservableObject {
     @Published var isLoadingMore: Bool = false
     @Published var hasMoreConversations: Bool = true
 
+    // Epic 6: Smart in-app notifications
+    @Published var smartNotification: InAppSmartNotification? = nil
+    @Published var currentlyViewingConversationId: String? = nil
+
     // MARK: - Private Properties
-    
+
     private let conversationRepository: ConversationRepositoryProtocol
     private let userRepository: UserRepositoryProtocol
+    private let notificationAnalysisRepository: NotificationAnalysisRepositoryProtocol
     private let currentUserId: String
     private let networkMonitor: any NetworkMonitorProtocol
     private var cancellables = Set<AnyCancellable>()
+    private var lastMessageIds: [String: String] = [:] // conversationId -> lastMessageId
     
     #if DEBUG
     private var notificationSimulator: NotificationSimulator?
@@ -40,12 +61,14 @@ class ConversationsListViewModel: ObservableObject {
     init(
         conversationRepository: ConversationRepositoryProtocol,
         userRepository: UserRepositoryProtocol,
+        notificationAnalysisRepository: NotificationAnalysisRepositoryProtocol,
         currentUserId: String,
         networkMonitor: any NetworkMonitorProtocol = NetworkMonitor(),
         messageRepository: MessageRepositoryProtocol? = nil
     ) {
         self.conversationRepository = conversationRepository
         self.userRepository = userRepository
+        self.notificationAnalysisRepository = notificationAnalysisRepository
         self.currentUserId = currentUserId
         self.networkMonitor = networkMonitor
 
@@ -57,17 +80,19 @@ class ConversationsListViewModel: ObservableObject {
         observeNetworkStatus()
 
         #if DEBUG
-        // Enable notification simulation in DEBUG builds (for simulator testing)
-        if let messageRepo = messageRepository {
-            notificationSimulator = NotificationSimulator(
-                conversationRepository: conversationRepository,
-                messageRepository: messageRepo,
-                userRepository: userRepository,
-                currentUserId: currentUserId
-            )
-            notificationSimulator?.start()
-            print("🔔 Notification simulator enabled (messages will trigger notifications)")
-        }
+        // DISABLED: Old notification simulator (replaced by smart in-app notifications)
+        // Now using AI-powered smart notification banners instead
+        // if let messageRepo = messageRepository {
+        //     notificationSimulator = NotificationSimulator(
+        //         conversationRepository: conversationRepository,
+        //         messageRepository: messageRepo,
+        //         userRepository: userRepository,
+        //         currentUserId: currentUserId
+        //     )
+        //     notificationSimulator?.start()
+        //     print("🔔 Notification simulator enabled (messages will trigger notifications)")
+        // }
+        print("🔔 Smart in-app notifications enabled (AI-powered)")
         #endif
     }
     
@@ -85,7 +110,7 @@ class ConversationsListViewModel: ObservableObject {
                 await MainActor.run {
                     if !cachedConversations.isEmpty {
                         print("💾 [ConversationsListViewModel] Loaded \(cachedConversations.count) conversations from cache")
-                        self.conversations = sortConversations(cachedConversations)
+                        self.setConversations(cachedConversations, source: "loadCachedConversations")
                         self.updateBadgeCount()
                         self.loadParticipantUsers(from: cachedConversations)
                     } else {
@@ -112,14 +137,44 @@ class ConversationsListViewModel: ObservableObject {
                 let sortedConversations = self.sortConversations(conversations)
                 
                 // Log any changed conversations (for debugging)
+                // Also detect new messages for smart in-app notifications
                 for newConv in sortedConversations {
                     if let oldConv = self.conversations.first(where: { $0.id == newConv.id }),
                        oldConv != newConv {
                         print("📝 [ConversationsListViewModel] Conversation \(newConv.id) changed: '\(oldConv.lastMessage ?? "nil")' → '\(newConv.lastMessage ?? "nil")'")
+
+                        // Check if there's a new message (lastMessageId changed)
+                        if let newMessageId = newConv.lastMessageId,
+                           newMessageId != self.lastMessageIds[newConv.id],
+                           let senderId = newConv.lastMessageSenderId {
+
+                            // Update tracking
+                            self.lastMessageIds[newConv.id] = newMessageId
+
+                            // DEBUG: Allow notifications for own messages (for testing on single device)
+                            #if DEBUG
+                            print("🔍 [Smart Notification] New message detected from \(senderId == self.currentUserId ? "SELF" : "OTHER")")
+                            let shouldAnalyze = true  // DEBUG: Always analyze (even own messages)
+                            #else
+                            let shouldAnalyze = (senderId != self.currentUserId)  // PRODUCTION: Only others' messages
+                            #endif
+
+                            // Trigger smart notification analysis (Epic 6)
+                            if shouldAnalyze {
+                                self.analyzeForInAppNotification(conversation: newConv)
+                            }
+                        }
+                    } else if self.conversations.first(where: { $0.id == newConv.id }) == nil {
+                        // Brand new conversation - track its message ID
+                        if let messageId = newConv.lastMessageId {
+                            self.lastMessageIds[newConv.id] = messageId
+                        }
                     }
                 }
-                
-                self.conversations = sortedConversations
+
+                // Use centralized method to set conversations (ensures deduplication)
+                print("📥 [observeConversations] Setting \(sortedConversations.count) conversations")
+                self.setConversations(sortedConversations, source: "observeConversations")
                 self.updateBadgeCount()  // Update app badge with total unread count
                 self.loadParticipantUsers(from: conversations)
             }
@@ -132,6 +187,50 @@ class ConversationsListViewModel: ObservableObject {
             let timestamp2 = conv2.lastMessageTimestamp ?? conv2.createdAt
             return timestamp1 > timestamp2
         }
+    }
+
+    /// CRITICAL: Single source of truth for setting conversations
+    /// Always deduplicates and logs source for debugging
+    private func setConversations(_ newConversations: [Conversation], source: String) {
+        // Log all conversation IDs being set
+        let ids = newConversations.map { $0.id }
+        print("🔍 [\(source)] Setting \(newConversations.count) conversations: \(ids)")
+
+        // Detect duplicates BEFORE deduplication
+        let uniqueIds = Set(ids)
+        if uniqueIds.count != ids.count {
+            let duplicateCount = ids.count - uniqueIds.count
+            print("⚠️ [\(source)] FOUND \(duplicateCount) DUPLICATE(S) in input array!")
+
+            // Find which IDs are duplicated
+            var seenIds = Set<String>()
+            var duplicateIds = Set<String>()
+            for id in ids {
+                if seenIds.contains(id) {
+                    duplicateIds.insert(id)
+                }
+                seenIds.insert(id)
+            }
+            print("⚠️ [\(source)] Duplicate IDs: \(Array(duplicateIds))")
+        }
+
+        // ALWAYS deduplicate using Dictionary (last occurrence wins)
+        var uniqueConversations: [String: Conversation] = [:]
+        for conv in newConversations {
+            uniqueConversations[conv.id] = conv
+        }
+
+        // Sort by timestamp
+        let deduplicated = Array(uniqueConversations.values).sorted { conv1, conv2 in
+            let timestamp1 = conv1.lastMessageTimestamp ?? conv1.createdAt
+            let timestamp2 = conv2.lastMessageTimestamp ?? conv2.createdAt
+            return timestamp1 > timestamp2
+        }
+
+        print("✅ [\(source)] After deduplication: \(deduplicated.count) unique conversations")
+
+        // Set the array
+        self.conversations = deduplicated
     }
     
     /// Updates the app icon badge count with total unread messages
@@ -176,13 +275,23 @@ class ConversationsListViewModel: ObservableObject {
     }
     
     /// Helper to get participants array for a conversation from users dictionary
+    /// For one-on-one conversations, excludes the current user (returns only the other participant)
+    /// For group conversations, returns all participants
     func getParticipants(for conversation: Conversation) -> [User] {
-        return conversation.participantIds.compactMap { users[$0] }
+        let allParticipants = conversation.participantIds.compactMap { users[$0] }
+
+        // For one-on-one conversations, filter out current user (we only want to show the OTHER participant)
+        if !conversation.isGroup {
+            return allParticipants.filter { $0.id != currentUserId }
+        }
+
+        // For group conversations, return all participants
+        return allParticipants
     }
     
     private func observeNetworkStatus() {
         print("🚨 [ConversationsListViewModel] Setting up network status observer")
-        networkMonitor.isConnectedPublisher
+        networkMonitor.isEffectivelyConnectedPublisher
             .receive(on: DispatchQueue.main)
             .sink { [weak self] isConnected in
                 print("🚨 [ConversationsListViewModel] Received network status update: isConnected=\(isConnected)")
@@ -292,8 +401,9 @@ class ConversationsListViewModel: ObservableObject {
                 hasMoreConversations = false
             }
 
-            // Append older conversations to existing list
-            conversations.append(contentsOf: olderConversations)
+            // Merge with existing conversations (using centralized method for deduplication)
+            let mergedConversations = conversations + olderConversations
+            setConversations(mergedConversations, source: "loadMoreConversations")
 
             // Load participant users for new conversations
             loadParticipantUsers(from: olderConversations)
@@ -304,6 +414,78 @@ class ConversationsListViewModel: ObservableObject {
             print("❌ Failed to load more conversations: \(error.localizedDescription)")
             errorMessage = "Failed to load more conversations: \(error.localizedDescription)"
         }
+    }
+
+    // MARK: - Smart In-App Notifications (Epic 6)
+
+    /// Analyze conversation for smart in-app notification
+    ///
+    /// Calls AI analysis to determine if user should be notified about new message.
+    /// Only shows notification if:
+    /// - AI decides shouldNotify = true
+    /// - User is NOT currently viewing this conversation
+    /// - Priority is medium or high
+    private func analyzeForInAppNotification(conversation: Conversation) {
+        // Don't show notification if user is currently viewing this conversation
+        if currentlyViewingConversationId == conversation.id {
+            print("🔕 [Smart Notification] Suppressing - user viewing conversation \(conversation.id)")
+            return
+        }
+
+        print("🤖 [Smart Notification] Analyzing conversation \(conversation.id) for in-app notification...")
+
+        Task {
+            do {
+                let decision = try await notificationAnalysisRepository.analyzeConversationForNotification(
+                    conversationId: conversation.id,
+                    userId: currentUserId
+                )
+
+                await MainActor.run {
+                    if decision.shouldNotify {
+                        print("✅ [Smart Notification] AI says NOTIFY - Priority: \(decision.priority)")
+                        print("   Reason: \(decision.reason)")
+
+                        // Get conversation display name
+                        let participants = getParticipants(for: conversation)
+                        let displayName = conversation.displayName(for: currentUserId, users: participants)
+
+                        // Create in-app notification
+                        let notification = InAppSmartNotification(
+                            conversationId: conversation.id,
+                            conversationName: displayName,
+                            notificationText: decision.notificationText ?? conversation.lastMessage ?? "New message",
+                            priority: decision.priority,
+                            aiReasoning: decision.reason,
+                            timestamp: Date()
+                        )
+
+                        // Show notification (will trigger UI update)
+                        self.smartNotification = notification
+
+                        // Auto-dismiss after 5 seconds
+                        Task {
+                            try? await Task.sleep(nanoseconds: 5_000_000_000) // 5 seconds
+                            await MainActor.run {
+                                if self.smartNotification?.id == notification.id {
+                                    self.smartNotification = nil
+                                }
+                            }
+                        }
+                    } else {
+                        print("🔕 [Smart Notification] AI says DON'T NOTIFY")
+                        print("   Reason: \(decision.reason)")
+                    }
+                }
+            } catch {
+                print("❌ [Smart Notification] Analysis failed: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    /// Dismiss current smart notification
+    func dismissSmartNotification() {
+        smartNotification = nil
     }
 }
 

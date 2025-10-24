@@ -9,6 +9,7 @@
 import SwiftUI
 import FirebaseMessaging
 import FirebaseAuth
+import FirebaseFunctions
 import UserNotifications
 import Kingfisher
 
@@ -26,24 +27,79 @@ class AppDelegate: NSObject, UIApplicationDelegate, MessagingDelegate, UNUserNot
 
     // MARK: - Dependencies (Story 2.10 QA Fix - Use repository pattern)
     var userRepository: UserRepositoryProtocol?
+    var messageRepository: MessageRepositoryProtocol?
 
     func application(
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil
     ) -> Bool {
-        
+
         // Set up notification handling
         UNUserNotificationCenter.current().delegate = self
-        
+
         // Set up FCM token handling
         Messaging.messaging().delegate = self
-        
+
+        // Setup interactive notification actions (Story 6.5 & 6.6)
+        setupNotificationActions()
+
         // Register for remote notifications (triggers APNs token request)
         application.registerForRemoteNotifications()
-        
+
         print("✅ AppDelegate initialized - Push notification setup complete")
-        
+
         return true
+    }
+
+    // MARK: - Notification Actions Setup (Story 6.5 & 6.6)
+
+    /// Setup interactive notification actions
+    ///
+    /// Actions include:
+    /// - Helpful/Not Helpful feedback (Story 6.5)
+    /// - Quick reply (Story 6.6)
+    /// - Mark as read (Story 6.6)
+    private func setupNotificationActions() {
+        // Feedback actions (Story 6.5)
+        let helpfulAction = UNNotificationAction(
+            identifier: "HELPFUL_ACTION",
+            title: "👍 Helpful",
+            options: []
+        )
+
+        let notHelpfulAction = UNNotificationAction(
+            identifier: "NOT_HELPFUL_ACTION",
+            title: "👎 Not Helpful",
+            options: []
+        )
+
+        // Quick reply action (Story 6.6)
+        let replyAction = UNTextInputNotificationAction(
+            identifier: "REPLY_ACTION",
+            title: "Reply",
+            options: [],
+            textInputButtonTitle: "Send",
+            textInputPlaceholder: "Type a message..."
+        )
+
+        // Mark as read action (Story 6.6)
+        let markReadAction = UNNotificationAction(
+            identifier: "MARK_READ_ACTION",
+            title: "Mark Read",
+            options: [.destructive]
+        )
+
+        // Create category with all actions
+        let smartNotificationCategory = UNNotificationCategory(
+            identifier: "SMART_NOTIFICATION_CATEGORY",
+            actions: [replyAction, markReadAction, helpfulAction, notHelpfulAction],
+            intentIdentifiers: [],
+            options: [.customDismissAction]
+        )
+
+        UNUserNotificationCenter.current().setNotificationCategories([smartNotificationCategory])
+
+        print("✅ Interactive notification actions configured")
     }
     
     // MARK: - FCM Token Handling
@@ -152,35 +208,196 @@ class AppDelegate: NSObject, UIApplicationDelegate, MessagingDelegate, UNUserNot
         completionHandler([.banner, .sound, .badge])
     }
     
-    // MARK: - Notification Tap Handling
-    
-    /// Called when user taps notification (foreground or background)
+    // MARK: - Notification Action Handling (Story 6.5 & 6.6)
+
+    /// Called when user interacts with notification (tap or action button)
     ///
-    /// Extracts conversationId from notification payload and posts
-    /// NotificationCenter event for deep linking to conversation.
+    /// Handles:
+    /// - Notification tap (default action) → Deep link to conversation
+    /// - Helpful/Not Helpful feedback buttons → Submit feedback
+    /// - Quick reply → Send message directly
+    /// - Mark as read → Update message read status
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
         let userInfo = response.notification.request.content.userInfo
-        
-        print("🔔 Notification tapped:")
-        print("   User Info: \(userInfo)")
-        
-        // Deep link to conversation
-        if let conversationId = userInfo["conversationId"] as? String {
-            print("   📲 Opening conversation: \(conversationId)")
-            
-            // Post notification for ConversationsListView to handle
-            NotificationCenter.default.post(
-                name: NSNotification.Name("OpenConversation"),
-                object: nil,
-                userInfo: ["conversationId": conversationId]
-            )
+        let conversationId = userInfo["conversationId"] as? String ?? ""
+        let messageId = userInfo["messageId"] as? String ?? ""
+
+        print("🔔 Notification interaction:")
+        print("   Action: \(response.actionIdentifier)")
+        print("   ConversationId: \(conversationId)")
+        print("   MessageId: \(messageId)")
+
+        switch response.actionIdentifier {
+        case "REPLY_ACTION":
+            // Quick reply action (Story 6.6)
+            guard let textResponse = response as? UNTextInputNotificationResponse else {
+                print("❌ Invalid text input response")
+                completionHandler()
+                return
+            }
+            handleQuickReply(conversationId: conversationId, text: textResponse.userText)
+
+        case "MARK_READ_ACTION":
+            // Mark as read action (Story 6.6)
+            handleMarkAsRead(conversationId: conversationId, messageId: messageId)
+
+        case "HELPFUL_ACTION":
+            // Helpful feedback (Story 6.5)
+            submitFeedback(conversationId: conversationId, messageId: messageId, feedback: "helpful")
+
+        case "NOT_HELPFUL_ACTION":
+            // Not helpful feedback (Story 6.5)
+            submitFeedback(conversationId: conversationId, messageId: messageId, feedback: "not_helpful")
+
+        case UNNotificationDefaultActionIdentifier:
+            // User tapped notification body - deep link to conversation
+            handleDeepLink(conversationId: conversationId, messageId: messageId)
+
+        default:
+            print("⚠️ Unknown action identifier: \(response.actionIdentifier)")
         }
-        
+
         completionHandler()
+    }
+
+    // MARK: - Action Handlers
+
+    /// Handle quick reply from notification (Story 6.6)
+    private func handleQuickReply(conversationId: String, text: String) {
+        Task {
+            guard let userId = Auth.auth().currentUser?.uid else {
+                print("❌ No authenticated user for quick reply")
+                return
+            }
+
+            guard let repository = messageRepository else {
+                print("❌ MessageRepository not injected")
+                return
+            }
+
+            do {
+                let message = Message(
+                    id: UUID().uuidString,
+                    conversationId: conversationId,
+                    senderId: userId,
+                    text: text,
+                    timestamp: Date(),
+                    status: .sending,
+                    statusUpdatedAt: Date(),
+                    attachments: [],
+                    editHistory: nil,
+                    editCount: 0,
+                    isEdited: false,
+                    isDeleted: false,
+                    deletedAt: nil,
+                    deletedBy: nil,
+                    readBy: [userId],
+                    readCount: 1,
+                    isPriority: false,
+                    priorityReason: nil,
+                    schemaVersion: 1
+                )
+
+                try await repository.sendMessage(message)
+                print("✅ Quick reply sent successfully")
+
+                // Show confirmation notification
+                await showNotification(title: "Message Sent", body: "Your reply was sent successfully")
+
+            } catch {
+                print("❌ Failed to send quick reply: \(error)")
+
+                // Show error notification and open app
+                await showNotification(title: "Send Failed", body: "Tap to open app and try again")
+                handleDeepLink(conversationId: conversationId, messageId: nil)
+            }
+        }
+    }
+
+    /// Handle mark as read action (Story 6.6)
+    private func handleMarkAsRead(conversationId: String, messageId: String) {
+        Task {
+            guard let userId = Auth.auth().currentUser?.uid else {
+                print("❌ No authenticated user for mark as read")
+                return
+            }
+
+            guard let repository = messageRepository else {
+                print("❌ MessageRepository not injected")
+                return
+            }
+
+            do {
+                try await repository.markMessagesAsRead(messageIds: [messageId], userId: userId)
+                print("✅ Message marked as read")
+
+                // Remove notification from notification center
+                UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [messageId])
+
+            } catch {
+                print("❌ Failed to mark as read: \(error)")
+            }
+        }
+    }
+
+    /// Submit feedback for notification decision (Story 6.5)
+    private func submitFeedback(conversationId: String, messageId: String, feedback: String) {
+        Task {
+            guard Auth.auth().currentUser != nil else {
+                print("❌ No authenticated user for feedback")
+                return
+            }
+
+            // Call Cloud Function: submitNotificationFeedback
+            // Note: Cloud Function gets userId from auth context
+            let functions = FirebaseFunctions.Functions.functions()
+            let data: [String: Any] = [
+                "conversationId": conversationId,
+                "messageId": messageId,
+                "feedback": feedback
+            ]
+
+            do {
+                _ = try await functions.httpsCallable("submitNotificationFeedback").call(data)
+                print("✅ Feedback submitted: \(feedback)")
+            } catch {
+                print("❌ Failed to submit feedback: \(error)")
+            }
+        }
+    }
+
+    /// Handle deep link to conversation (Story 6.6)
+    private func handleDeepLink(conversationId: String, messageId: String?) {
+        print("📲 Deep linking to conversation: \(conversationId), message: \(messageId ?? "none")")
+
+        // Post notification for DeepLinkHandler to handle
+        NotificationCenter.default.post(
+            name: NSNotification.Name("OpenConversation"),
+            object: nil,
+            userInfo: [
+                "conversationId": conversationId,
+                "messageId": messageId ?? ""
+            ]
+        )
+    }
+
+    /// Show local notification
+    private func showNotification(title: String, body: String) async {
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+
+        let request = UNNotificationRequest(
+            identifier: UUID().uuidString,
+            content: content,
+            trigger: nil
+        )
+
+        try? await UNUserNotificationCenter.current().add(request)
     }
     
     // MARK: - APNs Token Handling (for debugging)
@@ -232,6 +449,9 @@ struct MessageAIApp: App {
 
         // Story 2.10 QA Fix: Inject UserRepository into AppDelegate
         appDelegate.userRepository = DIContainer.shared.userRepository
+
+        // Story 6.5 & 6.6: Inject MessageRepository for notification actions
+        appDelegate.messageRepository = DIContainer.shared.messageRepository
     }
 
     /// Configure Kingfisher image cache limits

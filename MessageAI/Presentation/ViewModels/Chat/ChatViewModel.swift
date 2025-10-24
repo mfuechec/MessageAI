@@ -96,6 +96,9 @@ class ChatViewModel: ObservableObject {
 
     // Scroll to message state (Story 3.2 - Priority Message Navigation)
     @Published var scrollToMessageId: String? = nil
+
+    // Highlight message state (Story 6.6 - Deep Link Message Highlighting)
+    @Published var highlightedMessageId: String? = nil
     
     // MARK: - Public Properties
 
@@ -322,8 +325,9 @@ class ChatViewModel: ObservableObject {
     ///
     /// Single subscription pattern eliminates race conditions.
     /// Detects offline → online transitions and shows connectivity toast.
+    /// Uses isEffectivelyConnectedPublisher (Firestore-based) for accurate backend connectivity.
     private func setupNetworkMonitoring() {
-        networkMonitor.isConnectedPublisher
+        networkMonitor.isEffectivelyConnectedPublisher
             .removeDuplicates()  // Filter duplicate events
             .receive(on: DispatchQueue.main)
             .sink { [weak self] isConnected in
@@ -1180,7 +1184,7 @@ class ChatViewModel: ObservableObject {
                 return "Authentication error. Please sign in again."
             case .encodingError, .decodingError:
                 return "Message format error. Please try again."
-            case .conversationNotFound, .userNotFound, .messageNotFound:
+            case .conversationNotFound, .userNotFound, .messageNotFound, .notFound:
                 return "Conversation not found. Please refresh and try again."
             case .invalidInput:
                 return "Invalid message. Please try again."

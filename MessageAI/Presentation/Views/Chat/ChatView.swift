@@ -55,15 +55,22 @@ struct ChatView: View {
                     )
                 }
 
-                MessageKitWrapper(
-                    viewModel: viewModel,
-                    conversationTitle: $conversationTitle,
-                    viewController: $messageKitViewController
-                )
+                // MessageKit with overlaid typing indicator
+                ZStack(alignment: .bottomLeading) {
+                    MessageKitWrapper(
+                        viewModel: viewModel,
+                        conversationTitle: $conversationTitle,
+                        viewController: $messageKitViewController
+                    )
                     .edgesIgnoringSafeArea(.bottom)
 
-                // Typing indicator (shows above input bar)
-                TypingIndicatorView(typingUserNames: viewModel.typingUserNames)
+                    // Typing indicator overlaid on top (doesn't affect MessageKit layout)
+                    // Positioned above the input bar
+                    if !viewModel.typingUserNames.isEmpty {
+                        TypingIndicatorView(typingUserNames: viewModel.typingUserNames)
+                            .padding(.bottom, 60) // Position above input bar (input bar is ~50pt tall)
+                    }
+                }
             }
 
             // Only show loading overlay if we DON'T have initial data

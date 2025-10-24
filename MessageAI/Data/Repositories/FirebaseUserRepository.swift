@@ -194,16 +194,28 @@ final class FirebaseUserRepository: UserRepositoryProtocol {
 
         do {
             if let conversationId = conversationId {
-                // Set conversation ID
+                // Set conversation ID in users collection (Story 2.10)
                 try await db.collection("users").document(currentUserId).updateData([
                     "currentConversationId": conversationId
                 ])
+
+                // Set activity in user_activity collection (Story 6.6)
+                try await db.collection("user_activity").document(currentUserId).setData([
+                    "userId": currentUserId,
+                    "activeConversationId": conversationId,
+                    "timestamp": FieldValue.serverTimestamp()
+                ])
+
                 print("✅ Current conversation updated: \(currentUserId) -> \(conversationId)")
             } else {
-                // Clear conversation ID
+                // Clear conversation ID in users collection (Story 2.10)
                 try await db.collection("users").document(currentUserId).updateData([
                     "currentConversationId": FieldValue.delete()
                 ])
+
+                // Delete activity document (Story 6.6)
+                try await db.collection("user_activity").document(currentUserId).delete()
+
                 print("✅ Current conversation cleared: \(currentUserId)")
             }
         } catch {

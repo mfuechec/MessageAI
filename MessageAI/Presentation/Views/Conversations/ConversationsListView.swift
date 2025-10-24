@@ -19,6 +19,7 @@ struct ChatContext: Identifiable {
 struct ConversationsListView: View {
     @StateObject var viewModel: ConversationsListViewModel
     @State private var showNewConversation = false
+    @State private var showSettings = false
     @StateObject private var newConversationViewModel: NewConversationViewModel
     @EnvironmentObject private var authViewModel: AuthViewModel
 
@@ -34,8 +35,12 @@ struct ConversationsListView: View {
             if let context = chatContext {
                 print("🟢 [State] chatContext set for conversation: \(context.id)")
                 print("  📊 ChatViewModel has \(context.chatViewModel.messages.count) messages")
+                // Track which conversation is being viewed (for smart notification suppression)
+                viewModel.currentlyViewingConversationId = context.id
             } else {
                 print("🔴 [State] chatContext cleared")
+                // User closed the conversation view
+                viewModel.currentlyViewingConversationId = nil
             }
         }
     }
@@ -63,6 +68,35 @@ struct ConversationsListView: View {
 
                 // Toast notifications
                 VStack {
+                    // Smart notification banner (Epic 6)
+                    if let notification = viewModel.smartNotification {
+                        SmartNotificationBanner(
+                            notification: notification,
+                            onTap: {
+                                // Open conversation
+                                if let conversation = viewModel.conversations.first(where: { $0.id == notification.conversationId }) {
+                                    let participants = viewModel.getParticipants(for: conversation)
+                                    let chatVM = DIContainer.shared.makeChatViewModel(
+                                        conversationId: conversation.id,
+                                        currentUserId: authViewModel.currentUser?.id ?? "",
+                                        initialConversation: conversation,
+                                        initialParticipants: participants
+                                    )
+                                    chatContext = ChatContext(
+                                        conversation: conversation,
+                                        chatViewModel: chatVM,
+                                        participants: participants
+                                    )
+                                }
+                                viewModel.dismissSmartNotification()
+                            },
+                            onDismiss: {
+                                viewModel.dismissSmartNotification()
+                            }
+                        )
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                    }
+
                     // Permission denied banner (Story 2.10a AC 11-13)
                     if viewModel.notificationPermissionDenied {
                         permissionDeniedBanner
@@ -82,6 +116,7 @@ struct ConversationsListView: View {
 
                     Spacer()
                 }
+                .animation(.spring(response: 0.3), value: viewModel.smartNotification?.id)
                 .animation(.spring(response: 0.3), value: viewModel.notificationPermissionDenied)
                 .animation(.spring(response: 0.3), value: viewModel.isOffline)
                 .animation(.spring(response: 0.3), value: showReconnectedToast)
@@ -107,14 +142,14 @@ struct ConversationsListView: View {
             }
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Logout") {
-                        Task {
-                            await authViewModel.signOut()
-                        }
+                    Button(action: {
+                        showSettings = true
+                    }) {
+                        Image(systemName: "gearshape")
                     }
-                    .accessibilityLabel("Logout")
+                    .accessibilityLabel("Settings")
                 }
-                
+
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button(action: {
                         showNewConversation = true
@@ -129,6 +164,24 @@ struct ConversationsListView: View {
                     viewModel: newConversationViewModel,
                     onConversationSelected: { _ in }  // Not used, parent observes ViewModel
                 )
+            }
+            .sheet(isPresented: $showSettings) {
+                // Story 6.4: Smart Notification Settings
+                NavigationView {
+                    SmartNotificationSettingsView(
+                        viewModel: DIContainer.shared.makeNotificationPreferencesViewModel(
+                            userId: authViewModel.currentUser?.id ?? ""
+                        )
+                    )
+                    .environmentObject(authViewModel)
+                    .toolbar {
+                        ToolbarItem(placement: .navigationBarLeading) {
+                            Button("Done") {
+                                showSettings = false
+                            }
+                        }
+                    }
+                }
             }
             .onChange(of: newConversationViewModel.selectedConversation) { conversation in
                 // Parent observes the ViewModel directly (more reliable than child onChange)
@@ -168,18 +221,19 @@ struct ConversationsListView: View {
                 }
             }
             .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("OpenConversation"))) { notification in
-                // Deep linking from push notification tap
+                // Deep linking from push notification tap (Story 6.6)
                 if let conversationId = notification.userInfo?["conversationId"] as? String {
-                    print("📲 Deep link notification received for conversation: \(conversationId)")
-                    
+                    let messageId = notification.userInfo?["messageId"] as? String
+                    print("📲 Deep link notification received for conversation: \(conversationId), message: \(messageId ?? "none")")
+
                     // Find conversation in current list
                     if let conversation = viewModel.conversations.first(where: { $0.id == conversationId }) {
                         print("✅ Found conversation in list")
-                        
+
                         // Get participants
                         let participants = viewModel.getParticipants(for: conversation)
                         print("✅ Found \(participants.count) participants")
-                        
+
                         // Create ChatViewModel
                         let chatVM = DIContainer.shared.makeChatViewModel(
                             conversationId: conversation.id,
@@ -187,7 +241,14 @@ struct ConversationsListView: View {
                             initialConversation: conversation,
                             initialParticipants: participants
                         )
-                        
+
+                        // Story 6.6: If messageId provided, set for scroll & highlight
+                        if let messageId = messageId, !messageId.isEmpty {
+                            chatVM.scrollToMessageId = messageId
+                            chatVM.highlightedMessageId = messageId
+                            print("✅ Set target message for deep link: \(messageId)")
+                        }
+
                         // Open chat
                         chatContext = ChatContext(
                             conversation: conversation,
@@ -210,6 +271,13 @@ struct ConversationsListView: View {
                                         initialConversation: conversation,
                                         initialParticipants: participants
                                     )
+
+                                    // Story 6.6: If messageId provided, set for scroll & highlight
+                                    if let messageId = messageId, !messageId.isEmpty {
+                                        chatVM.scrollToMessageId = messageId
+                                        chatVM.highlightedMessageId = messageId
+                                        print("✅ Set target message for deep link: \(messageId)")
+                                    }
 
                                     // Open chat
                                     chatContext = ChatContext(
@@ -292,17 +360,29 @@ struct ConversationsListView: View {
             }
         }
         .listStyle(PlainListStyle())
+        .onAppear {
+            // Clear viewing state when returning to conversations list
+            if viewModel.currentlyViewingConversationId != nil {
+                print("🔄 [ConversationsListView] Clearing viewing state - user returned to list")
+                viewModel.currentlyViewingConversationId = nil
+            }
+        }
         .sheet(item: $chatContext) { context in
             let _ = print("🔷 [Sheet Evaluation] Sheet closure called for: \(context.id)")
             let _ = print("  📊 ChatViewModel has \(context.chatViewModel.messages.count) messages")
             let _ = print("  👥 \(context.participants.count) participants")
-            
+
             NavigationView {
                 ChatView(
                     viewModel: context.chatViewModel,
                     initialConversation: context.conversation,
                     initialParticipants: context.participants
                 )
+                .onDisappear {
+                    // Clear viewing state when ChatView disappears
+                    print("🔄 [ChatView] onDisappear - clearing viewing state")
+                    viewModel.currentlyViewingConversationId = nil
+                }
             }
         }
     }

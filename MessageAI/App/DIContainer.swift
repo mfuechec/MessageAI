@@ -88,6 +88,26 @@ class DIContainer {
         FirebaseStorageRepository(firebaseService: firebaseService)
     }()
 
+    /// Notification preferences repository (Epic 6 - Story 6.4)
+    /// Manages user preferences for smart AI-powered notifications
+    internal lazy var notificationPreferencesRepository: NotificationPreferencesRepositoryProtocol = {
+        FirebaseNotificationPreferencesRepository(firebaseService: firebaseService)
+    }()
+
+    /// Notification analysis repository (Epic 6 - Story 6.1)
+    /// Calls Cloud Function to analyze conversations for notification decisions
+    internal lazy var notificationAnalysisRepository: NotificationAnalysisRepositoryProtocol = {
+        FirebaseNotificationAnalysisRepository(firebaseService: firebaseService)
+    }()
+
+    // MARK: - Notification Services (Epic 6)
+
+    /// Conversation activity monitor (Epic 6 - Story 6.1)
+    /// Monitors message activity and triggers notification analysis
+    internal lazy var conversationActivityMonitor: ConversationActivityMonitor = {
+        ConversationActivityMonitor(repository: notificationAnalysisRepository)
+    }()
+
     // MARK: - AI Services (Story 3.1)
 
     /// Cloud Functions service (Story 3.1)
@@ -172,6 +192,7 @@ class DIContainer {
         ConversationsListViewModel(
             conversationRepository: conversationRepository,
             userRepository: userRepository,
+            notificationAnalysisRepository: notificationAnalysisRepository,
             currentUserId: currentUserId,
             networkMonitor: networkMonitor,
             messageRepository: messageRepository  // For notification simulation in DEBUG
@@ -201,6 +222,16 @@ class DIContainer {
             conversationId: conversationId,
             messageIds: messageIds,
             aiService: aiService
+        )
+    }
+
+    /// Creates NotificationPreferencesViewModel for smart notifications (Epic 6 - Story 6.4)
+    /// - Parameter userId: The user ID for preferences
+    /// - Returns: Configured NotificationPreferencesViewModel instance
+    func makeNotificationPreferencesViewModel(userId: String) -> NotificationPreferencesViewModel {
+        NotificationPreferencesViewModel(
+            repository: notificationPreferencesRepository,
+            userId: userId
         )
     }
 }
