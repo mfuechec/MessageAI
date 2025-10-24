@@ -31,7 +31,7 @@ protocol NetworkMonitorProtocol: ObservableObject {
 
     /// Publisher for effective connectivity changes (source of truth)
     /// This is the recommended publisher to use for UI state management
-    var isEffectivelyConnectedPublisher: Published<Bool>.Publisher { get }
+    var isEffectivelyConnectedPublisher: AnyPublisher<Bool, Never> { get }
 }
 
 /// Monitors network connectivity status using Apple's Network framework and Firestore metadata
@@ -88,18 +88,31 @@ class NetworkMonitor: NetworkMonitorProtocol {
     /// Effective connectivity state - combines OS and Firestore state
     ///
     /// This is the "source of truth" for the app. The rules:
-    /// - If Firestore is connected, we're truly online (even if OS network flickers)
-    /// - If Firestore is disconnected, we're offline (regardless of OS network)
-    /// - Firestore connection is the more accurate indicator for app functionality
+    /// - Trust Firestore as the PRIMARY authority (it proves we can actually sync)
+    /// - But the publisher emits on BOTH OS and Firestore changes for immediate UI updates
+    /// - This gives us: fast offline detection (OS) + accurate online detection (Firestore)
     var isEffectivelyConnected: Bool {
+        // Trust Firestore as the authority
+        // If Firestore says online, we're online (even if OS lags in Simulator)
+        // If Firestore says offline, we're offline
         return isFirestoreConnected
     }
 
     /// Publisher for effective connectivity changes (source of truth)
     /// This is the recommended publisher to use for UI state management
-    /// Returns the Firestore connectivity publisher as the source of truth
-    var isEffectivelyConnectedPublisher: Published<Bool>.Publisher {
-        $isFirestoreConnected
+    /// Combines both OS and Firestore connectivity signals
+    var isEffectivelyConnectedPublisher: AnyPublisher<Bool, Never> {
+        // Emit when EITHER OS or Firestore changes (for immediate UI updates)
+        // But always return Firestore state (the authority)
+        // This gives us:
+        // - Immediate emission when OS detects offline (fast UI update)
+        // - Correct value from Firestore (accurate connectivity)
+        Publishers.CombineLatest($isConnected, $isFirestoreConnected)
+            .map { _, isFirestoreConnected in
+                // Always trust Firestore as the authority
+                return isFirestoreConnected
+            }
+            .eraseToAnyPublisher()
     }
 
     /// Type of network connection (WiFi, cellular, etc.)

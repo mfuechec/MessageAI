@@ -42,13 +42,19 @@ class MockNetworkMonitor: NetworkMonitorProtocol {
     var isFirestoreConnectedPublisher: Published<Bool>.Publisher { $isFirestoreConnected }
 
     /// Effective connectivity state (source of truth)
+    /// Trust Firestore as the primary authority
     var isEffectivelyConnected: Bool {
         return isFirestoreConnected
     }
 
     /// Publisher for effective connectivity changes (source of truth)
-    var isEffectivelyConnectedPublisher: Published<Bool>.Publisher {
-        $isFirestoreConnected
+    /// Emits when EITHER changes but always returns Firestore state
+    var isEffectivelyConnectedPublisher: AnyPublisher<Bool, Never> {
+        Publishers.CombineLatest($isConnected, $isFirestoreConnected)
+            .map { _, isFirestoreConnected in
+                return isFirestoreConnected
+            }
+            .eraseToAnyPublisher()
     }
 
     // MARK: - Public Methods
