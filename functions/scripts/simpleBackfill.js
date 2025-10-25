@@ -81,23 +81,55 @@ async function backfillEmbeddings(batchSize = 50) {
         continue;
       }
 
-      // Check if already has embedding
-      const existingEmbedding = await db.collection('message_embeddings')
-        .doc(messageId)
-        .get();
-
-      if (existingEmbedding.exists) {
-        console.log(`⏭️  Skipping ${messageId}: already has embedding`);
-        skipped++;
-        continue;
-      }
+      // Force re-generation to get enriched embeddings with participant context
+      // (Comment out this check to regenerate all embeddings)
+      // const existingEmbedding = await db.collection('message_embeddings')
+      //   .doc(messageId)
+      //   .get();
+      //
+      // if (existingEmbedding.exists) {
+      //   console.log(`⏭️  Skipping ${messageId}: already has embedding`);
+      //   skipped++;
+      //   continue;
+      // }
 
       try {
         console.log(`🔄 Processing message ${messageId}...`);
         console.log(`   Text: "${messageText.substring(0, 50)}${messageText.length > 50 ? '...' : ''}"`);
 
-        // Generate embedding
-        const embedding = await generateEmbedding(messageText);
+        // Fetch sender and participant information for enriched embeddings
+        // Step 1: Fetch sender info
+        const senderDoc = await db.collection('users').doc(messageData.senderId).get();
+        const senderName = senderDoc.data()?.displayName || 'Unknown';
+
+        // Step 2: Fetch conversation participants
+        const conversationDoc = await db.collection('conversations')
+          .doc(messageData.conversationId)
+          .get();
+
+        const participantIds = conversationDoc.data()?.participantIds || [];
+
+        // Fetch participant names in parallel for performance
+        const participantPromises = participantIds
+          .filter((id) => id !== messageData.senderId) // Exclude sender
+          .map((id) => db.collection('users').doc(id).get());
+
+        const participantDocs = await Promise.all(participantPromises);
+        const participantNames = participantDocs
+          .map(doc => doc.data()?.displayName)
+          .filter(Boolean);
+
+        // Step 3: Create enriched text with context
+        const enrichedText = `
+From: ${senderName}
+Participants: ${participantNames.join(', ')}
+Message: ${messageText}
+`.trim();
+
+        console.log(`   📝 Enriched: "${enrichedText.substring(0, 70)}${enrichedText.length > 70 ? '...' : ''}"`);
+
+        // Generate embedding from enriched text
+        const embedding = await generateEmbedding(enrichedText);
         console.log(`   ✅ Generated embedding (${embedding.length} dimensions)`);
 
         // Store in batch
@@ -116,6 +148,7 @@ async function backfillEmbeddings(batchSize = 50) {
           conversationId: messageData.conversationId,
           senderId: messageData.senderId,
           messageText: messageText,
+          enrichedText: enrichedText,           // Store enriched text
           embedding: embedding,
           timestamp: messageData.timestamp,
           createdAt: admin.firestore.FieldValue.serverTimestamp(),

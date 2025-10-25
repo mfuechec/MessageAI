@@ -40,12 +40,45 @@ export const embedMessageOnCreate = functions
     try {
       console.log(`[embedMessageOnCreate] Generating embedding for message ${snap.id}`);
 
-      const embedding = await generateEmbedding(messageText);
+      // Fetch sender and participant information for enriched embeddings
+      const db = admin.firestore();
+
+      // Step 1: Fetch sender info
+      const senderDoc = await db.collection("users").doc(messageData.senderId).get();
+      const senderName = senderDoc.data()?.displayName || "Unknown";
+
+      // Step 2: Fetch conversation participants
+      const conversationDoc = await db.collection("conversations")
+        .doc(messageData.conversationId)
+        .get();
+
+      const participantIds = conversationDoc.data()?.participantIds || [];
+
+      // Fetch participant names in parallel for performance
+      const participantPromises = participantIds
+        .filter((id: string) => id !== messageData.senderId) // Exclude sender
+        .map((id: string) => db.collection("users").doc(id).get());
+
+      const participantDocs = await Promise.all(participantPromises);
+      const participantNames = participantDocs
+        .map(doc => doc.data()?.displayName)
+        .filter(Boolean);
+
+      // Step 3: Create enriched text with context
+      const enrichedText = `
+From: ${senderName}
+Participants: ${participantNames.join(', ')}
+Message: ${messageText}
+`.trim();
+
+      console.log(`[embedMessageOnCreate] Enriched text: ${enrichedText.substring(0, 100)}...`);
+
+      // Step 4: Generate embedding from enriched text
+      const embedding = await generateEmbedding(enrichedText);
 
       // Store in both locations:
       // 1. In message document for backward compatibility
       // 2. In message_embeddings collection for fast semantic search
-      const db = admin.firestore();
       const batch = db.batch();
 
       // Update message with embedding
@@ -60,7 +93,8 @@ export const embedMessageOnCreate = functions
         messageId: snap.id,
         conversationId: messageData.conversationId,
         senderId: messageData.senderId,
-        messageText: messageText,
+        messageText: messageText,          // Original message text
+        enrichedText: enrichedText,         // Enriched text with participant context
         embedding: embedding,
         timestamp: messageData.timestamp,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),

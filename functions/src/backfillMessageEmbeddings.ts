@@ -88,8 +88,37 @@ export const backfillMessageEmbeddings = functions
         try {
           console.log(`[backfillMessageEmbeddings] Processing message ${messageId}`);
 
-          // Generate embedding
-          const embedding = await generateEmbedding(messageText);
+          // Fetch sender and participant information for enriched embeddings
+          // Step 1: Fetch sender info
+          const senderDoc = await db.collection("users").doc(messageData.senderId).get();
+          const senderName = senderDoc.data()?.displayName || "Unknown";
+
+          // Step 2: Fetch conversation participants
+          const conversationDoc = await db.collection("conversations")
+            .doc(messageData.conversationId)
+            .get();
+
+          const participantIds = conversationDoc.data()?.participantIds || [];
+
+          // Fetch participant names in parallel for performance
+          const participantPromises = participantIds
+            .filter((id: string) => id !== messageData.senderId) // Exclude sender
+            .map((id: string) => db.collection("users").doc(id).get());
+
+          const participantDocs = await Promise.all(participantPromises);
+          const participantNames = participantDocs
+            .map(doc => doc.data()?.displayName)
+            .filter(Boolean);
+
+          // Step 3: Create enriched text with context
+          const enrichedText = `
+From: ${senderName}
+Participants: ${participantNames.join(', ')}
+Message: ${messageText}
+`.trim();
+
+          // Step 4: Generate embedding from enriched text
+          const embedding = await generateEmbedding(enrichedText);
 
           // Store in batch
           const batch = db.batch();
@@ -106,7 +135,8 @@ export const backfillMessageEmbeddings = functions
             messageId: messageId,
             conversationId: messageData.conversationId,
             senderId: messageData.senderId,
-            messageText: messageText,
+            messageText: messageText,            // Original message text
+            enrichedText: enrichedText,           // Enriched text with participant context
             embedding: embedding,
             timestamp: messageData.timestamp,
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
