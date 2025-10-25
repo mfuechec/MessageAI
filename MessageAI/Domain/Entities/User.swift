@@ -33,6 +33,10 @@ struct User: Codable, Equatable, Identifiable, Hashable {
     var timezone: String?
     var locale: String?
     var preferredLanguage: String?
+    var googleCalendarConnected: Bool
+    var googleCalendarRefreshToken: String?  // Encrypted OAuth refresh token
+    var googleCalendarEmail: String?  // Email used for Google Calendar
+    var googleCalendarConnectedAt: Date?
     let schemaVersion: Int
     
     /// Computed property for truncated display name (max 15 chars)
@@ -84,6 +88,10 @@ struct User: Codable, Equatable, Identifiable, Hashable {
         timezone: String? = nil,
         locale: String? = nil,
         preferredLanguage: String? = nil,
+        googleCalendarConnected: Bool = false,
+        googleCalendarRefreshToken: String? = nil,
+        googleCalendarEmail: String? = nil,
+        googleCalendarConnectedAt: Date? = nil,
         schemaVersion: Int = 1
     ) {
         self.id = id
@@ -99,7 +107,43 @@ struct User: Codable, Equatable, Identifiable, Hashable {
         self.timezone = timezone
         self.locale = locale
         self.preferredLanguage = preferredLanguage
+        self.googleCalendarConnected = googleCalendarConnected
+        self.googleCalendarRefreshToken = googleCalendarRefreshToken
+        self.googleCalendarEmail = googleCalendarEmail
+        self.googleCalendarConnectedAt = googleCalendarConnectedAt
         self.schemaVersion = schemaVersion
+    }
+
+    // MARK: - Decodable
+
+    /// Custom decoder to handle backward compatibility with old Firestore documents
+    /// Provides default values for fields that didn't exist in earlier schema versions
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+
+        // Required fields
+        id = try container.decode(String.self, forKey: .id)
+        email = try container.decode(String.self, forKey: .email)
+        displayName = try container.decode(String.self, forKey: .displayName)
+        isOnline = try container.decode(Bool.self, forKey: .isOnline)
+        lastSeen = try container.decode(Date.self, forKey: .lastSeen)
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+
+        // Optional fields
+        profileImageURL = try container.decodeIfPresent(String.self, forKey: .profileImageURL)
+        fcmToken = try container.decodeIfPresent(String.self, forKey: .fcmToken)
+        fcmTokenUpdatedAt = try container.decodeIfPresent(Date.self, forKey: .fcmTokenUpdatedAt)
+        currentConversationId = try container.decodeIfPresent(String.self, forKey: .currentConversationId)
+        timezone = try container.decodeIfPresent(String.self, forKey: .timezone)
+        locale = try container.decodeIfPresent(String.self, forKey: .locale)
+        preferredLanguage = try container.decodeIfPresent(String.self, forKey: .preferredLanguage)
+        googleCalendarRefreshToken = try container.decodeIfPresent(String.self, forKey: .googleCalendarRefreshToken)
+        googleCalendarEmail = try container.decodeIfPresent(String.self, forKey: .googleCalendarEmail)
+        googleCalendarConnectedAt = try container.decodeIfPresent(Date.self, forKey: .googleCalendarConnectedAt)
+
+        // Fields with defaults (backward compatibility)
+        googleCalendarConnected = try container.decodeIfPresent(Bool.self, forKey: .googleCalendarConnected) ?? false
+        schemaVersion = try container.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 1
     }
 }
 

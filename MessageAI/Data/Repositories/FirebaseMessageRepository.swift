@@ -44,6 +44,14 @@ final class FirebaseMessageRepository: MessageRepositoryProtocol {
     func sendMessage(_ message: Message) async throws {
         try await NetworkRetryPolicy.retry {
             do {
+                // DEBUG: Check if message has attachments
+                print("🔍 [Repository] sendMessage called for \(message.id.prefix(8))...")
+                print("   Attachments count: \(message.attachments.count)")
+                if let attachment = message.attachments.first {
+                    print("   Attachment type: \(attachment.type)")
+                    print("   Attachment fileName: \(attachment.fileName ?? "nil")")
+                }
+
                 // Fetch sender's displayName for denormalization (Epic 6 Optimization)
                 var enrichedMessage = message
                 if enrichedMessage.senderName == nil {
@@ -57,6 +65,10 @@ final class FirebaseMessageRepository: MessageRepositoryProtocol {
                 }
 
                 let data = try Firestore.Encoder.default.encode(enrichedMessage)
+                print("🔍 [Repository] Encoded data keys: \(data.keys.joined(separator: ", "))")
+                if let attachmentsData = data["attachments"] as? [[String: Any]] {
+                    print("🔍 [Repository] Attachments in encoded data: \(attachmentsData.count)")
+                }
                 try await self.db.collection("messages").document(message.id).setData(data)
                 print("✅ Message sent: \(message.id)")
             } catch let error as EncodingError {
@@ -108,7 +120,17 @@ final class FirebaseMessageRepository: MessageRepositoryProtocol {
                 }
 
                 let messages = documents.compactMap { doc -> Message? in
-                    try? Firestore.Decoder.default.decode(Message.self, from: doc.data())
+                    do {
+                        let message = try Firestore.Decoder.default.decode(Message.self, from: doc.data())
+                        // DEBUG: Check if attachments survived decoding
+                        if !message.attachments.isEmpty {
+                            print("🔍 [Repository] Decoded message \(message.id.prefix(8))... with \(message.attachments.count) attachment(s)")
+                        }
+                        return message
+                    } catch {
+                        print("❌ [Repository] Failed to decode message \(doc.documentID.prefix(8))...: \(error)")
+                        return nil
+                    }
                 }
 
                 // Deduplicate by message ID (safety check to prevent duplicate messages from Firestore)

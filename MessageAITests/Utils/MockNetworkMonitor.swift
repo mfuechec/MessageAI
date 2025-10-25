@@ -94,5 +94,10 @@ class MockNetworkMonitor: NetworkMonitorProtocol {
         isConnected = !current
         isConnected = current
     }
+
+    /// Retry Firestore monitoring (no-op for mock)
+    func retryFirestoreMonitoring() {
+        // No-op for mock - just here for protocol conformance
+    }
 }
 

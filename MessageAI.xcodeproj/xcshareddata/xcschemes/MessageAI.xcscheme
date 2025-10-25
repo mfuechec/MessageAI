@@ -14,7 +14,7 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "2C8E4D6B2CBEB1AC00E4F5F0"
+               BlueprintIdentifier = "C126356E2EA6BF89005442C5"
                BuildableName = "MessageAI.app"
                BlueprintName = "MessageAI"
                ReferencedContainer = "container:MessageAI.xcodeproj">
@@ -34,7 +34,7 @@
             parallelizable = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "2C8E4D7B2CBEB1AE00E4F5F0"
+               BlueprintIdentifier = "C12635D22EA6D8A3005442C5"
                BuildableName = "MessageAITests.xctest"
                BlueprintName = "MessageAITests"
                ReferencedContainer = "container:MessageAI.xcodeproj">
@@ -56,7 +56,7 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "2C8E4D6B2CBEB1AC00E4F5F0"
+            BlueprintIdentifier = "C126356E2EA6BF89005442C5"
             BuildableName = "MessageAI.app"
             BlueprintName = "MessageAI"
             ReferencedContainer = "container:MessageAI.xcodeproj">
@@ -65,7 +65,7 @@
       <CommandLineArguments>
          <CommandLineArgument
             argument = "USE_FIREBASE_EMULATOR"
-            isEnabled = "YES">
+            isEnabled = "NO">
          </CommandLineArgument>
       </CommandLineArguments>
    </LaunchAction>
@@ -79,7 +79,7 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "2C8E4D6B2CBEB1AC00E4F5F0"
+            BlueprintIdentifier = "C126356E2EA6BF89005442C5"
             BuildableName = "MessageAI.app"
             BlueprintName = "MessageAI"
             ReferencedContainer = "container:MessageAI.xcodeproj">

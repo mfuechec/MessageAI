@@ -16,6 +16,8 @@
 		C12635B12EA6CC2E005442C5 /* FirebaseStorage in Frameworks */ = {isa = PBXBuildFile; productRef = C12635B02EA6CC2E005442C5 /* FirebaseStorage */; };
 		C12636172EA6EE7A005442C5 /* Kingfisher in Frameworks */ = {isa = PBXBuildFile; productRef = C12636162EA6EE7A005442C5 /* Kingfisher */; };
 		C12636292EA707AB005442C5 /* MessageKit in Frameworks */ = {isa = PBXBuildFile; productRef = C12636282EA707AB005442C5 /* MessageKit */; };
+		C16452C22EAD40C1001E72A1 /* GoogleAPIClientForREST_Calendar in Frameworks */ = {isa = PBXBuildFile; productRef = C16452C12EAD40C1001E72A1 /* GoogleAPIClientForREST_Calendar */; };
+		C16452C62EAD44BD001E72A1 /* GoogleSignInSwift in Frameworks */ = {isa = PBXBuildFile; productRef = C16452C52EAD44BD001E72A1 /* GoogleSignInSwift */; };
 		C1B889482EAA63B500DFAE6E /* FirebaseFunctions in Frameworks */ = {isa = PBXBuildFile; productRef = C1B889472EAA63B500DFAE6E /* FirebaseFunctions */; };
 /* End PBXBuildFile section */
 
@@ -36,9 +38,22 @@
 		D6A0EE1A250A3DBA20A5D916 /* OfflineQueuePerformanceTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = OfflineQueuePerformanceTests.swift; path = MessageAITests/Performance/OfflineQueuePerformanceTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		C16452C42EAD4440001E72A1 /* Exceptions for "MessageAI" folder in "MessageAI" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = C126356E2EA6BF89005442C5 /* MessageAI */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		C12635712EA6BF89005442C5 /* MessageAI */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				C16452C42EAD4440001E72A1 /* Exceptions for "MessageAI" folder in "MessageAI" target */,
+			);
 			path = MessageAI;
 			sourceTree = "<group>";
 		};
@@ -59,8 +74,10 @@
 				C12635A92EA6CC2E005442C5 /* FirebaseAnalytics in Frameworks */,
 				C1B889482EAA63B500DFAE6E /* FirebaseFunctions in Frameworks */,
 				C12636292EA707AB005442C5 /* MessageKit in Frameworks */,
+				C16452C62EAD44BD001E72A1 /* GoogleSignInSwift in Frameworks */,
 				C12635AB2EA6CC2E005442C5 /* FirebaseAuth in Frameworks */,
 				C12635B12EA6CC2E005442C5 /* FirebaseStorage in Frameworks */,
+				C16452C22EAD40C1001E72A1 /* GoogleAPIClientForREST_Calendar in Frameworks */,
 				C12635AD2EA6CC2E005442C5 /* FirebaseFirestore in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -110,6 +127,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = C126357A2EA6BF8A005442C5 /* Build configuration list for PBXNativeTarget "MessageAI" */;
 			buildPhases = (
+				C16452C92EAD47D8001E72A1 /* ShellScript */,
 				C126356B2EA6BF89005442C5 /* Sources */,
 				C126356C2EA6BF89005442C5 /* Frameworks */,
 				C126356D2EA6BF89005442C5 /* Resources */,
@@ -131,6 +149,8 @@
 				C12636162EA6EE7A005442C5 /* Kingfisher */,
 				C12636282EA707AB005442C5 /* MessageKit */,
 				C1B889472EAA63B500DFAE6E /* FirebaseFunctions */,
+				C16452C12EAD40C1001E72A1 /* GoogleAPIClientForREST_Calendar */,
+				C16452C52EAD44BD001E72A1 /* GoogleSignInSwift */,
 			);
 			productName = MessageAI;
 			productReference = C126356F2EA6BF89005442C5 /* MessageAI.app */;
@@ -189,6 +209,8 @@
 				C12635A72EA6CC2E005442C5 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
 				C12636142EA6EE0D005442C5 /* XCRemoteSwiftPackageReference "Kingfisher" */,
 				C12636272EA707AB005442C5 /* XCRemoteSwiftPackageReference "MessageKit" */,
+				C16452BF2EAD406E001E72A1 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */,
+				C16452C02EAD40C1001E72A1 /* XCRemoteSwiftPackageReference "google-api-objectivec-client-for-rest" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = C12635702EA6BF89005442C5 /* Products */;
@@ -217,6 +239,29 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		C16452C92EAD47D8001E72A1 /* ShellScript */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 12;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(PROJECT_DIR)/$(TARGET_NAME)/Resources/GoogleService-Info-Dev.plist",
+				"$(PROJECT_DIR)/$(TARGET_NAME)/Resources/GoogleService-Info-Prod.plist",
+			);
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(BUILT_PRODUCTS_DIR)/$(PRODUCT_NAME).app/GoogleService-Info.plist",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "#!/bin/bash\n\n  # Copy the correct GoogleService-Info.plist based on\n  configuration\n  # Paths are quoted to handle spaces\n\n  PLIST_SOURCE=\"${SRCROOT}/MessageAI/Resources\"\n\n  echo \"📁 Script root: ${SRCROOT}\"\n  echo \"🔧 Configuration: ${CONFIGURATION}\"\n  echo \"📂 Plist source: ${PLIST_SOURCE}\"\n\n  if [ \"${CONFIGURATION}\" == \"Debug\" ]; then\n      echo \"✅ Using GoogleService-Info-Dev.plist for Debug\"\n\n  SOURCE_FILE=\"${PLIST_SOURCE}/GoogleService-Info-Dev.plist\"\n  else\n      echo \"✅ Using GoogleService-Info-Prod.plist for\n  Release\"\n      SOURCE_FILE=\"${PLIST_SOURCE}/GoogleService-Info-Prod.p\n  list\"\n  fi\n\n  DEST_FILE=\"${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app/Googl\n  eService-Info.plist\"\n\n  if [ -f \"${SOURCE_FILE}\" ]; then\n      echo \"📋 Copying ${SOURCE_FILE}\"\n      cp \"${SOURCE_FILE}\" \"${DEST_FILE}\"\n      echo \"✅ Successfully copied to ${DEST_FILE}\"\n  else\n      echo \"❌ ERROR: Source file not found: ${SOURCE_FILE}\"\n      exit 1\n  fi\n";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		C126356B2EA6BF89005442C5 /* Sources */ = {
@@ -377,6 +422,7 @@
 				DEVELOPMENT_TEAM = F7JU7848DS;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = MessageAI/Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -387,7 +433,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.mfuechec.MessageAI;
+				PRODUCT_BUNDLE_IDENTIFIER = com.mfuechec.MessageAI.dev;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -409,6 +455,7 @@
 				DEVELOPMENT_TEAM = F7JU7848DS;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = MessageAI/Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -530,6 +577,22 @@
 				version = 4.2.0;
 			};
 		};
+		C16452BF2EAD406E001E72A1 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/google/GoogleSignIn-iOS.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 7.0.0;
+			};
+		};
+		C16452C02EAD40C1001E72A1 /* XCRemoteSwiftPackageReference "google-api-objectivec-client-for-rest" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/google/google-api-objectivec-client-for-rest.git";
+			requirement = {
+				branch = main;
+				kind = branch;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -567,6 +630,16 @@
 			isa = XCSwiftPackageProductDependency;
 			package = C12636272EA707AB005442C5 /* XCRemoteSwiftPackageReference "MessageKit" */;
 			productName = MessageKit;
+		};
+		C16452C12EAD40C1001E72A1 /* GoogleAPIClientForREST_Calendar */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C16452C02EAD40C1001E72A1 /* XCRemoteSwiftPackageReference "google-api-objectivec-client-for-rest" */;
+			productName = GoogleAPIClientForREST_Calendar;
+		};
+		C16452C52EAD44BD001E72A1 /* GoogleSignInSwift */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C16452BF2EAD406E001E72A1 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
+			productName = GoogleSignInSwift;
 		};
 		C1B889472EAA63B500DFAE6E /* FirebaseFunctions */ = {
 			isa = XCSwiftPackageProductDependency;

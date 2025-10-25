@@ -20,6 +20,7 @@ struct ConversationsListView: View {
     @StateObject var viewModel: ConversationsListViewModel
     @State private var showNewConversation = false
     @State private var showSettings = false
+    @State private var showSearch = false
     @StateObject private var newConversationViewModel: NewConversationViewModel
     @EnvironmentObject private var authViewModel: AuthViewModel
 
@@ -152,6 +153,15 @@ struct ConversationsListView: View {
 
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button(action: {
+                        showSearch = true
+                    }) {
+                        Image(systemName: "magnifyingglass")
+                    }
+                    .accessibilityLabel("Search Messages")
+                }
+
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button(action: {
                         showNewConversation = true
                     }) {
                         Image(systemName: "square.and.pencil")
@@ -166,22 +176,13 @@ struct ConversationsListView: View {
                 )
             }
             .sheet(isPresented: $showSettings) {
-                // Story 6.4: Smart Notification Settings
-                NavigationView {
-                    SmartNotificationSettingsView(
-                        viewModel: DIContainer.shared.makeNotificationPreferencesViewModel(
-                            userId: authViewModel.currentUser?.id ?? ""
-                        )
-                    )
+                // Main Settings Menu
+                SettingsView()
                     .environmentObject(authViewModel)
-                    .toolbar {
-                        ToolbarItem(placement: .navigationBarLeading) {
-                            Button("Done") {
-                                showSettings = false
-                            }
-                        }
-                    }
-                }
+            }
+            .sheet(isPresented: $showSearch) {
+                // AI-Powered Semantic Search
+                SearchView(viewModel: DIContainer.shared.makeSearchViewModel())
             }
             .onChange(of: newConversationViewModel.selectedConversation) { conversation in
                 // Parent observes the ViewModel directly (more reliable than child onChange)

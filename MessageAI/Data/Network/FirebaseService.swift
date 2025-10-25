@@ -71,23 +71,23 @@ class FirebaseService {
             print("⚠️  Firebase already configured")
             return
         }
-        
-        // Use emulator if launch argument is set (for testing)
-        useEmulator()
-        
-        // Configure Firebase with environment-specific plist
+
+        // Configure Firebase with environment-specific plist FIRST
         if let filePath = Bundle.main.path(forResource: Environment.current.firebaseConfigFileName, ofType: "plist"),
            let options = FirebaseOptions(contentsOfFile: filePath) {
             FirebaseApp.configure(options: options)
         } else {
             fatalError("Failed to load Firebase configuration for \(Environment.current.displayName) environment")
         }
-        
+
         // Configure Firestore offline persistence
         let settings = FirestoreSettings()
         settings.cacheSettings = PersistentCacheSettings(sizeBytes: NSNumber(value: FirestoreCacheSizeUnlimited))
         Firestore.firestore().settings = settings
-        
+
+        // Use emulator if launch argument is set (AFTER Firebase is configured)
+        useEmulator()
+
         print("✅ Firebase configured for \(Environment.current.displayName) environment")
     }
     

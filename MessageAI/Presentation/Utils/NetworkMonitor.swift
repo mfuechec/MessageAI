@@ -32,6 +32,9 @@ protocol NetworkMonitorProtocol: ObservableObject {
     /// Publisher for effective connectivity changes (source of truth)
     /// This is the recommended publisher to use for UI state management
     var isEffectivelyConnectedPublisher: AnyPublisher<Bool, Never> { get }
+
+    /// Retry setting up Firestore monitoring (call after user authentication)
+    func retryFirestoreMonitoring()
 }
 
 /// Monitors network connectivity status using Apple's Network framework and Firestore metadata
@@ -280,6 +283,22 @@ class NetworkMonitor: NetworkMonitorProtocol {
             }
 
         print("🔥 [NetworkMonitor] Firestore metadata listener registered")
+    }
+
+    // MARK: - Public Methods
+
+    /// Retry setting up Firestore monitoring (call after user authentication)
+    ///
+    /// This should be called after a user logs in if the NetworkMonitor was created before authentication.
+    /// It will set up the Firestore metadata listener if it wasn't already configured.
+    func retryFirestoreMonitoring() {
+        // Only retry if listener doesn't exist and user is now authenticated
+        guard firestoreListener == nil, Auth.auth().currentUser != nil else {
+            return
+        }
+
+        print("🔥 [NetworkMonitor] Retrying Firestore monitoring after authentication")
+        setupFirestoreMonitoring()
     }
 
     // MARK: - Deinitialization

@@ -16,6 +16,7 @@ export {summarizePDF} from "./summarizePDF";
 // ========================================
 export {analyzeForNotification} from "./analyzeForNotification";
 export {embedMessageOnCreate} from "./embedMessageOnCreate";
+export {backfillMessageEmbeddings} from "./backfillMessageEmbeddings";
 
 // ========================================
 // NOTIFICATION FEEDBACK & LEARNING (Story 6.5)

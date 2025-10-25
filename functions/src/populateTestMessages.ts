@@ -87,57 +87,107 @@ export const populateTestMessages = functions.https.onCall(async (data, context)
         const otherUserId1 = otherUserIds[0] || currentUserId; // Fallback to self if alone
         const otherUserId2 = otherUserIds[1] || otherUserIds[0] || currentUserId;
 
-        // Define test messages with realistic multi-user conversation
-        const testMessages: Array<{senderId: string; text: string}> = [
-            // Regular conversation starter
-            { senderId: currentUserId, text: "Hey team! Quick check-in about the project status" },
-            { senderId: otherUserId1, text: "Sure! I've been working on the design mockups" },
+        // Detect conversation type: 2-person (PM + Engineer) vs group (team)
+        const isGroupConversation = participantIds.length >= 3;
 
-            // Action items - should be detected by AI
-            { senderId: currentUserId, text: "Can you finish the quarterly report by Friday EOD?" },
-            { senderId: otherUserId1, text: "Yes, I'll get that done. Also, remember to send the contract to John before tomorrow's meeting" },
-            { senderId: otherUserId2, text: "I need someone to review the pull request #234 before we deploy" },
+        console.log(`📊 Conversation type: ${isGroupConversation ? 'GROUP' : '2-PERSON'} (${participantIds.length} participants)`);
 
-            // Priority messages - should be flagged as urgent (natural language, no labels)
-            { senderId: otherUserId1, text: "The database migration failed and rolled back. All user data from the last 2 hours is lost and we need to figure out recovery before people notice" },
-            { senderId: currentUserId, text: "Legal just called - we're violating GDPR with our current data retention policy and could face fines. Need immediate review and changes" },
+        // Define test messages based on conversation type
+        let testMessages: Array<{senderId: string; text: string}>;
 
-            // Decision tracking - important conclusions
-            { senderId: currentUserId, text: "After discussing with the team, we've decided to go with option B for the architecture" },
-            { senderId: otherUserId1, text: "Team agreed to postpone the launch to next Monday to ensure quality" },
-            { senderId: otherUserId2, text: "We've finalized the budget at $50K for Q2" },
+        if (isGroupConversation) {
+            // GROUP CONVERSATION: Team standup/project discussion
+            testMessages = [
+                // Initial check-in
+                { senderId: currentUserId, text: "Morning team! Let's do a quick standup on the Q4 launch" },
+                { senderId: otherUserId1, text: "Hey! I'm finishing up the mobile responsive design. Should be ready for review by tomorrow" },
+                { senderId: otherUserId2, text: "Working on the API performance optimization. Found some bottlenecks in the search endpoint" },
 
-            // More action items
-            { senderId: currentUserId, text: "Please update the documentation by Wednesday" },
-            { senderId: otherUserId1, text: "Don't forget to schedule the client demo for next week" },
+                // Action items emerge
+                { senderId: currentUserId, text: "Great progress! Sarah, can you prepare the staging environment for testing by Friday?" },
+                { senderId: otherUserId1, text: "On it! Also, Mike - don't forget to update the API documentation before the client demo next Tuesday" },
+                { senderId: otherUserId2, text: "Good catch! Will do. Also need someone to review PR #456 - it's blocking the deploy" },
 
-            // Mixed conversation with embedded actions
-            { senderId: otherUserId2, text: "The API integration looks good. Can you test it in staging today?" },
-            { senderId: currentUserId, text: "Will do. Also need to follow up with marketing about the campaign" },
+                // Decision point
+                { senderId: currentUserId, text: "About the database choice - after weighing the options, we've decided to go with PostgreSQL instead of MongoDB. Better fit for our relational data" },
+                { senderId: otherUserId1, text: "Makes sense. I'll update the architecture docs to reflect that" },
 
-            // Decision with reasoning
-            { senderId: otherUserId1, text: "We've decided to use PostgreSQL instead of MongoDB because of the complex relational data" },
+                // Urgent issue (priority)
+                { senderId: otherUserId2, text: "Heads up - production API is throwing 500 errors on checkout. Payment processor says 20+ customers affected in last 30 minutes" },
+                { senderId: currentUserId, text: "That's critical. Mike, can you investigate immediately? I'll notify the customer support team" },
+                { senderId: otherUserId2, text: "Already on it. Looking at the logs now" },
 
-            // Priority with action (natural urgency through context)
-            { senderId: currentUserId, text: "Major client threatening to cancel their $500K contract because of the performance issues. We have until tomorrow morning to show improvement or they're walking" },
+                // Action items with deadlines
+                { senderId: currentUserId, text: "Everyone please submit your time logs by 5pm today. Finance needs them for payroll" },
+                { senderId: otherUserId1, text: "Will do. Also, should we schedule that design review meeting for the new dashboard?" },
 
-            // Regular updates
-            { senderId: otherUserId2, text: "Just finished the user testing session. Results look promising" },
-            { senderId: otherUserId1, text: "Great! Let's review them in tomorrow's standup" },
+                // Team decision
+                { senderId: currentUserId, text: "Team consensus: we're postponing the launch to next Monday to ensure quality. Better to ship late than ship broken" },
+                { senderId: otherUserId2, text: "Agreed. I'd rather have a stable release than rush it" },
 
-            // Action with deadline
-            { senderId: currentUserId, text: "Everyone needs to complete their timesheets by 5 PM today" },
+                // Meeting scheduling
+                { senderId: otherUserId1, text: "Can we sync tomorrow at 2pm to walk through the staging deployment process?" },
+                { senderId: currentUserId, text: "Works for me. Mike, does that time work?" },
+                { senderId: otherUserId2, text: "Yep, I'll be there" },
 
-            // Decision confirmation
-            { senderId: otherUserId1, text: "Confirmed: We're moving forward with the React migration starting next sprint" },
+                // Budget decision
+                { senderId: currentUserId, text: "Finalized the Q4 budget at $75K. Allocating $30K to cloud infrastructure, $25K to contractor hours, $20K to tooling" },
 
-            // Mixed priority and action (natural urgency)
-            { senderId: otherUserId2, text: "Payment processor is rejecting all transactions right now. We've had 50+ failed checkouts in the last hour and customers are complaining on social media" },
+                // Wrap-up with action items
+                { senderId: otherUserId1, text: "Good session! I'll send out the meeting notes and action item list in Slack" },
+                { senderId: currentUserId, text: "Perfect. Let me know if anyone hits blockers. We've got a tight timeline!" }
+            ];
+        } else {
+            // 2-PERSON CONVERSATION: PM + Engineer discussing feature implementation
+            testMessages = [
+                // Feature kickoff
+                { senderId: currentUserId, text: "Hey! Ready to discuss the new search feature for the iOS app?" },
+                { senderId: otherUserId1, text: "Absolutely! I've been looking at the requirements you sent over" },
 
-            // Wrap-up with actions
-            { senderId: currentUserId, text: "Good progress everyone! Let's make sure all action items are tracked in Jira" },
-            { senderId: otherUserId1, text: "Will do. I'll also send out meeting notes by end of day" }
-        ];
+                // Requirements discussion
+                { senderId: currentUserId, text: "The main ask from the product side is semantic search - users should find what they're looking for even with fuzzy queries" },
+                { senderId: otherUserId1, text: "Got it. So we'd need to integrate an embeddings model for that. Are we thinking OpenAI or something local?" },
+
+                // Decision made
+                { senderId: currentUserId, text: "After chatting with engineering leadership, we've decided to go with OpenAI's embeddings API. Faster time to market and proven quality" },
+                { senderId: otherUserId1, text: "Makes sense. I'll spike on the integration this week" },
+
+                // Action items
+                { senderId: currentUserId, text: "Can you have the technical spec ready by Wednesday? We need to review it with the architecture team" },
+                { senderId: otherUserId1, text: "Yep! I'll also need you to set up a meeting with the data team - want to understand the search volume we're expecting" },
+
+                // Technical discussion
+                { senderId: otherUserId1, text: "One concern - latency. If we're calling OpenAI for every search, that could be slow. Should we implement caching?" },
+                { senderId: currentUserId, text: "Good catch. Yes, let's cache common searches. Maybe Redis with a 24-hour TTL?" },
+                { senderId: otherUserId1, text: "Perfect. I'll include that in the spec" },
+
+                // Priority issue surfaces
+                { senderId: otherUserId1, text: "Quick heads up - our current search is completely broken in production. The Algolia index got corrupted somehow and users are getting zero results" },
+                { senderId: currentUserId, text: "Oh no! How many users affected?" },
+                { senderId: otherUserId1, text: "Everyone who's tried to search in the last hour. Support tickets are piling up" },
+                { senderId: currentUserId, text: "Okay, drop everything and fix that first. The new feature can wait" },
+
+                // Resolution
+                { senderId: otherUserId1, text: "Fixed! Re-indexed from scratch. Search is back up" },
+                { senderId: currentUserId, text: "Amazing, thank you! Crisis averted" },
+
+                // Back to planning
+                { senderId: currentUserId, text: "Okay, back to the smart search feature. Timeline-wise, can we ship this by end of Q4?" },
+                { senderId: otherUserId1, text: "If we stick to the MVP scope - semantic search only, no filters - then yes. I'd estimate 3 weeks of dev, 1 week of testing" },
+
+                // Decision and action
+                { senderId: currentUserId, text: "Let's do it. I'll get design to mock up the search UI by next Monday" },
+                { senderId: otherUserId1, text: "Sounds good! And I'll have that technical spec to you by Wednesday like we discussed" },
+
+                // Meeting scheduling
+                { senderId: currentUserId, text: "Want to sync Friday at 10am to review your spec together?" },
+                { senderId: otherUserId1, text: "Perfect! See you then" },
+
+                // Final action reminder
+                { senderId: currentUserId, text: "One last thing - please add the project to Jira and create the epic. We'll need to track this for the roadmap review" },
+                { senderId: otherUserId1, text: "Will do! Creating it now" }
+            ];
+        }
 
         console.log(`📨 Creating ${testMessages.length} test messages...`);
 

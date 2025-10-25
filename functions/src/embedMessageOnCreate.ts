@@ -42,12 +42,34 @@ export const embedMessageOnCreate = functions
 
       const embedding = await generateEmbedding(messageText);
 
-      await snap.ref.update({
+      // Store in both locations:
+      // 1. In message document for backward compatibility
+      // 2. In message_embeddings collection for fast semantic search
+      const db = admin.firestore();
+      const batch = db.batch();
+
+      // Update message with embedding
+      batch.update(snap.ref, {
         embedding: embedding,
         embeddedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
 
-      console.log(`[embedMessageOnCreate] ✅ Embedded message ${snap.id}`);
+      // Store in message_embeddings collection for fast queries
+      const embeddingRef = db.collection("message_embeddings").doc(snap.id);
+      batch.set(embeddingRef, {
+        messageId: snap.id,
+        conversationId: messageData.conversationId,
+        senderId: messageData.senderId,
+        messageText: messageText,
+        embedding: embedding,
+        timestamp: messageData.timestamp,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        model: "text-embedding-ada-002",
+      });
+
+      await batch.commit();
+
+      console.log(`[embedMessageOnCreate] ✅ Embedded message ${snap.id} (stored in both locations)`);
     } catch (error) {
       console.error(`[embedMessageOnCreate] ❌ Error embedding message ${snap.id}:`, error);
       // Don't throw - message is already saved, embedding is optional

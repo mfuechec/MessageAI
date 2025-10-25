@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import Combine
 
 /// Dependency Injection Container for MessageAI
 ///
@@ -51,6 +52,9 @@ class DIContainer {
     /// Offline queue store (Story 2.9)
     /// Manages persistent storage of queued messages composed while offline
     private lazy var offlineQueueStore: OfflineQueueStore = OfflineQueueStore()
+
+    /// Combine cancellables for auth state observation
+    private var cancellables = Set<AnyCancellable>()
 
     // MARK: - Repositories
     
@@ -106,6 +110,21 @@ class DIContainer {
         FirebaseNotificationHistoryRepository()
     }()
 
+    /// Calendar repository (Google Calendar Integration)
+    /// Manages Google Calendar OAuth and calendar operations
+    internal lazy var calendarRepository: CalendarRepositoryProtocol = {
+        GoogleCalendarRepository(
+            firebaseService: firebaseService,
+            userRepository: userRepository
+        )
+    }()
+
+    /// Search repository (Tier 3 Semantic Search)
+    /// Performs AI-powered semantic search using OpenAI embeddings
+    internal lazy var searchRepository: SearchRepositoryProtocol = {
+        FirebaseSearchRepository()
+    }()
+
     // MARK: - Notification Services (Epic 6)
 
     /// Conversation activity monitor (Epic 6 - Story 6.1)
@@ -138,6 +157,17 @@ class DIContainer {
         // This ensures NWPathMonitor has time to establish baseline connectivity
         // before any views appear, preventing offline banner timing issues
         self.networkMonitor = NetworkMonitor()
+
+        // Observe auth state to retry Firestore monitoring after login
+        // (NetworkMonitor is created before authentication, so it needs to retry after login)
+        authRepository.observeAuthState()
+            .sink { [weak self] user in
+                if user != nil {
+                    // User logged in - retry Firestore monitoring
+                    self?.networkMonitor.retryFirestoreMonitoring()
+                }
+            }
+            .store(in: &cancellables)
 
         print("✅ DIContainer initialized with eager NetworkMonitor")
     }
@@ -256,6 +286,18 @@ class DIContainer {
         )
         print("🏭 [DIContainer] NotificationHistoryViewModel created")
         return vm
+    }
+
+    /// Creates CalendarViewModel for Google Calendar integration
+    /// - Returns: Configured CalendarViewModel instance
+    func makeCalendarViewModel() -> CalendarViewModel {
+        CalendarViewModel(calendarRepository: calendarRepository)
+    }
+
+    /// Creates SearchViewModel for AI-powered semantic search (Tier 3)
+    /// - Returns: Configured SearchViewModel instance
+    func makeSearchViewModel() -> SearchViewModel {
+        SearchViewModel(searchRepository: searchRepository)
     }
 }
 

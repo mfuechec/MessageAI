@@ -10,14 +10,15 @@ import {
   storeInCache,
   simpleHash,
 } from "./utils/cache";
+import {findRelevantMessages} from "./helpers/semantic-search";
 
 /**
  * Cloud Function: Generate Smart Search Results
  *
- * Performs AI-enhanced semantic search across conversations.
- * In Story 3.1, this returns placeholder data. Real OpenAI integration in Story 3.5.
+ * Performs AI-enhanced semantic search across conversations using OpenAI embeddings.
+ * Uses pre-computed message embeddings for fast semantic similarity search.
  *
- * Input: { query: string, conversationIds?: string[] }
+ * Input: { query: string, conversationIds?: string[], limit?: number }
  * Output: { success: boolean, results: SearchResult[], cached: boolean, timestamp: string }
  */
 export const generateSmartSearchResults = functions
@@ -64,6 +65,7 @@ export const generateSmartSearchResults = functions
       }
 
       const query = data.query.trim();
+      const limit = data.limit || 20; // Default to 20 results
       let conversationIds = data.conversationIds as string[] | undefined;
 
       console.log(
@@ -118,35 +120,23 @@ export const generateSmartSearchResults = functions
       }
 
       // ========================================
-      // 5. FETCH RELEVANT MESSAGES
+      // 5. PERFORM SEMANTIC SEARCH
       // ========================================
-      // Fetch recent messages from specified conversations
-      const allMessages: any[] = [];
-
-      for (const conversationId of conversationIds.slice(0, 10)) {
-        // Limit to 10 conversations
-        const messagesSnapshot = await admin.firestore()
-          .collection("messages")
-          .where("conversationId", "==", conversationId)
-          .where("isDeleted", "==", false)
-          .orderBy("timestamp", "desc")
-          .limit(20) // Limit messages per conversation
-          .get();
-
-        const messages = messagesSnapshot.docs.map((doc) => ({
-          id: doc.id,
-          conversationId,
-          ...doc.data(),
-        }));
-
-        allMessages.push(...messages);
-      }
+      // Use findRelevantMessages to perform semantic search across user's conversations
+      // This function:
+      // 1. Generates embedding for query using OpenAI
+      // 2. Fetches embeddings from user's conversations
+      // 3. Calculates cosine similarity
+      // 4. Returns top matches sorted by relevance
 
       console.log(
-        `[generateSmartSearchResults] Found ${allMessages.length} messages to search`
+        `[generateSmartSearchResults] Performing semantic search across user's conversations`
       );
 
-      if (allMessages.length === 0) {
+      const semanticResults = await findRelevantMessages(userId, query, limit);
+
+      if (semanticResults.length === 0) {
+        console.log(`[generateSmartSearchResults] No results found`);
         return {
           success: true,
           results: [],
@@ -155,33 +145,85 @@ export const generateSmartSearchResults = functions
         };
       }
 
-      // ========================================
-      // 6. AI API CALL (PLACEHOLDER for Story 3.1)
-      // ========================================
-      // In Story 3.5, this will use OpenAI to semantically rank messages
+      console.log(
+        `[generateSmartSearchResults] Found ${semanticResults.length} semantic matches`
+      );
 
-      // MOCK RESPONSE - Replace with actual OpenAI semantic search in Story 3.5
-      // For now, just return the first few messages as "relevant"
-      const mockSearchResults = allMessages.slice(0, 3).map((msg, index) => ({
-        messageId: msg.id,
-        conversationId: msg.conversationId,
-        snippet: msg.text ?
-          msg.text.substring(0, 150) + (msg.text.length > 150 ? "..." : "") :
-          "[Media]",
-        relevanceScore: 0.95 - (index * 0.1), // Decreasing relevance
-        timestamp: msg.timestamp,
-        senderName: "Placeholder User", // Would fetch from users collection
-      }));
+      // ========================================
+      // 6. FETCH SENDER NAMES
+      // ========================================
+      // Enrich results with sender display names
+      const db = admin.firestore();
+
+      // Fetch messages to get sender info
+      const enrichedResults = await Promise.all(
+        semanticResults.map(async (result) => {
+          try {
+            const messageDoc = await db.collection("messages")
+              .doc(result.messageId)
+              .get();
+
+            if (!messageDoc.exists) {
+              // Fallback if message not found
+              return {
+                messageId: result.messageId,
+                conversationId: result.conversationId,
+                snippet: result.text.substring(0, 150) +
+                  (result.text.length > 150 ? "..." : ""),
+                relevanceScore: result.similarity,
+                timestamp: result.timestamp,
+                senderName: "Unknown",
+              };
+            }
+
+            const messageData = messageDoc.data()!;
+            const senderId = messageData.senderId;
+
+            // Fetch sender display name
+            let senderName = "Unknown";
+            try {
+              const senderDoc = await db.collection("users").doc(senderId).get();
+              if (senderDoc.exists) {
+                senderName = senderDoc.data()?.displayName || "Unknown";
+              }
+            } catch (err) {
+              console.error(`Error fetching sender ${senderId}:`, err);
+            }
+
+            return {
+              messageId: result.messageId,
+              conversationId: result.conversationId,
+              snippet: result.text.substring(0, 150) +
+                (result.text.length > 150 ? "..." : ""),
+              relevanceScore: result.similarity,
+              timestamp: result.timestamp,
+              senderName: senderName,
+            };
+          } catch (error) {
+            console.error(`Error enriching result for message ${result.messageId}:`, error);
+            // Return partial result
+            return {
+              messageId: result.messageId,
+              conversationId: result.conversationId,
+              snippet: result.text.substring(0, 150) +
+                (result.text.length > 150 ? "..." : ""),
+              relevanceScore: result.similarity,
+              timestamp: result.timestamp,
+              senderName: "Unknown",
+            };
+          }
+        })
+      );
 
       console.log(
-        `[generateSmartSearchResults] Generated ${mockSearchResults.length} placeholder results`
+        `[generateSmartSearchResults] Enriched ${enrichedResults.length} results with sender names`
       );
 
       // ========================================
       // 7. STORE RESULT IN CACHE
       // ========================================
       const resultToCache = {
-        results: mockSearchResults,
+        results: enrichedResults,
       };
 
       await storeInCache(
@@ -189,8 +231,8 @@ export const generateSmartSearchResults = functions
         resultToCache,
         "search",
         conversationIdsHash,
-        allMessages.length,
-        0.0833 // 5 minutes expiration (1/12 of an hour)
+        semanticResults.length,
+        0.5 // 30 minutes expiration (0.5 hours)
       );
 
       // ========================================
@@ -198,7 +240,7 @@ export const generateSmartSearchResults = functions
       // ========================================
       return {
         success: true,
-        results: mockSearchResults,
+        results: enrichedResults,
         cached: false,
         timestamp: new Date().toISOString(),
       };

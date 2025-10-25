@@ -80,7 +80,8 @@ class MockStorageRepository: StorageRepositoryProtocol {
             url: mockDownloadURL,
             thumbnailURL: nil,
             sizeBytes: 1024 * 500,  // 500KB
-            fileName: nil  // Images don't need file name
+            fileName: nil,  // Images don't need file name
+            aiSummary: nil  // No AI summary for images
         )
     }
 
@@ -117,7 +118,8 @@ class MockStorageRepository: StorageRepositoryProtocol {
             url: mockDownloadURL,
             thumbnailURL: nil,
             sizeBytes: 1024 * 1024 * 5,  // 5MB
-            fileName: "document.pdf"
+            fileName: "document.pdf",
+            aiSummary: nil  // Will be populated by ChatViewModel after upload
         )
     }
 

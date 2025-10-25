@@ -116,10 +116,15 @@ class ConversationsListViewModel: ObservableObject {
 
                 await MainActor.run {
                     if !cachedConversations.isEmpty {
-                        print("💾 [ConversationsListViewModel] Loaded \(cachedConversations.count) conversations from cache")
-                        self.setConversations(cachedConversations, source: "loadCachedConversations")
-                        self.updateBadgeCount()
-                        self.loadParticipantUsers(from: cachedConversations)
+                        // Only use cache if we don't have real-time data yet
+                        if self.conversations.isEmpty {
+                            print("💾 [ConversationsListViewModel] Loaded \(cachedConversations.count) conversations from cache")
+                            self.setConversations(cachedConversations, source: "loadCachedConversations")
+                            self.updateBadgeCount()
+                            self.loadParticipantUsers(from: cachedConversations)
+                        } else {
+                            print("💾 [ConversationsListViewModel] Cache load skipped - already have \(self.conversations.count) conversations from real-time listener")
+                        }
                     } else {
                         print("💾 [ConversationsListViewModel] No cached conversations available")
                     }

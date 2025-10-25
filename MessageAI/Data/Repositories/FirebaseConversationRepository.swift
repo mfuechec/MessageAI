@@ -175,32 +175,44 @@ final class FirebaseConversationRepository: ConversationRepositoryProtocol {
                     return
                 }
 
-                // CRITICAL FIX: Use documentChanges to avoid duplicates on reconnection
-                // This processes only actual changes (added/modified/removed), not all documents
-                let changes = snapshot.documentChanges
+                // CRITICAL FIX: On initial load (empty cache), process ALL documents
+                // After that, only process incremental changes to avoid duplicates
+                if conversationsCache.isEmpty && !snapshot.documents.isEmpty {
+                    print("📥 Initial load: processing \(snapshot.documents.count) conversations")
 
-                if !changes.isEmpty {
-                    print("🔄 Processing \(changes.count) conversation change(s)")
+                    for document in snapshot.documents {
+                        if let conversation = try? Firestore.Decoder.default.decode(Conversation.self, from: document.data()) {
+                            conversationsCache[document.documentID] = conversation
+                            print("📄 Loaded conversation: \(document.documentID)")
+                        }
+                    }
+                } else {
+                    // Incremental updates: Use documentChanges to avoid duplicates on reconnection
+                    let changes = snapshot.documentChanges
 
-                    for change in changes {
-                        let docId = change.document.documentID
+                    if !changes.isEmpty {
+                        print("🔄 Processing \(changes.count) conversation change(s)")
 
-                        switch change.type {
-                        case .added:
-                            if let conversation = try? Firestore.Decoder.default.decode(Conversation.self, from: change.document.data()) {
-                                conversationsCache[docId] = conversation
-                                print("➕ Added conversation: \(docId)")
+                        for change in changes {
+                            let docId = change.document.documentID
+
+                            switch change.type {
+                            case .added:
+                                if let conversation = try? Firestore.Decoder.default.decode(Conversation.self, from: change.document.data()) {
+                                    conversationsCache[docId] = conversation
+                                    print("➕ Added conversation: \(docId)")
+                                }
+
+                            case .modified:
+                                if let conversation = try? Firestore.Decoder.default.decode(Conversation.self, from: change.document.data()) {
+                                    conversationsCache[docId] = conversation
+                                    print("✏️ Modified conversation: \(docId)")
+                                }
+
+                            case .removed:
+                                conversationsCache.removeValue(forKey: docId)
+                                print("🗑️ Removed conversation: \(docId)")
                             }
-
-                        case .modified:
-                            if let conversation = try? Firestore.Decoder.default.decode(Conversation.self, from: change.document.data()) {
-                                conversationsCache[docId] = conversation
-                                print("✏️ Modified conversation: \(docId)")
-                            }
-
-                        case .removed:
-                            conversationsCache.removeValue(forKey: docId)
-                            print("🗑️ Removed conversation: \(docId)")
                         }
                     }
                 }
