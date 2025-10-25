@@ -8,6 +8,7 @@ struct MessageAttachment: Codable, Equatable {
     let thumbnailURL: String?
     let sizeBytes: Int64
     let fileName: String?  // Required for documents (e.g., "Invoice.pdf"), optional for images
+    let aiSummary: String?  // AI-generated summary for documents (PDFs), generated on upload
 
     enum AttachmentType: String, Codable {
         case image

@@ -173,7 +173,8 @@ class FirebaseStorageRepository: StorageRepositoryProtocol {
                 url: downloadURL.absoluteString,
                 thumbnailURL: nil,
                 sizeBytes: sizeBytes,
-                fileName: nil  // Images don't need file name
+                fileName: nil,  // Images don't need file name
+                aiSummary: nil  // No AI summary for images
             )
 
             return attachment
@@ -270,14 +271,15 @@ class FirebaseStorageRepository: StorageRepositoryProtocol {
             // Step 6: Get download URL
             let downloadURL = try await storageRef.downloadURL()
 
-            // Step 7: Create MessageAttachment
+            // Step 7: Create MessageAttachment (AI summary added later by ChatViewModel)
             let attachment = MessageAttachment(
                 id: UUID().uuidString,
                 type: .file,
                 url: downloadURL.absoluteString,
                 thumbnailURL: nil,
                 sizeBytes: sizeBytes,
-                fileName: fileName
+                fileName: fileName,
+                aiSummary: nil  // Will be populated by ChatViewModel after upload
             )
 
             return attachment

@@ -9,6 +9,7 @@ admin.initializeApp();
 export {summarizeThread} from "./summarizeThread";
 export {extractActionItems} from "./extractActionItems";
 export {generateSmartSearchResults} from "./generateSmartSearchResults";
+export {summarizePDF} from "./summarizePDF";
 
 // ========================================
 // AI NOTIFICATION ANALYSIS (Story 6.2 & 6.3)

@@ -352,6 +352,60 @@ struct ChatView: View {
                 })
             }
         }
+        // Document Summary Sheet
+        .sheet(isPresented: $viewModel.showDocumentSummary) {
+            NavigationView {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        if viewModel.isSummarizingDocument {
+                            // Loading state
+                            VStack(spacing: 12) {
+                                ProgressView()
+                                    .scaleEffect(1.5)
+                                Text("Extracting text from PDF...")
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, 40)
+                        } else if let error = viewModel.documentSummaryError {
+                            // Error state
+                            VStack(spacing: 12) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .font(.system(size: 50))
+                                    .foregroundColor(.orange)
+                                Text("Failed to Summarize")
+                                    .font(.headline)
+                                Text(error)
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                                    .multilineTextAlignment(.center)
+                            }
+                            .padding()
+                        } else {
+                            // Summary content
+                            VStack(alignment: .leading, spacing: 20) {
+                                Text(viewModel.documentSummaryText)
+                                    .font(.body)
+                                    .lineSpacing(6)
+                                    .foregroundColor(.primary)
+                            }
+                            .padding(20)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
+                }
+                .navigationTitle("PDF Summary")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button("Done") {
+                            viewModel.showDocumentSummary = false
+                        }
+                    }
+                }
+            }
+        }
     }
 
     private var contentWithLifecycle: some View {
@@ -771,7 +825,78 @@ struct MessageKitWrapper: UIViewControllerRepresentable {
         func numberOfSections(in messagesCollectionView: MessagesCollectionView) -> Int {
             return viewModel.messages.count
         }
-        
+
+        // REQUIRED: MessageKit calls this for custom message types
+        func customCell(for message: MessageType, at indexPath: IndexPath, in messagesCollectionView: MessagesCollectionView) -> UICollectionViewCell {
+            // Dequeue cell
+            let cell = messagesCollectionView.dequeueReusableCell(withReuseIdentifier: "CustomCell", for: indexPath)
+
+            // Get custom data
+            guard case .custom(let mediaItem) = message.kind,
+                  let documentItem = mediaItem as? DocumentMediaItem,
+                  let domainMessage = viewModel.messages[safe: indexPath.section] else {
+                print("❌ customCell called but not a valid DocumentMediaItem")
+                return cell
+            }
+
+            // Remove existing subviews
+            cell.contentView.subviews.forEach { $0.removeFromSuperview() }
+
+            // Check for upload progress
+            let progress = viewModel.uploadProgress[domainMessage.id]
+            let error = viewModel.uploadErrors[domainMessage.id]
+
+            // Create DocumentCardView wrapped in UIHostingController
+            let documentCard = DocumentCardView(
+                fileName: documentItem.fileName,
+                fileSizeBytes: documentItem.sizeBytes,
+                uploadProgress: progress,
+                hasError: error != nil,
+                isSummaryGenerating: viewModel.summaryGenerationInProgress[domainMessage.id] ?? false,
+                hasSummary: domainMessage.attachments.first?.aiSummary != nil,
+                onTap: {
+                    Task { @MainActor in
+                        if error != nil {
+                            self.viewModel.retryDocumentUpload(messageId: domainMessage.id)
+                        } else if let url = documentItem.url {
+                            print("📱 [ChatView] Opening document preview")
+                            print("   URL: \(url.absoluteString)")
+                            print("   isFileURL: \(url.isFileURL)")
+                            self.viewModel.documentPreviewURL = url
+                            self.viewModel.showDocumentPreview = true
+                        } else {
+                            print("⚠️ [ChatView] Document tap but no URL available")
+                        }
+                    }
+                },
+                onRetry: error != nil ? {
+                    Task { @MainActor in
+                        self.viewModel.retryDocumentUpload(messageId: domainMessage.id)
+                    }
+                } : nil,
+                onSummarize: (progress == nil && error == nil && documentItem.url != nil) ? {
+                    Task { @MainActor in
+                        await self.viewModel.summarizeDocument(messageId: domainMessage.id, url: documentItem.url!)
+                    }
+                } : nil
+            )
+
+            let hostingController = UIHostingController(rootView: documentCard)
+            hostingController.view.backgroundColor = UIColor.clear
+            hostingController.view.translatesAutoresizingMaskIntoConstraints = false
+
+            cell.contentView.addSubview(hostingController.view)
+
+            NSLayoutConstraint.activate([
+                hostingController.view.topAnchor.constraint(equalTo: cell.contentView.topAnchor),
+                hostingController.view.bottomAnchor.constraint(equalTo: cell.contentView.bottomAnchor),
+                hostingController.view.leadingAnchor.constraint(equalTo: cell.contentView.leadingAnchor),
+                hostingController.view.trailingAnchor.constraint(equalTo: cell.contentView.trailingAnchor)
+            ])
+
+            return cell
+        }
+
         // MARK: - MessagesDisplayDelegate
         
         func backgroundColor(for message: MessageType, at indexPath: IndexPath, in messagesCollectionView: MessagesCollectionView) -> UIColor {
@@ -1141,6 +1266,8 @@ struct MessageKitWrapper: UIViewControllerRepresentable {
                 fileSizeBytes: documentItem.sizeBytes,
                 uploadProgress: progress,
                 hasError: error != nil,
+                isSummaryGenerating: viewModel.summaryGenerationInProgress[domainMessage.id] ?? false,
+                hasSummary: domainMessage.attachments.first?.aiSummary != nil,
                 onTap: {
                     Task { @MainActor in
                         if error != nil {
@@ -1148,8 +1275,13 @@ struct MessageKitWrapper: UIViewControllerRepresentable {
                             self.viewModel.retryDocumentUpload(messageId: domainMessage.id)
                         } else if let url = documentItem.url {
                             // Open QuickLook preview
+                            print("📱 [ChatView] Opening document preview")
+                            print("   URL: \(url.absoluteString)")
+                            print("   isFileURL: \(url.isFileURL)")
                             self.viewModel.documentPreviewURL = url
                             self.viewModel.showDocumentPreview = true
+                        } else {
+                            print("⚠️ [ChatView] Document tap but no URL available")
                         }
                     }
                 },
@@ -1157,11 +1289,16 @@ struct MessageKitWrapper: UIViewControllerRepresentable {
                     Task { @MainActor in
                         self.viewModel.retryDocumentUpload(messageId: domainMessage.id)
                     }
+                } : nil,
+                onSummarize: (progress == nil && error == nil && documentItem.url != nil) ? {
+                    Task { @MainActor in
+                        await self.viewModel.summarizeDocument(messageId: domainMessage.id, url: documentItem.url!)
+                    }
                 } : nil
             )
 
             let hostingController = UIHostingController(rootView: documentCard)
-            hostingController.view.backgroundColor = .clear
+            hostingController.view.backgroundColor = UIColor.clear
             hostingController.view.translatesAutoresizingMaskIntoConstraints = false
 
             cell.contentView.addSubview(hostingController.view)
@@ -1172,6 +1309,12 @@ struct MessageKitWrapper: UIViewControllerRepresentable {
                 hostingController.view.leadingAnchor.constraint(equalTo: cell.contentView.leadingAnchor),
                 hostingController.view.trailingAnchor.constraint(equalTo: cell.contentView.trailingAnchor)
             ])
+        }
+
+        // REQUIRED: Provide size calculator for custom cells (document messages)
+        func customCellSizeCalculator(for message: MessageType, at indexPath: IndexPath, in messagesCollectionView: MessagesCollectionView) -> CellSizeCalculator {
+            // Return a custom size calculator for document messages
+            return CustomMessageSizeCalculator(layout: messagesCollectionView.messagesCollectionViewFlowLayout)
         }
 
         private func removeProgressOverlay(from imageView: UIImageView) {
@@ -1283,6 +1426,10 @@ class CustomMessagesViewController: MessagesViewController {
     }
     
     override func viewDidLoad() {
+        // CRITICAL: Register custom cell BEFORE super.viewDidLoad()
+        // This prevents crash when MessageKit tries to dequeue cells during layout
+        messagesCollectionView.register(UICollectionViewCell.self, forCellWithReuseIdentifier: "CustomCell")
+
         super.viewDidLoad()
 
         configureMessageCollectionView()
@@ -1313,7 +1460,9 @@ class CustomMessagesViewController: MessagesViewController {
     
     private func configureMessageCollectionView() {
         messagesCollectionView.backgroundColor = .systemBackground
-        
+
+        // Note: Custom cell registration moved to viewDidLoad() before super.viewDidLoad()
+
         // Configure avatar sizes
         if let layout = messagesCollectionView.collectionViewLayout as? MessagesCollectionViewFlowLayout {
             let avatarSize = CGSize(width: 30, height: 30)
@@ -1520,6 +1669,28 @@ struct Sender: SenderType {
 extension Array {
     subscript(safe index: Int) -> Element? {
         return indices.contains(index) ? self[index] : nil
+    }
+}
+
+// MARK: - Custom Cell Size Calculator
+
+/// Custom size calculator for document messages
+class CustomMessageSizeCalculator: CellSizeCalculator {
+
+    nonisolated(unsafe) override init() {
+        super.init()
+    }
+
+    nonisolated(unsafe) init(layout: MessagesCollectionViewFlowLayout?) {
+        super.init()
+        self.layout = layout
+    }
+
+    nonisolated(unsafe) override func sizeForItem(at indexPath: IndexPath) -> CGSize {
+        // Fixed size for document cards
+        let width: CGFloat = 260
+        let height: CGFloat = 100
+        return CGSize(width: width, height: height)
     }
 }
 

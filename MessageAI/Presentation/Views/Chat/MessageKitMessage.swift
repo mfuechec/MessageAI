@@ -18,6 +18,15 @@ struct MessageKitMessage: MessageType {
         self.status = message.status
         self.isDeleted = message.isDeleted
 
+        // DEBUG: Print attachment info
+        print("🔍 [MessageKitMessage] Creating message \(message.id.prefix(8))...")
+        print("   Attachments count: \(message.attachments.count)")
+        if let attachment = message.attachments.first {
+            print("   Attachment type: \(attachment.type)")
+            print("   Attachment fileName: \(attachment.fileName ?? "nil")")
+            print("   Attachment url: \(attachment.url)")
+        }
+
         // Show "[Message deleted]" placeholder for deleted messages
         if message.isDeleted {
             self.kind = .text("[Message deleted]")
@@ -27,6 +36,7 @@ struct MessageKitMessage: MessageType {
                 // Image message
                 let mediaItem = ImageMediaItem(url: attachment.url)
                 self.kind = .photo(mediaItem)
+                print("   ✅ Created .photo message")
             case .file:
                 // Document message (PDF)
                 let documentItem = DocumentMediaItem(
@@ -35,13 +45,16 @@ struct MessageKitMessage: MessageType {
                     sizeBytes: attachment.sizeBytes
                 )
                 self.kind = .custom(documentItem)
+                print("   ✅ Created .custom(DocumentMediaItem) message")
             case .video:
                 // Future: Video support
                 self.kind = .text(message.text.isEmpty ? "[Video]" : message.text)
+                print("   ℹ️ Created .text for video (not supported yet)")
             }
         } else {
             // Text message
             self.kind = .text(message.text)
+            print("   ℹ️ Created .text message")
         }
     }
 }

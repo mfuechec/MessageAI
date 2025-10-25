@@ -201,6 +201,48 @@ class CloudFunctionsService {
         }
     }
 
+    /// Call summarizePDF Cloud Function
+    ///
+    /// - Parameters:
+    ///   - documentUrl: The Firebase Storage URL of the PDF
+    ///   - documentText: Extracted text from the PDF
+    /// - Returns: PDF summary response from Cloud Function
+    /// - Throws: AIServiceError on failure
+    func callSummarizePDF(
+        documentUrl: String,
+        documentText: String
+    ) async throws -> PDFSummaryResponse {
+        let data: [String: Any] = [
+            "documentUrl": documentUrl,
+            "documentText": documentText
+        ]
+
+        print("🔵 [CloudFunctions] Calling summarizePDF")
+        print("   Document URL: \(documentUrl)")
+        print("   Text length: \(documentText.count) characters")
+
+        do {
+            let result = try await functions.httpsCallable("summarizePDF").call(data)
+            print("✅ [CloudFunctions] summarizePDF succeeded")
+
+            guard let response = result.data as? [String: Any] else {
+                print("❌ [CloudFunctions] Invalid response format")
+                throw AIServiceError.unknown("Invalid response format from Cloud Function")
+            }
+
+            return try parsePDFSummaryResponse(response)
+        } catch let error as AIServiceError {
+            print("❌ [CloudFunctions] AIServiceError: \(error.localizedDescription)")
+            throw error
+        } catch let error as NSError {
+            print("❌ [CloudFunctions] NSError:")
+            print("   Domain: \(error.domain)")
+            print("   Code: \(error.code)")
+            print("   Description: \(error.localizedDescription)")
+            throw mapFirebaseFunctionsError(error)
+        }
+    }
+
     // MARK: - Response Parsing
 
     #if DEBUG
@@ -471,6 +513,27 @@ class CloudFunctionsService {
         )
     }
 
+    private func parsePDFSummaryResponse(_ data: [String: Any]) throws -> PDFSummaryResponse {
+        guard let success = data["success"] as? Bool,
+              let summary = data["summary"] as? String,
+              let cached = data["cached"] as? Bool,
+              let timestamp = data["timestamp"] as? String else {
+            throw AIServiceError.unknown("Missing required fields in PDF summary response")
+        }
+
+        print("📊 [CloudFunctions] PDF summary response:")
+        print("   Summary length: \(summary.count) characters")
+        print("   Cached: \(cached)")
+        print("   Timestamp: \(timestamp)")
+
+        return PDFSummaryResponse(
+            success: success,
+            summary: summary,
+            cached: cached,
+            timestamp: timestamp
+        )
+    }
+
     private func parseSearchResultsResponse(_ data: [String: Any]) throws -> SearchResultsResponse {
         guard let success = data["success"] as? Bool,
               let cached = data["cached"] as? Bool,
@@ -620,6 +683,13 @@ struct SearchResultDTO {
     let relevanceScore: Double
     let timestamp: Date?
     let senderName: String
+}
+
+struct PDFSummaryResponse {
+    let success: Bool
+    let summary: String
+    let cached: Bool
+    let timestamp: String
 }
 
 #if DEBUG

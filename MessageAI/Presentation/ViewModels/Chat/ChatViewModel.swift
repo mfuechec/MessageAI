@@ -85,6 +85,15 @@ class ChatViewModel: ObservableObject {
     @Published var showDocumentPreview: Bool = false
     @Published var documentPreviewURL: URL?
 
+    // Document summary generation state (per message)
+    @Published var summaryGenerationInProgress: [String: Bool] = [:]  // messageId -> isGenerating
+
+    // Document summary state
+    @Published var showDocumentSummary: Bool = false
+    @Published var documentSummaryText: String = ""
+    @Published var isSummarizingDocument: Bool = false
+    @Published var documentSummaryError: String?
+
     // Track loading states separately
     private var messagesLoaded: Bool = false
     private var participantsLoaded: Bool = false
@@ -310,7 +319,8 @@ class ChatViewModel: ObservableObject {
                                    old.isEdited != new.isEdited ||
                                    old.isDeleted != new.isDeleted ||
                                    old.status != new.status ||
-                                   old.readCount != new.readCount
+                                   old.readCount != new.readCount ||
+                                   old.attachments.count != new.attachments.count
                         }
 
                         // Check last 5 messages (newest) - where read receipts typically change
@@ -321,7 +331,8 @@ class ChatViewModel: ObservableObject {
                                    old.isEdited != new.isEdited ||
                                    old.isDeleted != new.isDeleted ||
                                    old.status != new.status ||
-                                   old.readCount != new.readCount
+                                   old.readCount != new.readCount ||
+                                   old.attachments.count != new.attachments.count
                         }
 
                         needsRefresh = firstChanged || lastChanged
@@ -336,14 +347,18 @@ class ChatViewModel: ObservableObject {
                         old.isDeleted != new.isDeleted ||
                         old.status != new.status ||
                         old.readBy != new.readBy ||
-                        old.readCount != new.readCount
+                        old.readCount != new.readCount ||
+                        old.attachments.count != new.attachments.count
                     }
                 } else {
                     needsRefresh = self.messages.count != mergedMessages.count
                 }
 
                 if needsRefresh {
+                    print("🔄 [ChatViewModel] Change detected - setting messagesNeedRefresh = true")
                     self.messagesNeedRefresh = true
+                } else {
+                    print("⏭️ [ChatViewModel] No changes detected - skipping refresh")
                 }
 
                 self.messages = mergedMessages
@@ -1608,7 +1623,8 @@ class ChatViewModel: ObservableObject {
                 url: "local://\(messageId)",  // Placeholder URL to indicate local image
                 thumbnailURL: nil,
                 sizeBytes: Int64(imageData.count),
-                fileName: nil
+                fileName: nil,
+                aiSummary: nil
             )
             let message = Message(
                 id: messageId,
@@ -1804,13 +1820,53 @@ class ChatViewModel: ObservableObject {
     private func performDocumentUpload(messageId: String, fileURL: URL) async {
         do {
             // Upload to Firebase Storage
-            let attachment = try await storageRepository.uploadMessageDocument(
+            var attachment = try await storageRepository.uploadMessageDocument(
                 fileURL,
                 conversationId: conversationId,
                 messageId: messageId
             ) { progress in
                 Task { @MainActor in
                     self.uploadProgress[messageId] = progress
+                }
+            }
+
+            // Mark summary generation as in progress
+            summaryGenerationInProgress[messageId] = true
+
+            // Generate AI summary for PDF in background (don't block upload completion)
+            print("🤖 [Document Upload] Starting AI summary generation in background...")
+            Task { @MainActor in
+                do {
+                    let aiSummary = try await generateDocumentSummary(from: URL(string: attachment.url)!)
+                    print("   ✅ AI summary generated: \(aiSummary.prefix(100))...")
+
+                    // Update message with AI summary
+                    if let index = messages.firstIndex(where: { $0.id == messageId }) {
+                        var updatedMessage = messages[index]
+                        var updatedAttachment = updatedMessage.attachments[0]
+                        updatedAttachment = MessageAttachment(
+                            id: updatedAttachment.id,
+                            type: updatedAttachment.type,
+                            url: updatedAttachment.url,
+                            thumbnailURL: updatedAttachment.thumbnailURL,
+                            sizeBytes: updatedAttachment.sizeBytes,
+                            fileName: updatedAttachment.fileName,
+                            aiSummary: aiSummary
+                        )
+                        updatedMessage.attachments = [updatedAttachment]
+
+                        // Update in Firestore
+                        try await messageRepository.sendMessage(updatedMessage)
+
+                        // Update local state
+                        messages[index] = updatedMessage
+                        summaryGenerationInProgress[messageId] = false
+                        messagesNeedRefresh = true
+                        print("   ✅ AI summary saved to Firestore")
+                    }
+                } catch {
+                    print("   ⚠️ Failed to generate AI summary: \(error.localizedDescription)")
+                    summaryGenerationInProgress[messageId] = false
                 }
             }
 
@@ -1824,11 +1880,17 @@ class ChatViewModel: ObservableObject {
             updatedMessage.status = .sent
             updatedMessage.statusUpdatedAt = Date()
 
-            // Save to Firestore
+            // Save to Firestore (with AI summary if generated)
             try await messageRepository.sendMessage(updatedMessage)
 
             // Update local array
             messages[index] = updatedMessage
+
+            // CRITICAL: Force UI refresh for attachment display
+            // The attachment was just added, so MessageKit needs to reload
+            // to switch from .text to .custom cell type
+            messagesNeedRefresh = true
+            print("🔄 [Document Upload] Attachment added - triggering UI refresh")
 
             // Clean up
             uploadProgress.removeValue(forKey: messageId)
@@ -1890,6 +1952,60 @@ class ChatViewModel: ObservableObject {
             await performDocumentUpload(messageId: messageId, fileURL: tempURL)
         }
     }
+
+    /// Summarize a PDF document using AI (or display cached summary)
+    func summarizeDocument(messageId: String, url: URL) async {
+        print("✨ [ChatViewModel] Displaying PDF summary")
+        print("   Message ID: \(messageId)")
+
+        isSummarizingDocument = true
+        documentSummaryError = nil
+
+        // Check if we have a cached summary in the message attachment
+        if let message = messages.first(where: { $0.id == messageId }),
+           let attachment = message.attachments.first,
+           let cachedSummary = attachment.aiSummary {
+            print("   💾 Found cached AI summary in database")
+            documentSummaryText = cachedSummary
+            showDocumentSummary = true
+            isSummarizingDocument = false
+            return
+        }
+
+        // No cached summary - generate on demand
+        print("   🤖 No cached summary found, generating new one...")
+        do {
+            let summary = try await generateDocumentSummary(from: url)
+            documentSummaryText = summary
+            showDocumentSummary = true
+            print("   ✅ Summary generated successfully")
+
+        } catch {
+            print("   ❌ Summarization failed: \(error.localizedDescription)")
+            documentSummaryError = error.localizedDescription
+            errorMessage = "Failed to summarize PDF: \(error.localizedDescription)"
+        }
+
+        isSummarizingDocument = false
+    }
+
+    /// Generate AI summary from document URL (used during upload)
+    private func generateDocumentSummary(from url: URL) async throws -> String {
+        // Extract text from PDF
+        let extractedText = try await PDFTextExtractor.extractText(from: url)
+        print("   📄 Extracted \(extractedText.count) characters from PDF")
+
+        // Call Cloud Function for AI summarization
+        let cloudFunctions = CloudFunctionsService()
+        let response = try await cloudFunctions.callSummarizePDF(
+            documentUrl: url.absoluteString,
+            documentText: extractedText
+        )
+
+        print("   🤖 AI summary generated (cached: \(response.cached))")
+        return response.summary
+    }
+
 
     // MARK: - Document File Management
 
