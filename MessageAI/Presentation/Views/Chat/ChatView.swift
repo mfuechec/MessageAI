@@ -55,7 +55,7 @@ struct ChatView: View {
                     )
                 }
 
-                // MessageKit with overlaid typing indicator
+                // MessageKit with overlaid typing indicator and smart replies
                 ZStack(alignment: .bottomLeading) {
                     MessageKitWrapper(
                         viewModel: viewModel,
@@ -64,12 +64,33 @@ struct ChatView: View {
                     )
                     .edgesIgnoringSafeArea(.bottom)
 
-                    // Typing indicator overlaid on top (doesn't affect MessageKit layout)
-                    // Positioned above the input bar
-                    if !viewModel.typingUserNames.isEmpty {
-                        TypingIndicatorView(typingUserNames: viewModel.typingUserNames)
-                            .padding(.bottom, 60) // Position above input bar (input bar is ~50pt tall)
+                    // Smart reply bar and typing indicator overlaid above input
+                    VStack {
+                        Spacer()
+
+                        // Smart reply suggestions
+                        if !viewModel.smartReplySuggestions.isEmpty || viewModel.isLoadingSmartReplies {
+                            SmartReplyBar(
+                                suggestions: viewModel.smartReplySuggestions,
+                                isLoading: viewModel.isLoadingSmartReplies,
+                                onTap: { suggestion in
+                                    Task {
+                                        await viewModel.sendSmartReply(suggestion)
+                                    }
+                                }
+                            )
+                            .padding(.bottom, 50) // Position above input bar
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                        }
+
+                        // Typing indicator above smart replies
+                        if !viewModel.typingUserNames.isEmpty {
+                            TypingIndicatorView(typingUserNames: viewModel.typingUserNames)
+                                .padding(.bottom, viewModel.smartReplySuggestions.isEmpty ? 60 : 100) // Adjust based on smart reply bar
+                        }
                     }
+                    .animation(.spring(response: 0.3), value: viewModel.smartReplySuggestions.count)
+                    .animation(.spring(response: 0.3), value: viewModel.isLoadingSmartReplies)
                 }
             }
 
@@ -426,6 +447,12 @@ struct ChatView: View {
         }
         .onChange(of: viewModel.participants) { _ in
             updateConversationTitle()
+        }
+        .onChange(of: viewModel.messages.count) { _ in
+            // Load smart replies when new messages arrive
+            Task {
+                await viewModel.loadSmartReplies()
+            }
         }
         .onChange(of: viewModel.scrollToMessageId) { newValue in
             // Scroll to specific message when requested

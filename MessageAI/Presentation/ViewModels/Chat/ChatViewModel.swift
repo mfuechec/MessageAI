@@ -94,6 +94,11 @@ class ChatViewModel: ObservableObject {
     @Published var isSummarizingDocument: Bool = false
     @Published var documentSummaryError: String?
 
+    // Smart reply state
+    @Published var smartReplySuggestions: [String] = []
+    @Published var isLoadingSmartReplies: Bool = false
+    private var smartReplyCache: [String: [String]] = [:]  // messageId -> suggestions
+
     // Track loading states separately
     private var messagesLoaded: Bool = false
     private var participantsLoaded: Bool = false
@@ -119,6 +124,7 @@ class ChatViewModel: ObservableObject {
     private let conversationRepository: ConversationRepositoryProtocol
     private let userRepository: UserRepositoryProtocol
     private let storageRepository: StorageRepositoryProtocol
+    private let smartReplyRepository: SmartReplyRepositoryProtocol?
     private let networkMonitor: any NetworkMonitorProtocol
     private var cancellables = Set<AnyCancellable>()
     private let failedMessageStore = FailedMessageStore()
@@ -148,6 +154,7 @@ class ChatViewModel: ObservableObject {
         conversationRepository: ConversationRepositoryProtocol,
         userRepository: UserRepositoryProtocol,
         storageRepository: StorageRepositoryProtocol,
+        smartReplyRepository: SmartReplyRepositoryProtocol? = nil,
         networkMonitor: any NetworkMonitorProtocol = NetworkMonitor(),
         offlineQueueStore: OfflineQueueStore = OfflineQueueStore(),
         initialConversation: Conversation? = nil,
@@ -160,6 +167,7 @@ class ChatViewModel: ObservableObject {
         self.conversationRepository = conversationRepository
         self.userRepository = userRepository
         self.storageRepository = storageRepository
+        self.smartReplyRepository = smartReplyRepository
         self.networkMonitor = networkMonitor
         self.offlineQueueStore = offlineQueueStore
         self.aiService = aiService
@@ -362,6 +370,11 @@ class ChatViewModel: ObservableObject {
                 }
 
                 self.messages = mergedMessages
+
+                // Load smart replies for the latest message
+                Task {
+                    await self.loadSmartReplies()
+                }
 
                 // Final verification - check for duplicates in displayed messages
                 print("🔍 [DUPLICATE DEBUG] FINAL self.messages (\(self.messages.count)):")
@@ -636,7 +649,93 @@ class ChatViewModel: ObservableObject {
     func clearError() {
         errorMessage = nil
     }
-    
+
+    // MARK: - Smart Replies
+
+    /// Loads smart reply suggestions for the latest message
+    func loadSmartReplies() async {
+        print("🤖 [ChatViewModel] loadSmartReplies() called")
+
+        // Don't load smart replies if repository not available
+        guard let smartReplyRepository = smartReplyRepository else {
+            print("⚠️ [ChatViewModel] Smart reply repository not available")
+            return
+        }
+
+        // Don't load if no messages
+        guard let latestMessage = messages.last else {
+            print("⚠️ [ChatViewModel] No messages available for smart replies")
+            smartReplySuggestions = []
+            return
+        }
+
+        print("📩 [ChatViewModel] Latest message: id=\(latestMessage.id.prefix(8))... from=\(latestMessage.senderId)")
+
+        // Don't show smart replies for our own messages
+        guard latestMessage.senderId != currentUserId else {
+            print("⏭️ [ChatViewModel] Latest message is from current user, skipping smart replies")
+            smartReplySuggestions = []
+            return
+        }
+
+        // ⚡️ Check client-side cache first (instant < 10ms)
+        if let cachedSuggestions = smartReplyCache[latestMessage.id] {
+            print("⚡️ [ChatViewModel] Using cached smart replies (instant)")
+            smartReplySuggestions = cachedSuggestions
+            return
+        }
+
+        // Don't show smart replies if user is typing
+        guard messageText.isEmpty else {
+            print("⏭️ [ChatViewModel] User is typing, skipping smart replies")
+            return
+        }
+
+        print("🔄 [ChatViewModel] Loading smart replies for message \(latestMessage.id.prefix(8))...")
+        isLoadingSmartReplies = true
+
+        do {
+            // Reduced context: only 5 messages for faster processing
+            let recentMessages = Array(messages.suffix(5))
+
+            print("📤 [ChatViewModel] Calling smart reply repository with \(recentMessages.count) messages")
+            let smartReply = try await smartReplyRepository.generateSmartReplies(
+                conversationId: conversationId,
+                messageId: latestMessage.id,
+                recentMessages: recentMessages
+            )
+
+            // Cache the result for instant access on next view
+            smartReplyCache[latestMessage.id] = smartReply.suggestions
+
+            // Only update UI if this is still the latest message
+            if messages.last?.id == latestMessage.id {
+                smartReplySuggestions = smartReply.suggestions
+                print("✅ [ChatViewModel] Loaded \(smartReplySuggestions.count) smart reply suggestions: \(smartReplySuggestions)")
+            } else {
+                print("⏭️ [ChatViewModel] Newer message arrived, discarding smart replies")
+            }
+        } catch {
+            print("❌ [ChatViewModel] Failed to load smart replies: \(error)")
+            // Silent failure - smart replies are optional
+            smartReplySuggestions = []
+        }
+
+        isLoadingSmartReplies = false
+    }
+
+    /// Sends a smart reply suggestion
+    func sendSmartReply(_ suggestion: String) async {
+        // Set the message text to the suggestion
+        messageText = suggestion
+
+        // Clear suggestions immediately
+        smartReplySuggestions = []
+
+        // Send the message
+        await sendMessage()
+    }
+
     /// Loads more messages for pagination (Story 2.11)
     func loadMoreMessages() async {
         guard !isLoadingMore && hasMoreMessages else {

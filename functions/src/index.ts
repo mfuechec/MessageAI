@@ -10,6 +10,7 @@ export {summarizeThread} from "./summarizeThread";
 export {extractActionItems} from "./extractActionItems";
 export {generateSmartSearchResults} from "./generateSmartSearchResults";
 export {summarizePDF} from "./summarizePDF";
+export {generateSmartReplies} from "./generateSmartReplies";
 
 // ========================================
 // AI NOTIFICATION ANALYSIS (Story 6.2 & 6.3)

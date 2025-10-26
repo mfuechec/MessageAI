@@ -125,6 +125,12 @@ class DIContainer {
         FirebaseSearchRepository()
     }()
 
+    /// Smart reply repository (Smart Replies Feature)
+    /// Generates AI-powered quick response suggestions for messages
+    internal lazy var smartReplyRepository: SmartReplyRepositoryProtocol = {
+        FirebaseSmartReplyRepository(cloudFunctionsService: cloudFunctionsService)
+    }()
+
     // MARK: - Notification Services (Epic 6)
 
     /// Conversation activity monitor (Epic 6 - Story 6.1)
@@ -213,6 +219,7 @@ class DIContainer {
             conversationRepository: conversationRepository,
             userRepository: userRepository,
             storageRepository: storageRepository,
+            smartReplyRepository: smartReplyRepository,
             networkMonitor: networkMonitor,
             offlineQueueStore: offlineQueueStore,  // Story 2.9
             initialConversation: initialConversation,

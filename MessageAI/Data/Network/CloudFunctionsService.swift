@@ -243,6 +243,52 @@ class CloudFunctionsService {
         }
     }
 
+    /// Call generateSmartReplies Cloud Function
+    ///
+    /// - Parameters:
+    ///   - conversationId: The conversation ID
+    ///   - messageId: The message to generate replies for
+    ///   - recentMessages: Recent conversation context
+    /// - Returns: Smart reply suggestions response from Cloud Function
+    /// - Throws: AIServiceError on failure
+    func callGenerateSmartReplies(
+        conversationId: String,
+        messageId: String,
+        recentMessages: [[String: Any]]
+    ) async throws -> SmartReplyResponse {
+        let data: [String: Any] = [
+            "conversationId": conversationId,
+            "messageId": messageId,
+            "recentMessages": recentMessages
+        ]
+
+        print("🔵 [CloudFunctions] Calling generateSmartReplies")
+        print("   Conversation ID: \(conversationId)")
+        print("   Message ID: \(messageId)")
+        print("   Recent messages: \(recentMessages.count)")
+
+        do {
+            let result = try await functions.httpsCallable("generateSmartReplies").call(data)
+            print("✅ [CloudFunctions] generateSmartReplies succeeded")
+
+            guard let response = result.data as? [String: Any] else {
+                print("❌ [CloudFunctions] Invalid response format")
+                throw AIServiceError.unknown("Invalid response format from Cloud Function")
+            }
+
+            return try parseSmartReplyResponse(response)
+        } catch let error as AIServiceError {
+            print("❌ [CloudFunctions] AIServiceError: \(error.localizedDescription)")
+            throw error
+        } catch let error as NSError {
+            print("❌ [CloudFunctions] NSError:")
+            print("   Domain: \(error.domain)")
+            print("   Code: \(error.code)")
+            print("   Description: \(error.localizedDescription)")
+            throw mapFirebaseFunctionsError(error)
+        }
+    }
+
     // MARK: - Response Parsing
 
     #if DEBUG
@@ -534,6 +580,27 @@ class CloudFunctionsService {
         )
     }
 
+    private func parseSmartReplyResponse(_ data: [String: Any]) throws -> SmartReplyResponse {
+        guard let success = data["success"] as? Bool,
+              let suggestions = data["suggestions"] as? [String],
+              let cached = data["cached"] as? Bool,
+              let timestamp = data["timestamp"] as? String else {
+            throw AIServiceError.unknown("Missing required fields in smart reply response")
+        }
+
+        print("📊 [CloudFunctions] Smart reply response:")
+        print("   Suggestions count: \(suggestions.count)")
+        print("   Cached: \(cached)")
+        print("   Timestamp: \(timestamp)")
+
+        return SmartReplyResponse(
+            success: success,
+            suggestions: suggestions,
+            cached: cached,
+            timestamp: timestamp
+        )
+    }
+
     private func parseSearchResultsResponse(_ data: [String: Any]) throws -> SearchResultsResponse {
         guard let success = data["success"] as? Bool,
               let cached = data["cached"] as? Bool,
@@ -688,6 +755,13 @@ struct SearchResultDTO {
 struct PDFSummaryResponse {
     let success: Bool
     let summary: String
+    let cached: Bool
+    let timestamp: String
+}
+
+struct SmartReplyResponse {
+    let success: Bool
+    let suggestions: [String]
     let cached: Bool
     let timestamp: String
 }
