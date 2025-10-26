@@ -213,6 +213,13 @@ class NetworkMonitor: NetworkMonitorProtocol {
     private func setupFirestoreMonitoring() {
         print("🔥 [NetworkMonitor] Setting up Firestore metadata monitoring")
 
+        // Remove any existing listener (handles logout/login scenarios)
+        if let existingListener = firestoreListener {
+            existingListener.remove()
+            print("🔥 [NetworkMonitor] Removed existing Firestore listener")
+            firestoreListener = nil
+        }
+
         let db = Firestore.firestore()
 
         // Listen to a lightweight query with metadata changes
@@ -221,6 +228,13 @@ class NetworkMonitor: NetworkMonitorProtocol {
             print("🔥 [NetworkMonitor] ⚠️ No authenticated user - cannot set up connection listener")
             return
         }
+
+        // Reset state for this monitoring session
+        // This ensures the first snapshot from THIS listener is treated specially,
+        // even if the user logged out and logged back in (reusing the same NetworkMonitor instance)
+        hasReceivedFirstSnapshot = false
+        appLaunchTime = Date()
+        print("🔥 [NetworkMonitor] Reset monitoring state (first snapshot flag + grace period timer)")
 
         firestoreListener = db.collection("users")
             .document(userId)
@@ -255,13 +269,26 @@ class NetworkMonitor: NetworkMonitorProtocol {
                 print("🔥 [NetworkMonitor] Firestore connection state: \(isConnected ? "ONLINE ✅" : "OFFLINE ❌")")
 
                 Task { @MainActor in
-                    // Handle first snapshot
+                    // SPECIAL CASE: First snapshot ever received
+                    // This snapshot often comes from cache and should be ignored if offline,
+                    // regardless of timing (user might spend time on profile setup, etc.)
                     if !self.hasReceivedFirstSnapshot {
                         self.hasReceivedFirstSnapshot = true
-                        print("🔥 [NetworkMonitor] First snapshot received (fromCache: \(metadata.isFromCache))")
+                        print("🔥 [NetworkMonitor] 🎯 FIRST SNAPSHOT RECEIVED (fromCache: \(metadata.isFromCache))")
+
+                        if isConnected {
+                            // Online state: update immediately
+                            print("🔥 [NetworkMonitor] ✅ First snapshot shows ONLINE - updating immediately")
+                            self.isFirestoreConnected = true
+                        } else {
+                            // Offline state: UNCONDITIONALLY IGNORE (always from cache on first snapshot)
+                            print("🔥 [NetworkMonitor] 🚫 First snapshot shows OFFLINE - ignoring unconditionally (cached data)")
+                            // Don't update - stay at default true
+                        }
+                        return
                     }
 
-                    // Grace period: Ignore offline states during app startup (prevents false banner from cached snapshots)
+                    // SUBSEQUENT SNAPSHOTS: Use time-based grace period
                     let timeSinceLaunch = Date().timeIntervalSince(self.appLaunchTime)
                     if timeSinceLaunch < self.startupGracePeriodSeconds {
                         if isConnected {
@@ -290,14 +317,16 @@ class NetworkMonitor: NetworkMonitorProtocol {
     /// Retry setting up Firestore monitoring (call after user authentication)
     ///
     /// This should be called after a user logs in if the NetworkMonitor was created before authentication.
-    /// It will set up the Firestore metadata listener if it wasn't already configured.
+    /// It will set up the Firestore metadata listener for the authenticated user.
+    /// Also used when switching accounts (logout/login) to set up listener for new user.
     func retryFirestoreMonitoring() {
-        // Only retry if listener doesn't exist and user is now authenticated
-        guard firestoreListener == nil, Auth.auth().currentUser != nil else {
+        // Only set up if user is authenticated
+        guard Auth.auth().currentUser != nil else {
+            print("🔥 [NetworkMonitor] Cannot retry - no authenticated user")
             return
         }
 
-        print("🔥 [NetworkMonitor] Retrying Firestore monitoring after authentication")
+        print("🔥 [NetworkMonitor] Setting up Firestore monitoring for authenticated user")
         setupFirestoreMonitoring()
     }
 
